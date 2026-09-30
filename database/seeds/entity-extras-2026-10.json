@@ -1,0 +1,30 @@
+{
+  "_note": "实体标签附加词表（zx18，2026-10 版）：榜单名录（lb-brands 21 家 / lb-malls 124 家）之外的连锁商业体产品线词根与母婴零售渠道。名录实体精确匹配（slug 对榜单），本文件实体按词根匹配（连锁系整体一个档案，具体城市项目在相关新闻中呈现）。与 lb-malls 种子同口径：人工维护、公开常识、可编辑后下轮刷新生效。消费方=packages/backend/src/entitytags/matcher.ts。",
+  "mallChains": [
+    { "slug": "sassare-outlets", "name": "砂之船奥莱", "keywords": ["砂之船"], "note": "奥莱连锁（重庆/西安/南京/石家庄等十余城）" },
+    { "slug": "wanda-plaza", "name": "万达广场", "keywords": ["万达广场", "万达"], "note": "万达商管产品线" },
+    { "slug": "mixc", "name": "万象城/万象汇", "keywords": ["万象城", "万象汇"], "note": "华润置地产品线" },
+    { "slug": "joy-city", "name": "大悦城", "keywords": ["大悦城"], "note": "大悦城控股产品线" },
+    { "slug": "longfor-tianjie", "name": "龙湖天街", "keywords": ["龙湖天街", "天街"], "note": "龙湖商业产品线" },
+    { "slug": "incity", "name": "印象城", "keywords": ["印象城", "印象汇"], "note": "印力集团产品线" },
+    { "slug": "wuyue-plaza", "name": "吾悦广场", "keywords": ["吾悦广场", "吾悦"], "note": "新城控股产品线" },
+    { "slug": "yintai", "name": "银泰城/银泰in", "keywords": ["银泰城", "银泰in", "银泰百货"], "note": "银泰商业产品线" },
+    { "slug": "k11", "name": "K11", "keywords": ["K11"], "note": "新世界发展产品线" },
+    { "slug": "taikoo", "name": "太古里/太古汇", "keywords": ["太古里", "太古汇"], "note": "太古地产产品线" },
+    { "slug": "plaza66", "name": "恒隆广场", "keywords": ["恒隆广场"], "note": "恒隆地产产品线" },
+    { "slug": "ifs", "name": "IFS 国金中心", "keywords": ["国金中心", "IFS"], "note": "九龙仓产品线" },
+    { "slug": "raffles", "name": "来福士", "keywords": ["来福士"], "note": "凯德集团产品线" },
+    { "slug": "shouchuang-outlets", "name": "首创奥莱", "keywords": ["首创奥莱"], "note": "首创钜大产品线" },
+    { "slug": "bailian-outlets", "name": "百联奥莱", "keywords": ["百联奥莱"], "note": "百联集团产品线" },
+    { "slug": "florentia", "name": "佛罗伦萨小镇", "keywords": ["佛罗伦萨小镇"], "note": "RDM 亚洲产品线" },
+    { "slug": "aegean", "name": "爱琴海购物公园", "keywords": ["爱琴海购物公园", "爱琴海"], "note": "爱琴海集团产品线" },
+    { "slug": "aeon-mall", "name": "永旺梦乐城", "keywords": ["永旺梦乐城", "永旺"], "note": "AEON 产品线" },
+    { "slug": "hesheng-hui", "name": "合生汇", "keywords": ["合生汇"], "note": "合生商业产品线" },
+    { "slug": "shanshan-outlets", "name": "杉杉奥莱", "keywords": ["杉杉奥莱"], "note": "杉杉商业产品线" }
+  ],
+  "channels": [
+    { "slug": "kidswant", "name": "孩子王", "keywords": ["孩子王"], "note": "母婴童零售连锁（命主定性：卖场渠道，非品牌）" },
+    { "slug": "aiyingshi", "name": "爱婴室", "keywords": ["爱婴室"], "note": "母婴零售连锁（命主定性：卖场渠道，非品牌）" },
+    { "slug": "leyou", "name": "乐友", "keywords": ["乐友"], "note": "母婴零售连锁（孩子王旗下）" }
+  ]
+}

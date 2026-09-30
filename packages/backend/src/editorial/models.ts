@@ -4,6 +4,17 @@
 // affects work done from then on (history is not re-judged).
 import { sql } from "../db.ts";
 import { MODELS } from "../providers/llm.ts";
+import { mimoUsable } from "../providers/mimo.ts";
+import { mimoEarlyLive, mimoShiftActive, offpeakPlanLive } from "../lib/windows.ts";
+
+/** ka3: inside the MIMO daytime shift (9:00-22:59 Beijing, plan live) an unoverridden capability
+ *  runs on the pay-as-you-go MIMO preset instead of the plan model; explicit admin/env choices
+ *  always win and off-peak hours keep the discounted Zhipu plan. */
+export const MIMO_SHIFT_MODEL = "mimo-v2.6-flash";
+
+export function routeToMimo(input: { overridden: boolean; planLive: boolean; shift: boolean; usable: boolean }): boolean {
+  return !input.overridden && input.planLive && input.shift && input.usable;
+}
 
 export interface Capability {
   label: string;
@@ -26,6 +37,9 @@ export const CAPABILITIES = {
   report: { label: "日报、周报、月报", env: "REPORT_MODEL", default: "default", purposes: ["report_lead", "report_daily", "report_weekly", "report_monthly"] },
   translate: { label: "精选全文翻译（含引用帖）", env: "TRANSLATE_MODEL", default: "default", purposes: ["translate_body", "translate_quoted"] },
   monitor: { label: "Codex 重置公告识别", env: "MONITOR_MODEL", default: "default", purposes: ["monitor.recognize", "monitor.context"] },
+  brandProfile: { label: "品牌档案八问总结（百科材料→八问+50字简介）", env: "BRAND_PROFILE_MODEL", default: "default", purposes: ["brand_profile"] },
+  insight: { label: "研报观点提取（研报正文→品牌/商业体/行业的研判观点+数字三件套）", env: "INSIGHT_MODEL", default: "default", purposes: ["report_insights"] },
+  deepread: { label: "新闻深解读（站内历史+档案→不点原文也能懂的大白话）", env: "DEEPREAD_MODEL", default: "default", purposes: ["article_deep_read"] },
 } satisfies Record<string, Capability>;
 
 export type CapabilityKey = keyof typeof CAPABILITIES;
@@ -45,10 +59,16 @@ export function invalidateModelCache() {
   cache = null;
 }
 
-/** The model a capability uses now: admin switch, else environment, else the code default. */
+/** The model a capability uses now: admin switch, else environment, else the code default. Inside
+ *  the MIMO daytime shift the default additionally routes to the MIMO preset (ka3). */
 export async function modelFor(capability: CapabilityKey): Promise<string> {
   const c: Capability = CAPABILITIES[capability];
-  const chosen = (await overrides())[capability] ?? process.env[c.env] ?? c.default;
+  const o = await overrides();
+  const overridden = !!(o[capability] ?? process.env[c.env]);
+  const chosen = o[capability] ?? process.env[c.env] ?? c.default;
+  if (routeToMimo({ overridden, planLive: offpeakPlanLive() || mimoEarlyLive(), shift: mimoShiftActive(), usable: await mimoUsable() })) {
+    return MIMO_SHIFT_MODEL;
+  }
   return MODELS[chosen] ? chosen : c.default;
 }
 
