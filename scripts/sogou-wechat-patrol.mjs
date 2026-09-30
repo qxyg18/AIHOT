@@ -68,6 +68,8 @@ function readToken() {
 
 async function fetchText(url, referer) {
   const res = await fetch(url, {
+    // 2026-10-01 实测：反爬期搜狗会慢速拖连接挂死整轮（孩子王词挂 26 分钟无超时），30s 强制断开记失败
+    signal: AbortSignal.timeout(30_000),
     headers: {
       "User-Agent": UA,
       "Accept": "text/html,application/xhtml+xml",

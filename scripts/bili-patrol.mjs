@@ -59,7 +59,8 @@ async function getBuvidCookie() {
 
 // 动态条目 → {title,url,publishedAt}；三种形态：视频(major.archive)/图文(desc+draw)/纯文字(desc)
 function toArticle(item) {
-  const mods = Array.isArray(item.modules) ? item.modules : Object.values(item.modules || {});
+  // 实测 2026-10-01：modules 数组可含 null 条目（风控半解除期的真实形态），不过滤会 TypeError
+  const mods = (Array.isArray(item.modules) ? item.modules : Object.values(item.modules || {})).filter(Boolean);
   const dyn = (mods.find((m) => m.module_dynamic) || {}).module_dynamic || {};
   const author = (mods.find((m) => m.module_author) || {}).module_author || {};
   const major = dyn.major || {};
