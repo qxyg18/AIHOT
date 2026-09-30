@@ -7,7 +7,7 @@ import path from "node:path";
 import { FEATURES } from "@aihot/industry/features";
 import { REPO_ROOT } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
-import { importModelDirectory } from "@aihot/backend/leaderboard/directory";
+import { importEntityDirectory } from "@aihot/backend/leaderboard/directory";
 import { seedTopics } from "@aihot/backend/publication/topics";
 import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 
@@ -47,7 +47,9 @@ for (const s of sources) {
 }
 console.log(`sources: ${added} added, ${sources.length - added} already there`);
 if (FEATURES.leaderboard) {
-  const { models, aliases } = await importModelDirectory();
-  console.log(`leaderboard directory: ${models} models, ${aliases} names added`);
+  // zw12 两榜实体名录（品牌 19 / 商场 ~112）：中文别名预写各 metric 源，身份解析零漂移。
+  // AI 模型名录（lb-models-*.json）随 v15 退役不再导入；种子文件保留作历史参考。
+  const entities = await importEntityDirectory();
+  console.log(`leaderboard entities: ${entities.models} models, ${entities.aliases} names added`);
 }
 await closeDb();

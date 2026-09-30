@@ -7,6 +7,7 @@ import { textToHtml } from "../content/sanitize.ts";
 import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, toItemSummary, xView, type ItemRow } from "./items.ts";
 import { itemUrl } from "./links.ts";
 import { hasItemPage } from "./rules.ts";
+import { brandCardsForText } from "../leaderboard/read.ts";
 import { SITE } from "@aihot/industry/site";
 
 interface DetailRow extends ItemRow {
@@ -188,5 +189,8 @@ export function siteItemDetail(detail: ItemDetail, original = false): SiteItemDe
   return { ...detail, x: detail.x ? x : null, hasTranslation, bodyLanguage,
     body: detail.body ? { ...detail.body, zh: bodyLanguage === "zh" ? detail.body.zh : null, original: bodyLanguage === "original" ? detail.body.original : null } : null,
     outline: selectedHtml ? withOutline(selectedHtml).outline : [],
+    brands: brandCardsForText(detail.title),
+    // ka4: the site route fills the real row in; other callers (og renditions) read no deep read.
+    deepRead: null,
   };
 }

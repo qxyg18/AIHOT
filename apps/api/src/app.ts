@@ -5,6 +5,10 @@ import { OAUTH_PROBE_PATHS, resolveRedirect } from "@aihot/contracts/http-policy
 import { sql } from "@aihot/backend/db";
 import { registerSite } from "./routes/site.ts";
 import { registerLeaderboard } from "./routes/leaderboard.ts";
+import { registerBrandProfiles } from "./routes/brandprofiles.ts";
+import { registerEntityTags } from "./routes/entitytags.ts";
+import { registerInsights } from "./routes/insights.ts";
+import { registerMacro } from "./routes/macro.ts";
 import { registerOg } from "./routes/og.ts";
 import { registerAdminAuth } from "./routes/admin-auth.ts";
 import { registerAdmin } from "./routes/admin.ts";
@@ -65,6 +69,10 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   registerSite(app);
   if (FEATURES.leaderboard) registerLeaderboard(app);
+  registerBrandProfiles(app);
+  registerEntityTags(app);
+  registerInsights(app);
+  registerMacro(app);
   registerOg(app);
   registerAdminAuth(app);
   registerAdmin(app);

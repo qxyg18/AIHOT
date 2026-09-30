@@ -13,8 +13,11 @@ x-app: &app
     AIHOT_DATA_DIR: /data
     API_BASE_URL: http://api:3001
     LOCAL_ROUTER_URL: http://web:3000
+    # LLM 密钥在仓库外凭据目录（host D:/secrets/aihot），不进 .env/git
+    AIHOT_CREDENTIALS_DIR: /secrets
   volumes:
     - data:/data
+    - D:/secrets/aihot:/secrets:ro
   depends_on:
     db:
       condition: service_healthy

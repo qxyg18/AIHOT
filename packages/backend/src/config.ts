@@ -64,7 +64,10 @@ export const config = {
 
 export type CredentialGroup = "models" | "collectors" | "integrations" | "auth";
 
-const groupCache = new Map<CredentialGroup, Record<string, string>>();
+// ka3: the file is re-read at most once a minute, so a key pasted into <group>.env activates within
+// a minute without a restart (same freshness the admin model switches have).
+const CREDENTIALS_TTL_MS = 60_000;
+const groupCache = new Map<CredentialGroup, { at: number; values: Record<string, string> }>();
 
 /**
  * Loads one credential group from an optional dotenv file (AIHOT_CREDENTIALS_DIR/<group>.env). Values
@@ -72,12 +75,12 @@ const groupCache = new Map<CredentialGroup, Record<string, string>>();
  */
 export function credentials(group: CredentialGroup): Record<string, string> {
   const cached = groupCache.get(group);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.at < CREDENTIALS_TTL_MS) return cached.values;
   const file = config.credentialsDir ? path.join(config.credentialsDir, `${group}.env`) : null;
   const parsed: Record<string, string> = file && existsSync(file) ? (parseEnv(readFileSync(file, "utf8")) as Record<string, string>) : {};
   const merged: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) merged[key] = env[key] ?? value;
-  groupCache.set(group, merged);
+  groupCache.set(group, { at: Date.now(), values: merged });
   return merged;
 }
 

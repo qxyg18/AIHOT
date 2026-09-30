@@ -201,7 +201,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
       {r.leaderboard && (
         <Card
           className="mt-5"
-          title="模型榜评测来源"
+          title="排行榜数据来源"
           right={<span>最近抓取 {bj(r.leaderboard.at)} · 成功 {r.leaderboard.sources.filter((x) => x.ok).length}/{r.leaderboard.sources.length}</span>}
           pad={false}
         >

@@ -117,6 +117,11 @@ export async function processArticle(articleId: string, opts: { attemptTag?: str
     await publishArticle(articleId);
     // History is archived but founds no event (isHistorical).
     if (result.output.relevance === "pass" && !row.historical) await enqueue(QUEUES.group, { articleId }, { singletonKey: articleId, priority: PRIORITY.live });
+    // Research-category reports also feed the insight extraction pass (ka2): viewpoints about
+    // brands/malls/the industry are analysis data, wanted for history too — queued behind live work.
+    if (result.output.relevance === "pass" && result.output.category === "research") {
+      await enqueue(QUEUES.insight, { articleId }, { singletonKey: `insight:${articleId}`, priority: PRIORITY.history });
+    }
     return { state: result.output.relevance };
   } catch (error) {
     if (error instanceof AnalysisInterruptedError || shutdownSignal.signal.aborted) throw error;

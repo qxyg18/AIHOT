@@ -94,8 +94,9 @@ export function channelCondition(channel: ChannelKey | null | undefined) {
 
 export function categoryCondition(category: CategoryKey | null | undefined, v1 = false) {
   if (!category) return sql``;
-  // v1 and RSS publish opinion as tip.
-  if (v1 && category === "tip") return sql`AND p.category IN ('tip', 'opinion')`;
+  // 原 AIHOT 在此把 v1 与 RSS 的 opinion 并入 tip（AI 行业的两分类合并展示）。
+  // 本档的分类不需要合并，v1 参数保留以兼容调用方签名，不再参与条件构造。
+  void v1;
   return sql`AND p.category = ${category}`;
 }
 

@@ -1,0 +1,5191 @@
+{
+ "_note": "全国商业体名录（zw12 排行榜改造，2026-10 版）。约 100 家：全国头部商业体 + 杭州重点加权。board=mall。footfallTier=客流层级 1-10（10=全国标杆/城市绝对核心），人工编制层级种子：冷启动期「客流单源直榜」的排序依据（赢商人气榜页不可抓的降级口径，见 zw12 失败即停条款），待赢商客流数据可接入后由机器源替换。全部层级值=公开常识概数，需核实，页面以冷启动标注披露。city 字段=城市；keywords=站内声量引擎匹配词。 | zw19 补数 2026-09-30：revenue 更新为联商网《全国250+商场2025销售额出炉》2025 年度值 69 条（62 首批+7 修复批；口径=项目方/年报/网络公开不完全统计的媒体整理二手数据；未更新项=本卡匹配未命中或该源未统计，其中杭州中腰部项目多为未公开；客流值留档 artifacts/2026-09-30/zw19-updates.json 与 zw19-fix2.json 供 mall-footfall 信号通道）。",
+ "board": "mall",
+ "directorySource": "entity-directory-mall",
+ "malls": [
+  {
+   "slug": "beijing-skp",
+   "name": "北京SKP",
+   "city": "北京",
+   "footfallTier": 10,
+   "keywords": [
+    "北京SKP",
+    "SKP"
+   ],
+   "area": 12,
+   "openedAt": "2007",
+   "revenue": 242
+  },
+  {
+   "slug": "beijing-guomao",
+   "name": "国贸商城",
+   "city": "北京",
+   "footfallTier": 10,
+   "keywords": [
+    "国贸商城",
+    "北京国贸商城"
+   ],
+   "area": 30,
+   "openedAt": "1990",
+   "revenue": 191
+  },
+  {
+   "slug": "beijing-sanlitun-taikuli",
+   "name": "三里屯太古里",
+   "city": "北京",
+   "footfallTier": 8,
+   "keywords": [
+    "三里屯太古里"
+   ],
+   "area": 13,
+   "openedAt": "2008",
+   "revenue": 54
+  },
+  {
+   "slug": "beijing-chaoyang-joy-city",
+   "name": "朝阳大悦城",
+   "city": "北京",
+   "footfallTier": 8,
+   "keywords": [
+    "朝阳大悦城"
+   ],
+   "area": 23,
+   "openedAt": "2010",
+   "revenue": 48
+  },
+  {
+   "slug": "beijing-xidan-joy-city",
+   "name": "西单大悦城",
+   "city": "北京",
+   "footfallTier": 8,
+   "keywords": [
+    "西单大悦城"
+   ],
+   "area": 20,
+   "openedAt": "2007",
+   "revenue": 40
+  },
+  {
+   "slug": "beijing-apm",
+   "name": "北京apm",
+   "city": "北京",
+   "footfallTier": 7,
+   "keywords": [
+    "北京apm"
+   ],
+   "area": 12,
+   "openedAt": "2008",
+   "revenue": 21.5
+  },
+  {
+   "slug": "beijing-heshenghui",
+   "name": "朝阳合生汇",
+   "city": "北京",
+   "footfallTier": 9,
+   "keywords": [
+    "朝阳合生汇",
+    "合生汇",
+    "北京朝阳合生汇"
+   ],
+   "area": 20,
+   "openedAt": "2017",
+   "revenue": 85
+  },
+  {
+   "slug": "beijing-livat",
+   "name": "北京荟聚",
+   "city": "北京",
+   "footfallTier": 7,
+   "keywords": [
+    "北京荟聚",
+    "荟聚中心"
+   ],
+   "area": 20,
+   "openedAt": "2014",
+   "revenue": 25
+  },
+  {
+   "slug": "beijing-wukesong-wanda",
+   "name": "五棵松万达广场",
+   "city": "北京",
+   "footfallTier": 7,
+   "keywords": [
+    "五棵松万达",
+    "北京五棵松万达广场"
+   ],
+   "revenue": 21.85
+  },
+  {
+   "slug": "beijing-changying-tianjie",
+   "name": "龙湖长楹天街",
+   "city": "北京",
+   "footfallTier": 7,
+   "keywords": [
+    "长楹天街"
+   ],
+   "revenue": 20
+  },
+  {
+   "slug": "shanghai-plaza-66",
+   "name": "恒隆广场",
+   "city": "上海",
+   "footfallTier": 10,
+   "keywords": [
+    "上海恒隆",
+    "恒隆广场",
+    "上海恒隆广场"
+   ],
+   "area": 5,
+   "openedAt": "2001",
+   "revenue": 135
+  },
+  {
+   "slug": "shanghai-ifc",
+   "name": "国金中心IFC",
+   "city": "上海",
+   "footfallTier": 10,
+   "keywords": [
+    "上海IFC",
+    "国金中心",
+    "上海IFC国金中心"
+   ],
+   "area": 11,
+   "openedAt": "2010",
+   "revenue": 218
+  },
+  {
+   "slug": "shanghai-iapm",
+   "name": "环贸iapm",
+   "city": "上海",
+   "footfallTier": 8,
+   "keywords": [
+    "环贸iapm",
+    "iapm"
+   ],
+   "area": 12,
+   "openedAt": "2013",
+   "revenue": 35
+  },
+  {
+   "slug": "shanghai-grand-gateway",
+   "name": "港汇恒隆",
+   "city": "上海",
+   "footfallTier": 9,
+   "keywords": [
+    "港汇恒隆",
+    "上海港汇恒隆广场"
+   ],
+   "area": 7,
+   "openedAt": "1999",
+   "revenue": 67
+  },
+  {
+   "slug": "shanghai-global-harbor",
+   "name": "环球港",
+   "city": "上海",
+   "footfallTier": 10,
+   "keywords": [
+    "环球港",
+    "上海环球港"
+   ],
+   "area": 32,
+   "openedAt": "2013",
+   "revenue": 217
+  },
+  {
+   "slug": "shanghai-qiantan-taikuli",
+   "name": "前滩太古里",
+   "city": "上海",
+   "footfallTier": 8,
+   "keywords": [
+    "前滩太古里",
+    "上海前滩太古里"
+   ],
+   "area": 12,
+   "openedAt": "2021",
+   "revenue": 55.64
+  },
+  {
+   "slug": "shanghai-jingan-joy-city",
+   "name": "静安大悦城",
+   "city": "上海",
+   "footfallTier": 7,
+   "keywords": [
+    "静安大悦城",
+    "上海静安大悦城"
+   ],
+   "area": 20,
+   "openedAt": "2010",
+   "revenue": 23.5
+  },
+  {
+   "slug": "shanghai-wujiaochang-heshenghui",
+   "name": "五角场合生汇",
+   "city": "上海",
+   "footfallTier": 9,
+   "keywords": [
+    "五角场合生汇",
+    "上海五角场合生汇"
+   ],
+   "revenue": 66
+  },
+  {
+   "slug": "shanghai-longhua-hui",
+   "name": "龙华会",
+   "city": "上海",
+   "footfallTier": 8,
+   "keywords": [
+    "龙华会"
+   ]
+  },
+  {
+   "slug": "shanghai-zx",
+   "name": "百联ZX创趣场",
+   "city": "上海",
+   "footfallTier": 8,
+   "keywords": [
+    "百联ZX",
+    "ZX创趣场"
+   ]
+  },
+  {
+   "slug": "shanghai-shangsheng-xinsuo",
+   "name": "上生新所",
+   "city": "上海",
+   "footfallTier": 7,
+   "keywords": [
+    "上生新所"
+   ]
+  },
+  {
+   "slug": "guangzhou-taikoo-hui",
+   "name": "广州太古汇",
+   "city": "广州",
+   "footfallTier": 10,
+   "keywords": [
+    "太古汇",
+    "广州太古汇"
+   ],
+   "area": 13,
+   "openedAt": "2011",
+   "revenue": 102
+  },
+  {
+   "slug": "guangzhou-parc-central",
+   "name": "天环Parc Central",
+   "city": "广州",
+   "footfallTier": 9,
+   "keywords": [
+    "天环广场",
+    "Parc Central"
+   ]
+  },
+  {
+   "slug": "guangzhou-teemall",
+   "name": "天河城",
+   "city": "广州",
+   "footfallTier": 9,
+   "keywords": [
+    "天河城"
+   ],
+   "area": 16,
+   "openedAt": "1996",
+   "revenue": 88
+  },
+  {
+   "slug": "guangzhou-grandview",
+   "name": "正佳广场",
+   "city": "广州",
+   "footfallTier": 9,
+   "keywords": [
+    "正佳广场"
+   ],
+   "area": 42,
+   "openedAt": "2005",
+   "revenue": 90
+  },
+  {
+   "slug": "guangzhou-tiande",
+   "name": "天德广场",
+   "city": "广州",
+   "footfallTier": 7,
+   "keywords": [
+    "天德广场"
+   ]
+  },
+  {
+   "slug": "guangzhou-pazhou-poly",
+   "name": "琶洲保利广场",
+   "city": "广州",
+   "footfallTier": 7,
+   "keywords": [
+    "琶洲保利"
+   ]
+  },
+  {
+   "slug": "shenzhen-mixc",
+   "name": "深圳万象城",
+   "city": "深圳",
+   "footfallTier": 10,
+   "keywords": [
+    "深圳万象城"
+   ],
+   "area": 18,
+   "openedAt": "2004",
+   "revenue": 130.3
+  },
+  {
+   "slug": "shenzhen-mixc-world",
+   "name": "万象天地",
+   "city": "深圳",
+   "footfallTier": 9,
+   "keywords": [
+    "万象天地"
+   ],
+   "area": 23,
+   "openedAt": "2017",
+   "revenue": 82
+  },
+  {
+   "slug": "shenzhen-unifang",
+   "name": "壹方城",
+   "city": "深圳",
+   "footfallTier": 9,
+   "keywords": [
+    "壹方城"
+   ],
+   "area": 36,
+   "openedAt": "2017"
+  },
+  {
+   "slug": "shenzhen-coastal-city",
+   "name": "海岸城",
+   "city": "深圳",
+   "footfallTier": 8,
+   "keywords": [
+    "深圳海岸城"
+   ],
+   "area": 12,
+   "openedAt": "2007"
+  },
+  {
+   "slug": "shenzhen-coco-park",
+   "name": "星河COCO Park",
+   "city": "深圳",
+   "footfallTier": 8,
+   "keywords": [
+    "COCO Park"
+   ],
+   "area": 9,
+   "openedAt": "2006"
+  },
+  {
+   "slug": "shenzhen-shenye-upperhills",
+   "name": "深业上城",
+   "city": "深圳",
+   "footfallTier": 8,
+   "keywords": [
+    "深业上城"
+   ],
+   "area": 30,
+   "openedAt": "2017"
+  },
+  {
+   "slug": "shenzhen-qianhai-mixc",
+   "name": "深圳前海壹方城",
+   "city": "深圳",
+   "footfallTier": 8,
+   "keywords": [
+    "前海万象",
+    "深圳前海壹方城",
+    "前海壹方城"
+   ],
+   "revenue": 55
+  },
+  {
+   "slug": "chengdu-taikoo-li",
+   "name": "成都太古里",
+   "city": "成都",
+   "footfallTier": 10,
+   "keywords": [
+    "成都太古里",
+    "远洋太古里"
+   ],
+   "revenue": 105.8
+  },
+  {
+   "slug": "chengdu-ifs",
+   "name": "成都IFS",
+   "city": "成都",
+   "footfallTier": 10,
+   "keywords": [
+    "成都IFS",
+    "国际金融中心"
+   ],
+   "revenue": 106
+  },
+  {
+   "slug": "chengdu-mixc",
+   "name": "成都万象城",
+   "city": "成都",
+   "footfallTier": 9,
+   "keywords": [
+    "成都万象城"
+   ],
+   "revenue": 78.2
+  },
+  {
+   "slug": "chengdu-joy-city",
+   "name": "成都大悦城",
+   "city": "成都",
+   "footfallTier": 8,
+   "keywords": [
+    "成都大悦城"
+   ]
+  },
+  {
+   "slug": "chengdu-in99",
+   "name": "银泰中心in99",
+   "city": "成都",
+   "footfallTier": 7,
+   "keywords": [
+    "in99",
+    "银泰in99",
+    "成都in99"
+   ],
+   "revenue": 33
+  },
+  {
+   "slug": "chengdu-ufun",
+   "name": "成都悠方",
+   "city": "成都",
+   "footfallTier": 7,
+   "keywords": [
+    "悠方"
+   ]
+  },
+  {
+   "slug": "chongqing-shinkong",
+   "name": "重庆新光天地",
+   "city": "重庆",
+   "footfallTier": 7,
+   "keywords": [
+    "重庆新光天地"
+   ],
+   "revenue": 34
+  },
+  {
+   "slug": "chongqing-times-paradise-walk",
+   "name": "龙湖时代天街",
+   "city": "重庆",
+   "footfallTier": 9,
+   "keywords": [
+    "时代天街"
+   ],
+   "revenue": 82
+  },
+  {
+   "slug": "chongqing-mixc",
+   "name": "重庆万象城",
+   "city": "重庆",
+   "footfallTier": 7,
+   "keywords": [
+    "重庆万象城"
+   ],
+   "revenue": 30
+  },
+  {
+   "slug": "nanjing-deji",
+   "name": "德基广场",
+   "city": "南京",
+   "footfallTier": 10,
+   "keywords": [
+    "德基广场",
+    "南京德基广场"
+   ],
+   "revenue": 262.4
+  },
+  {
+   "slug": "nanjing-golden-eagle",
+   "name": "新街口金鹰",
+   "city": "南京",
+   "footfallTier": 6,
+   "keywords": [
+    "金鹰中心",
+    "金鹰世界"
+   ],
+   "revenue": 17
+  },
+  {
+   "slug": "nanjing-kingmo",
+   "name": "景枫KINGMO",
+   "city": "南京",
+   "footfallTier": 8,
+   "keywords": [
+    "景枫",
+    "KINGMO",
+    "南京景枫中心"
+   ],
+   "revenue": 48
+  },
+  {
+   "slug": "nanjing-central-emporium",
+   "name": "南京中央商场",
+   "city": "南京",
+   "footfallTier": 8,
+   "keywords": [
+    "中央商场"
+   ]
+  },
+  {
+   "slug": "wuhan-wushang-mall",
+   "name": "武商MALL",
+   "city": "武汉",
+   "footfallTier": 10,
+   "keywords": [
+    "武商MALL",
+    "武商广场",
+    "武汉武商MALL"
+   ],
+   "revenue": 191.0
+  },
+  {
+   "slug": "wuhan-chuhe-hanjie",
+   "name": "楚河汉街",
+   "city": "武汉",
+   "footfallTier": 9,
+   "keywords": [
+    "楚河汉街"
+   ]
+  },
+  {
+   "slug": "wuhan-international-plaza",
+   "name": "武汉国际广场",
+   "city": "武汉",
+   "footfallTier": 9,
+   "keywords": [
+    "武汉国际广场"
+   ],
+   "revenue": 83
+  },
+  {
+   "slug": "wuhan-tiandi",
+   "name": "武汉天地",
+   "city": "武汉",
+   "footfallTier": 8,
+   "keywords": [
+    "武汉天地"
+   ]
+  },
+  {
+   "slug": "wuhan-optics-valley",
+   "name": "光谷世界城",
+   "city": "武汉",
+   "footfallTier": 8,
+   "keywords": [
+    "光谷世界城"
+   ]
+  },
+  {
+   "slug": "xian-skp",
+   "name": "西安SKP",
+   "city": "西安",
+   "footfallTier": 9,
+   "keywords": [
+    "西安SKP"
+   ],
+   "revenue": 82.0
+  },
+  {
+   "slug": "xian-seg",
+   "name": "赛格国际",
+   "city": "西安",
+   "footfallTier": 10,
+   "keywords": [
+    "赛格国际",
+    "西安赛格购物中心"
+   ],
+   "revenue": 125.0
+  },
+  {
+   "slug": "xian-joy-city",
+   "name": "西安大悦城",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安大悦城"
+   ],
+   "revenue": 18.9
+  },
+  {
+   "slug": "tianjin-plaza-66",
+   "name": "天津恒隆广场",
+   "city": "天津",
+   "footfallTier": 8,
+   "keywords": [
+    "天津恒隆"
+   ],
+   "revenue": 40
+  },
+  {
+   "slug": "tianjin-joy-city",
+   "name": "天津大悦城",
+   "city": "天津",
+   "footfallTier": 8,
+   "keywords": [
+    "天津大悦城"
+   ],
+   "revenue": 36
+  },
+  {
+   "slug": "tianjin-mixc",
+   "name": "天津万象城",
+   "city": "天津",
+   "footfallTier": 9,
+   "keywords": [
+    "天津万象城"
+   ],
+   "revenue": 80
+  },
+  {
+   "slug": "suzhou-center",
+   "name": "苏州中心",
+   "city": "苏州",
+   "footfallTier": 9,
+   "keywords": [
+    "苏州中心",
+    "苏州中心商场(含新能源和Apple)"
+   ],
+   "revenue": 85.6
+  },
+  {
+   "slug": "suzhou-bicester",
+   "name": "苏州比斯特",
+   "city": "苏州",
+   "footfallTier": 8,
+   "keywords": [
+    "比斯特购物村",
+    "苏州比斯特购物村"
+   ],
+   "revenue": 40
+  },
+  {
+   "slug": "suzhou-meiluo",
+   "name": "苏州美罗",
+   "city": "苏州",
+   "footfallTier": 8,
+   "keywords": [
+    "美罗商城"
+   ]
+  },
+  {
+   "slug": "suzhou-shishan-tianjie",
+   "name": "龙湖狮山天街",
+   "city": "苏州",
+   "footfallTier": 7,
+   "keywords": [
+    "狮山天街",
+    "龙湖苏州狮山天街(不含新能源汽车)"
+   ],
+   "revenue": 33
+  },
+  {
+   "slug": "changsha-ifs",
+   "name": "长沙IFS国金中心",
+   "city": "长沙",
+   "footfallTier": 10,
+   "keywords": [
+    "长沙IFS"
+   ],
+   "revenue": 120.0
+  },
+  {
+   "slug": "changsha-hisense-plaza",
+   "name": "长沙海信广场",
+   "city": "长沙",
+   "footfallTier": 8,
+   "keywords": [
+    "长沙海信广场"
+   ]
+  },
+  {
+   "slug": "shenyang-mixc",
+   "name": "沈阳万象城",
+   "city": "沈阳",
+   "footfallTier": 10,
+   "keywords": [
+    "沈阳万象城",
+    "沈阳和平万象城"
+   ],
+   "revenue": 134.0
+  },
+  {
+   "slug": "shenyang-plaza-66",
+   "name": "沈阳市府恒隆",
+   "city": "沈阳",
+   "footfallTier": 8,
+   "keywords": [
+    "市府恒隆"
+   ]
+  },
+  {
+   "slug": "qingdao-hisense-plaza",
+   "name": "青岛海信广场",
+   "city": "青岛",
+   "footfallTier": 9,
+   "keywords": [
+    "青岛海信广场"
+   ]
+  },
+  {
+   "slug": "qingdao-mixc",
+   "name": "青岛万象城",
+   "city": "青岛",
+   "footfallTier": 8,
+   "keywords": [
+    "青岛万象城"
+   ],
+   "revenue": 42
+  },
+  {
+   "slug": "zhengzhou-dennis-david",
+   "name": "丹尼斯大卫城",
+   "city": "郑州",
+   "footfallTier": 10,
+   "keywords": [
+    "大卫城",
+    "郑州丹尼斯大卫城"
+   ],
+   "revenue": 112.0
+  },
+  {
+   "slug": "zhengzhou-mixc",
+   "name": "郑州万象城",
+   "city": "郑州",
+   "footfallTier": 8,
+   "keywords": [
+    "郑州万象城"
+   ]
+  },
+  {
+   "slug": "ningbo-tianyi",
+   "name": "宁波天一广场",
+   "city": "宁波",
+   "footfallTier": 10,
+   "keywords": [
+    "天一广场",
+    "天一广场+和义大道购物中心"
+   ],
+   "revenue": 102
+  },
+  {
+   "slug": "ningbo-mixc",
+   "name": "宁波万象城",
+   "city": "宁波",
+   "footfallTier": 8,
+   "keywords": [
+    "宁波万象城"
+   ]
+  },
+  {
+   "slug": "ningbo-yintai-dongmen",
+   "name": "宁波银泰东门店",
+   "city": "宁波",
+   "footfallTier": 8,
+   "keywords": [
+    "银泰东门"
+   ]
+  },
+  {
+   "slug": "hefei-yintai-center",
+   "name": "合肥银泰中心",
+   "city": "合肥",
+   "footfallTier": 8,
+   "keywords": [
+    "合肥银泰中心"
+   ],
+   "revenue": 36.9
+  },
+  {
+   "slug": "hefei-mixc",
+   "name": "合肥万象城",
+   "city": "合肥",
+   "footfallTier": 8,
+   "keywords": [
+    "合肥万象城"
+   ]
+  },
+  {
+   "slug": "fuzhou-dongbai",
+   "name": "福州东百中心",
+   "city": "福州",
+   "footfallTier": 7,
+   "keywords": [
+    "东百中心",
+    "福州东百中心"
+   ],
+   "revenue": 28.88
+  },
+  {
+   "slug": "fuzhou-mixc",
+   "name": "福州万象城",
+   "city": "福州",
+   "footfallTier": 7,
+   "keywords": [
+    "福州万象城"
+   ],
+   "revenue": 27.5
+  },
+  {
+   "slug": "fuzhou-tahoe",
+   "name": "福州泰禾广场",
+   "city": "福州",
+   "footfallTier": 8,
+   "keywords": [
+    "泰禾广场",
+    "福州泰禾广场(含新能源汽车)"
+   ],
+   "revenue": 38.1
+  },
+  {
+   "slug": "xiamen-mixc",
+   "name": "厦门万象城",
+   "city": "厦门",
+   "footfallTier": 9,
+   "keywords": [
+    "厦门万象城"
+   ],
+   "revenue": 72
+  },
+  {
+   "slug": "xiamen-sm-city",
+   "name": "厦门SM城市广场",
+   "city": "厦门",
+   "footfallTier": 8,
+   "keywords": [
+    "SM城市广场",
+    "SM广场",
+    "SM厦门综合体"
+   ],
+   "revenue": 58
+  },
+  {
+   "slug": "xiamen-powerlong",
+   "name": "厦门宝龙一城",
+   "city": "厦门",
+   "footfallTier": 7,
+   "keywords": [
+    "宝龙一城",
+    "厦门宝龙一城"
+   ],
+   "revenue": 22.0
+  },
+  {
+   "slug": "kunming-shuncheng",
+   "name": "昆明顺城",
+   "city": "昆明",
+   "footfallTier": 8,
+   "keywords": [
+    "昆明顺城"
+   ],
+   "revenue": 37
+  },
+  {
+   "slug": "kunming-wanda-twin-towers",
+   "name": "昆明万达双塔",
+   "city": "昆明",
+   "footfallTier": 7,
+   "keywords": [
+    "万达双塔"
+   ]
+  },
+  {
+   "slug": "nanning-mixc",
+   "name": "南宁万象城",
+   "city": "南宁",
+   "footfallTier": 8,
+   "keywords": [
+    "南宁万象城"
+   ]
+  },
+  {
+   "slug": "guiyang-guomao",
+   "name": "贵阳国贸逸天城",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "逸天城",
+    "贵阳国贸逸天城"
+   ],
+   "revenue": 3.6
+  },
+  {
+   "slug": "wuxi-plaza-66",
+   "name": "无锡恒隆广场",
+   "city": "无锡",
+   "footfallTier": 8,
+   "keywords": [
+    "无锡恒隆"
+   ],
+   "revenue": 55
+  },
+  {
+   "slug": "wuxi-mixc",
+   "name": "无锡万象城",
+   "city": "无锡",
+   "footfallTier": 8,
+   "keywords": [
+    "无锡万象城"
+   ]
+  },
+  {
+   "slug": "wuxi-livat",
+   "name": "无锡荟聚",
+   "city": "无锡",
+   "footfallTier": 7,
+   "keywords": [
+    "无锡荟聚"
+   ]
+  },
+  {
+   "slug": "foshan-lingnan-tiandi",
+   "name": "佛山岭南天地",
+   "city": "佛山",
+   "footfallTier": 8,
+   "keywords": [
+    "岭南天地"
+   ]
+  },
+  {
+   "slug": "dongguan-guomao-city",
+   "name": "东莞民盈·国贸城",
+   "city": "东莞",
+   "footfallTier": 8,
+   "keywords": [
+    "民盈国贸",
+    "国贸城"
+   ]
+  },
+  {
+   "slug": "dalian-olympia-66",
+   "name": "大连恒隆广场",
+   "city": "大连",
+   "footfallTier": 8,
+   "keywords": [
+    "大连恒隆"
+   ]
+  },
+  {
+   "slug": "hz-tower",
+   "name": "杭州大厦",
+   "city": "杭州",
+   "footfallTier": 10,
+   "keywords": [
+    "杭州大厦"
+   ]
+  },
+  {
+   "slug": "hz-in77",
+   "name": "湖滨银泰in77",
+   "city": "杭州",
+   "footfallTier": 10,
+   "keywords": [
+    "in77",
+    "湖滨银泰",
+    "杭州湖滨in77"
+   ],
+   "revenue": 110
+  },
+  {
+   "slug": "hz-wulin-yintai",
+   "name": "武林银泰",
+   "city": "杭州",
+   "footfallTier": 9,
+   "keywords": [
+    "武林银泰"
+   ]
+  },
+  {
+   "slug": "hz-west-lake-yintai",
+   "name": "西湖银泰城",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "西湖银泰城"
+   ]
+  },
+  {
+   "slug": "hz-chengxi-yintai",
+   "name": "城西银泰城",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "城西银泰城",
+    "杭州城西银泰城"
+   ],
+   "revenue": 57.75
+  },
+  {
+   "slug": "hz-qianjiang-mixc",
+   "name": "钱江新城万象城",
+   "city": "杭州",
+   "footfallTier": 10,
+   "keywords": [
+    "杭州万象城",
+    "钱江新城万象城"
+   ],
+   "revenue": 117.8
+  },
+  {
+   "slug": "hz-qianjiang-raffles",
+   "name": "杭州来福士",
+   "city": "杭州",
+   "footfallTier": 9,
+   "keywords": [
+    "杭州来福士"
+   ]
+  },
+  {
+   "slug": "hz-kerry-center",
+   "name": "杭州嘉里中心",
+   "city": "杭州",
+   "footfallTier": 9,
+   "keywords": [
+    "杭州嘉里中心"
+   ]
+  },
+  {
+   "slug": "hz-joy-city",
+   "name": "杭州大悦城",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "杭州大悦城"
+   ]
+  },
+  {
+   "slug": "hz-leadig-port",
+   "name": "远洋乐堤港",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "乐堤港"
+   ]
+  },
+  {
+   "slug": "hz-aoti-imago",
+   "name": "奥体印象城",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "奥体印象城",
+    "印力汇德隆杭州奥体印象城"
+   ],
+   "revenue": 42.58
+  },
+  {
+   "slug": "hz-xixi-imago",
+   "name": "西溪印象城",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "西溪印象城"
+   ]
+  },
+  {
+   "slug": "hz-longhu-jinsha",
+   "name": "龙湖金沙天街",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "金沙天街",
+    "龙湖杭州金沙天街"
+   ],
+   "revenue": 30
+  },
+  {
+   "slug": "hz-longhu-binjiang",
+   "name": "龙湖滨江天街",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "滨江天街",
+    "龙湖杭州滨江天街"
+   ],
+   "revenue": 50
+  },
+  {
+   "slug": "hz-longhu-xixi",
+   "name": "龙湖西溪天街",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "西溪天街",
+    "龙湖杭州西溪天街"
+   ],
+   "revenue": 28
+  },
+  {
+   "slug": "hz-longhu-dingqiao",
+   "name": "龙湖丁桥天街",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "丁桥天街"
+   ]
+  },
+  {
+   "slug": "hz-longhu-zijing",
+   "name": "龙湖紫荆天街",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "紫荆天街"
+   ]
+  },
+  {
+   "slug": "hz-binjiang-powerlong",
+   "name": "滨江宝龙城",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "滨江宝龙城",
+    "宝龙城"
+   ]
+  },
+  {
+   "slug": "hz-xiaoshan-powerlong",
+   "name": "萧山宝龙广场",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "萧山宝龙"
+   ]
+  },
+  {
+   "slug": "hz-xiaoshan-mixc-one",
+   "name": "萧山万象汇",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "萧山万象汇",
+    "萧山万象汇(含新能源汽车)"
+   ],
+   "revenue": 35
+  },
+  {
+   "slug": "hz-xiaoshan-yintai",
+   "name": "萧山银泰百货",
+   "city": "杭州",
+   "footfallTier": 8,
+   "keywords": [
+    "萧山银泰"
+   ]
+  },
+  {
+   "slug": "hz-linping-yintai",
+   "name": "临平银泰城",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "临平银泰城",
+    "杭州临平银泰城"
+   ],
+   "revenue": 18
+  },
+  {
+   "slug": "hz-zhijiang-yintai",
+   "name": "之江银泰百货",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "之江银泰"
+   ]
+  },
+  {
+   "slug": "hz-gongshu-wanda",
+   "name": "拱墅万达广场",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "拱墅万达"
+   ]
+  },
+  {
+   "slug": "hz-yuhang-wanda",
+   "name": "余杭万达广场",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "余杭万达"
+   ]
+  },
+  {
+   "slug": "hz-chengbei-wanda",
+   "name": "城北万达广场",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "城北万达"
+   ]
+  },
+  {
+   "slug": "hz-binjiang-xingguang",
+   "name": "滨江星光国际",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "星光国际广场"
+   ]
+  },
+  {
+   "slug": "hz-hubin-88",
+   "name": "湖滨88",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "湖滨88",
+    "杭州湖滨88"
+   ],
+   "revenue": 4.96
+  },
+  {
+   "slug": "hz-gonglian-cc",
+   "name": "工联CC",
+   "city": "杭州",
+   "footfallTier": 7,
+   "keywords": [
+    "工联CC"
+   ]
+  },
+  {
+   "slug": "hz-tower-501",
+   "name": "杭州大厦501城市广场",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "501城市广场",
+    "杭州大厦501城市广场"
+   ],
+   "revenue": 14.8
+  },
+  {
+   "slug": "hz-yunhe-shangjie",
+   "name": "运河上街",
+   "city": "杭州",
+   "footfallTier": 5,
+   "keywords": [
+    "运河上街",
+    "杭州运河上街"
+   ],
+   "revenue": 8.8
+  },
+  {
+   "slug": "hz-qingshanhu-powerlong",
+   "name": "青山湖宝龙广场",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "青山湖宝龙"
+   ]
+  },
+  {
+   "slug": "hz-fuyang-dongfangmao",
+   "name": "富阳东方茂",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "东方茂"
+   ]
+  },
+  {
+   "slug": "tianjinyuanyangledigang",
+   "name": "天津远洋乐堤港",
+   "city": "天津",
+   "footfallTier": 6,
+   "keywords": [
+    "天津远洋乐堤港",
+    "远洋乐堤港"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15.0
+  },
+  {
+   "slug": "shanghaizhangninglongzhimeng",
+   "name": "上海长宁龙之梦",
+   "city": "上海",
+   "footfallTier": 10,
+   "keywords": [
+    "上海长宁龙之梦",
+    "长宁龙之梦"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 135.0
+  },
+  {
+   "slug": "shanghaiqingpubailianaotelaisi",
+   "name": "上海青浦百联奥特莱斯",
+   "city": "上海",
+   "footfallTier": 9,
+   "keywords": [
+    "上海青浦百联奥特莱斯",
+    "青浦百联奥特莱斯"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 63.0
+  },
+  {
+   "slug": "shanghaizhonghaihuanyuchengmax",
+   "name": "上海中海环宇城MAX",
+   "city": "上海",
+   "footfallTier": 9,
+   "keywords": [
+    "上海中海环宇城MAX",
+    "中海环宇城MAX"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 62.0
+  },
+  {
+   "slug": "shanghaiwanxiangcheng",
+   "name": "上海万象城",
+   "city": "上海",
+   "footfallTier": 8,
+   "keywords": [
+    "上海万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 50.0
+  },
+  {
+   "slug": "shanghainanxiangyinxiangchengmega",
+   "name": "上海南翔印象城MEGA",
+   "city": "上海",
+   "footfallTier": 8,
+   "keywords": [
+    "上海南翔印象城MEGA",
+    "南翔印象城MEGA"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 49.0
+  },
+  {
+   "slug": "shanghaizhonggengmanyoucheng",
+   "name": "上海中庚漫游城",
+   "city": "上海",
+   "footfallTier": 7,
+   "keywords": [
+    "上海中庚漫游城",
+    "中庚漫游城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 20.6
+  },
+  {
+   "slug": "efcliveoumeiguangchang",
+   "name": "EFCLIVE欧美广场",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "EFCLIVE欧美广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.14
+  },
+  {
+   "slug": "hangzhouxintiandi",
+   "name": "杭州新天地(购物中心+街区)",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "杭州新天地(购物中心+街区)",
+    "新天地"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.0
+  },
+  {
+   "slug": "hangzhoujinshayinxiangcheng",
+   "name": "杭州金沙印象城",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "杭州金沙印象城",
+    "金沙印象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.0
+  },
+  {
+   "slug": "shazhichuanaolai",
+   "name": "砂之船(杭州)奥莱",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "砂之船(杭州)奥莱"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "hangzhouguodachengshiguangchang",
+   "name": "杭州国大城市广场",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "杭州国大城市广场",
+    "国大城市广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "hangzhouxingguangdadao12qi",
+   "name": "杭州星光大道1-2期",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "杭州星光大道1-2期",
+    "星光大道1-2期"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "hangzhoufuyangyuchangcheng",
+   "name": "杭州富阳玉长城(含银泰百货)",
+   "city": "杭州",
+   "footfallTier": 6,
+   "keywords": [
+    "杭州富阳玉长城(含银泰百货)",
+    "富阳玉长城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "hangzhoujindiguangchang",
+   "name": "杭州金地广场",
+   "city": "杭州",
+   "footfallTier": 5,
+   "keywords": [
+    "杭州金地广场",
+    "金地广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.8
+  },
+  {
+   "slug": "hangzhouwufutianhonggouwuzhongxin",
+   "name": "杭州五福天虹购物中心",
+   "city": "杭州",
+   "footfallTier": 5,
+   "keywords": [
+    "杭州五福天虹购物中心",
+    "五福天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.0
+  },
+  {
+   "slug": "xiaoshankaiyuanguangchang",
+   "name": "萧山开元广场",
+   "city": "杭州",
+   "footfallTier": 5,
+   "keywords": [
+    "萧山开元广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.6
+  },
+  {
+   "slug": "hangzhougongshuwuyueguangchang",
+   "name": "杭州拱墅吾悦广场",
+   "city": "杭州",
+   "footfallTier": 5,
+   "keywords": [
+    "杭州拱墅吾悦广场",
+    "拱墅吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.5
+  },
+  {
+   "slug": "jiazhouyangguangkaiyuanguangchang",
+   "name": "加州阳光开元广场",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "加州阳光开元广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.1
+  },
+  {
+   "slug": "binjiangkaiyuanguangchang",
+   "name": "滨江开元广场",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "滨江开元广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.7
+  },
+  {
+   "slug": "hangzhoubaolishiguangli",
+   "name": "杭州保利时光里",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "杭州保利时光里",
+    "保利时光里"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.15
+  },
+  {
+   "slug": "lvchengmeihaochanye",
+   "name": "绿城美好产业",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "绿城美好产业"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.0
+  },
+  {
+   "slug": "hangzhouwankeyuniaoji",
+   "name": "杭州万科玉鸟集",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "杭州万科玉鸟集",
+    "万科玉鸟集"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.8
+  },
+  {
+   "slug": "ningbobanjibaihuo",
+   "name": "宁波阪急百货",
+   "city": "宁波",
+   "footfallTier": 8,
+   "keywords": [
+    "宁波阪急百货",
+    "阪急百货"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 58.0
+  },
+  {
+   "slug": "longhuningboyinzhoutianjie",
+   "name": "龙湖宁波鄞州天街(含新能源汽车)",
+   "city": "宁波",
+   "footfallTier": 6,
+   "keywords": [
+    "龙湖宁波鄞州天街(含新能源汽车)"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15.0
+  },
+  {
+   "slug": "cixihuanchuangaiqinhaigouwuzhongxin",
+   "name": "慈溪环创爱琴海购物中心",
+   "city": "宁波",
+   "footfallTier": 6,
+   "keywords": [
+    "慈溪环创爱琴海购物中心",
+    "环创爱琴海购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 14.5
+  },
+  {
+   "slug": "longhuningbohaishutianjie",
+   "name": "龙湖宁波海曙天街(含新能源汽车)",
+   "city": "宁波",
+   "footfallTier": 6,
+   "keywords": [
+    "龙湖宁波海曙天街(含新能源汽车)"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 13.0
+  },
+  {
+   "slug": "ningboyinzhouyinxiangcheng",
+   "name": "宁波鄞州印象城",
+   "city": "宁波",
+   "footfallTier": 6,
+   "keywords": [
+    "宁波鄞州印象城",
+    "鄞州印象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 13.8
+  },
+  {
+   "slug": "ningbozhenhaiwuyueguangchang",
+   "name": "宁波镇海吾悦广场",
+   "city": "宁波",
+   "footfallTier": 5,
+   "keywords": [
+    "宁波镇海吾悦广场",
+    "镇海吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.0
+  },
+  {
+   "slug": "zhejiangxiashaaotelaisiguangchang",
+   "name": "浙江下沙奥特莱斯广场",
+   "city": "嘉兴",
+   "footfallTier": 8,
+   "keywords": [
+    "浙江下沙奥特莱斯广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 40.0
+  },
+  {
+   "slug": "tongxiangwuyueguangchang",
+   "name": "桐乡吾悦广场",
+   "city": "嘉兴",
+   "footfallTier": 5,
+   "keywords": [
+    "桐乡吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.5
+  },
+  {
+   "slug": "jinhuashimaochengshiguangchang",
+   "name": "金华世贸城市广场(不含新能源)",
+   "city": "金华",
+   "footfallTier": 6,
+   "keywords": [
+    "金华世贸城市广场(不含新能源)",
+    "世贸城市广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 18.0
+  },
+  {
+   "slug": "quzhouwuyueguangchang",
+   "name": "衢州吾悦广场",
+   "city": "衢州",
+   "footfallTier": 5,
+   "keywords": [
+    "衢州吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.6
+  },
+  {
+   "slug": "ruianwuyueguangchang",
+   "name": "瑞安吾悦广场",
+   "city": "温州",
+   "footfallTier": 6,
+   "keywords": [
+    "瑞安吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12.5
+  },
+  {
+   "slug": "taizhouqingyuecheng",
+   "name": "台州青悦城",
+   "city": "台州",
+   "footfallTier": 5,
+   "keywords": [
+    "台州青悦城",
+    "青悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.38
+  },
+  {
+   "slug": "nanjinghongyangguangchang",
+   "name": "南京弘阳广场",
+   "city": "南京",
+   "footfallTier": 8,
+   "keywords": [
+    "南京弘阳广场",
+    "弘阳广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 40.0
+  },
+  {
+   "slug": "kunshantianhonggouwuzhongxin",
+   "name": "昆山天虹购物中心",
+   "city": "苏州",
+   "footfallTier": 5,
+   "keywords": [
+    "昆山天虹购物中心",
+    "天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.0
+  },
+  {
+   "slug": "nantongwanxiangcheng",
+   "name": "南通万象城",
+   "city": "南通",
+   "footfallTier": 7,
+   "keywords": [
+    "南通万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30.0
+  },
+  {
+   "slug": "xuzhousuningguangchang",
+   "name": "徐州苏宁广场",
+   "city": "徐州",
+   "footfallTier": 7,
+   "keywords": [
+    "徐州苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 26.0
+  },
+  {
+   "slug": "wuxisuningguangchang",
+   "name": "无锡苏宁广场",
+   "city": "无锡",
+   "footfallTier": 6,
+   "keywords": [
+    "无锡苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 16.0
+  },
+  {
+   "slug": "taizhouwanxiangcheng",
+   "name": "泰州万象城",
+   "city": "泰州",
+   "footfallTier": 7,
+   "keywords": [
+    "泰州万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 20.0
+  },
+  {
+   "slug": "zhenjiangsuningguangchang",
+   "name": "镇江苏宁广场",
+   "city": "镇江",
+   "footfallTier": 6,
+   "keywords": [
+    "镇江苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 13.0
+  },
+  {
+   "slug": "lianyungangsuningguangchang",
+   "name": "连云港苏宁广场",
+   "city": "连云港",
+   "footfallTier": 6,
+   "keywords": [
+    "连云港苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 13.0
+  },
+  {
+   "slug": "fuzhoucangshanwandaguangchang",
+   "name": "福州仓山万达广场",
+   "city": "福州",
+   "footfallTier": 7,
+   "keywords": [
+    "福州仓山万达广场",
+    "仓山万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 22.0
+  },
+  {
+   "slug": "fuzhousuningguangchang",
+   "name": "福州苏宁广场",
+   "city": "福州",
+   "footfallTier": 6,
+   "keywords": [
+    "福州苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15.0
+  },
+  {
+   "slug": "xiamenwanyuecheng",
+   "name": "厦门湾悦城",
+   "city": "厦门",
+   "footfallTier": 6,
+   "keywords": [
+    "厦门湾悦城",
+    "湾悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 16.2
+  },
+  {
+   "slug": "xiamendayuecheng",
+   "name": "厦门大悦城",
+   "city": "厦门",
+   "footfallTier": 6,
+   "keywords": [
+    "厦门大悦城",
+    "大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 16.0
+  },
+  {
+   "slug": "xiamenhuliwandaguangchang",
+   "name": "厦门湖里万达广场",
+   "city": "厦门",
+   "footfallTier": 6,
+   "keywords": [
+    "厦门湖里万达广场",
+    "湖里万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.7
+  },
+  {
+   "slug": "xiamenpanjizhongxin",
+   "name": "厦门磐基中心",
+   "city": "厦门",
+   "footfallTier": 7,
+   "keywords": [
+    "厦门磐基中心",
+    "磐基中心",
+    "厦门磐基名品中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30
+  },
+  {
+   "slug": "xiamenzhaoshanghuayuancheng",
+   "name": "厦门招商花园城",
+   "city": "厦门",
+   "footfallTier": 5,
+   "keywords": [
+    "厦门招商花园城",
+    "招商花园城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.5
+  },
+  {
+   "slug": "xiamentonganbaolongguangchang",
+   "name": "厦门同安宝龙广场",
+   "city": "厦门",
+   "footfallTier": 5,
+   "keywords": [
+    "厦门同安宝龙广场",
+    "同安宝龙广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.0
+  },
+  {
+   "slug": "xiamenwuyuanwantianhonggouwuzhongxin",
+   "name": "厦门五缘湾天虹购物中心",
+   "city": "厦门",
+   "footfallTier": 5,
+   "keywords": [
+    "厦门五缘湾天虹购物中心",
+    "五缘湾天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.5
+  },
+  {
+   "slug": "xiamentonganaiqinhaigouwuzhongxin",
+   "name": "厦门同安爱琴海购物中心",
+   "city": "厦门",
+   "footfallTier": 4,
+   "keywords": [
+    "厦门同安爱琴海购物中心",
+    "同安爱琴海购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.8
+  },
+  {
+   "slug": "quanzhoupuxiwandaguangchang",
+   "name": "泉州浦西万达广场",
+   "city": "泉州",
+   "footfallTier": 7,
+   "keywords": [
+    "泉州浦西万达广场",
+    "浦西万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 25.0
+  },
+  {
+   "slug": "quanzhouzhongjunshijiecheng",
+   "name": "泉州中骏世界城",
+   "city": "泉州",
+   "footfallTier": 7,
+   "keywords": [
+    "泉州中骏世界城",
+    "中骏世界城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 22.0
+  },
+  {
+   "slug": "zhangzhoubihuwandaguangchang",
+   "name": "漳州碧湖万达广场",
+   "city": "漳州",
+   "footfallTier": 5,
+   "keywords": [
+    "漳州碧湖万达广场",
+    "碧湖万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.0
+  },
+  {
+   "slug": "shenzhenluohuwanxiangcheng",
+   "name": "深圳罗湖万象城",
+   "city": "深圳",
+   "footfallTier": 10,
+   "keywords": [
+    "深圳罗湖万象城",
+    "罗湖万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 130.3
+  },
+  {
+   "slug": "shenzhenwanwanxiangcheng",
+   "name": "深圳湾万象城",
+   "city": "深圳",
+   "footfallTier": 9,
+   "keywords": [
+    "深圳湾万象城",
+    "湾万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 94.7
+  },
+  {
+   "slug": "shenzhenbaoandaqianli",
+   "name": "深圳宝安大仟里",
+   "city": "深圳",
+   "footfallTier": 7,
+   "keywords": [
+    "深圳宝安大仟里",
+    "宝安大仟里"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 24.2
+  },
+  {
+   "slug": "shenzhenguangmingdaqianli",
+   "name": "深圳光明大仟里",
+   "city": "深圳",
+   "footfallTier": 6,
+   "keywords": [
+    "深圳光明大仟里",
+    "光明大仟里"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15.68
+  },
+  {
+   "slug": "shenzhenbaoantianhonggouwuzhongxin",
+   "name": "深圳宝安天虹购物中心",
+   "city": "深圳",
+   "footfallTier": 6,
+   "keywords": [
+    "深圳宝安天虹购物中心",
+    "宝安天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15.0
+  },
+  {
+   "slug": "shenzhenxinshatianhonggouwuzhongxin",
+   "name": "深圳新沙天虹购物中心",
+   "city": "深圳",
+   "footfallTier": 6,
+   "keywords": [
+    "深圳新沙天虹购物中心",
+    "新沙天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "shenzhendayuecheng",
+   "name": "深圳大悦城(开业半年)",
+   "city": "深圳",
+   "footfallTier": 6,
+   "keywords": [
+    "深圳大悦城(开业半年)",
+    "大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "shenzhenkktime",
+   "name": "深圳KKTIME",
+   "city": "深圳",
+   "footfallTier": 5,
+   "keywords": [
+    "深圳KKTIME",
+    "KKTIME"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.89
+  },
+  {
+   "slug": "shenzhenbaoanhuaqiangguangchang",
+   "name": "深圳宝安华强广场",
+   "city": "深圳",
+   "footfallTier": 5,
+   "keywords": [
+    "深圳宝安华强广场",
+    "宝安华强广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.43
+  },
+  {
+   "slug": "huizhouhuamaotiandi",
+   "name": "惠州华贸天地",
+   "city": "惠州",
+   "footfallTier": 8,
+   "keywords": [
+    "惠州华贸天地",
+    "华贸天地"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 48.0
+  },
+  {
+   "slug": "longhuhainanhaikoutianjie",
+   "name": "龙湖海南海口天街",
+   "city": "海口",
+   "footfallTier": 7,
+   "keywords": [
+    "龙湖海南海口天街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 27.0
+  },
+  {
+   "slug": "chongqingguanghuangouwugongyuan",
+   "name": "重庆光环购物公园",
+   "city": "重庆",
+   "footfallTier": 8,
+   "keywords": [
+    "重庆光环购物公园",
+    "光环购物公园"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 38.0
+  },
+  {
+   "slug": "chengdutianfuheyueguangchang",
+   "name": "成都天府和悦广场",
+   "city": "成都",
+   "footfallTier": 8,
+   "keywords": [
+    "成都天府和悦广场",
+    "天府和悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 56.2
+  },
+  {
+   "slug": "chengduyintaicheng",
+   "name": "成都银泰城",
+   "city": "成都",
+   "footfallTier": 7,
+   "keywords": [
+    "成都银泰城",
+    "银泰城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 21.62
+  },
+  {
+   "slug": "longhuchengdubinjiangtianjie",
+   "name": "龙湖成都滨江天街",
+   "city": "成都",
+   "footfallTier": 7,
+   "keywords": [
+    "龙湖成都滨江天街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 20.0
+  },
+  {
+   "slug": "longhuchengduxichentianjie",
+   "name": "龙湖成都西宸天街",
+   "city": "成都",
+   "footfallTier": 6,
+   "keywords": [
+    "龙湖成都西宸天街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 18.5
+  },
+  {
+   "slug": "chengdusuningguangchang",
+   "name": "成都苏宁广场",
+   "city": "成都",
+   "footfallTier": 6,
+   "keywords": [
+    "成都苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 14.0
+  },
+  {
+   "slug": "chengdutianfudayuecheng",
+   "name": "成都天府大悦城(不含车)",
+   "city": "成都",
+   "footfallTier": 6,
+   "keywords": [
+    "成都天府大悦城(不含车)",
+    "天府大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12.0
+  },
+  {
+   "slug": "guiyangshijijinyuangouwuzhongxin",
+   "name": "贵阳世纪金源购物中心",
+   "city": "贵阳",
+   "footfallTier": 7,
+   "keywords": [
+    "贵阳世纪金源购物中心",
+    "世纪金源购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 26.44
+  },
+  {
+   "slug": "guiyangwanxiangcheng",
+   "name": "贵阳万象城(含新能源汽车)",
+   "city": "贵阳",
+   "footfallTier": 7,
+   "keywords": [
+    "贵阳万象城(含新能源汽车)",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 24.0
+  },
+  {
+   "slug": "guiyangwanxianghui",
+   "name": "贵阳万象汇(含新能源汽车)",
+   "city": "贵阳",
+   "footfallTier": 7,
+   "keywords": [
+    "贵阳万象汇(含新能源汽车)",
+    "万象汇"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 23.0
+  },
+  {
+   "slug": "shazhichuanaolai-2",
+   "name": "砂之船(贵阳)奥莱",
+   "city": "贵阳",
+   "footfallTier": 6,
+   "keywords": [
+    "砂之船(贵阳)奥莱"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 14.0
+  },
+  {
+   "slug": "guiyangfangyuanhuihaitunguangchang",
+   "name": "贵阳方圆荟·海豚广场",
+   "city": "贵阳",
+   "footfallTier": 6,
+   "keywords": [
+    "贵阳方圆荟·海豚广场",
+    "方圆荟·海豚广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12.0
+  },
+  {
+   "slug": "guiyangmeideyueranshiguang",
+   "name": "贵阳美的·悦然时光(含车)",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳美的·悦然时光(含车)",
+    "美的·悦然时光"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.6
+  },
+  {
+   "slug": "guiyangqingyunshijiqingyunlubuxingjie",
+   "name": "贵阳青云市集&青云路步行街",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳青云市集&青云路步行街",
+    "青云市集&青云路步行街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.93
+  },
+  {
+   "slug": "guiyanghuaguoyuangouwuzhongxin",
+   "name": "贵阳花果园购物中心",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳花果园购物中心",
+    "花果园购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.08
+  },
+  {
+   "slug": "guiyanghengtechengshiguangchang",
+   "name": "贵阳亨特城市广场",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳亨特城市广场",
+    "亨特城市广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.03
+  },
+  {
+   "slug": "guiyanghongtongchenggouwuzhongxin",
+   "name": "贵阳鸿通城购物中心",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳鸿通城购物中心",
+    "鸿通城购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.02
+  },
+  {
+   "slug": "guiyangqingzhenwuyueguangchang",
+   "name": "贵阳清镇吾悦广场",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳清镇吾悦广场",
+    "清镇吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.0
+  },
+  {
+   "slug": "guiyangwankeguangchang",
+   "name": "贵阳万科广场",
+   "city": "贵阳",
+   "footfallTier": 5,
+   "keywords": [
+    "贵阳万科广场",
+    "万科广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.0
+  },
+  {
+   "slug": "guiyangnanguohuajingouwuzhongxin",
+   "name": "贵阳南国花锦购物中心",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳南国花锦购物中心",
+    "南国花锦购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.8
+  },
+  {
+   "slug": "guiyangyitianjiarishijie",
+   "name": "贵阳益田假日世界",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳益田假日世界",
+    "益田假日世界"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.2
+  },
+  {
+   "slug": "guiyangyinxiangcheng",
+   "name": "贵阳印象城",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳印象城",
+    "印象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.1
+  },
+  {
+   "slug": "guiyangmeideyueranguangchang",
+   "name": "贵阳美的·悦然广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳美的·悦然广场",
+    "美的·悦然广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.8
+  },
+  {
+   "slug": "guiyangfanhualiaotelaisi",
+   "name": "贵阳梵华里·奥特莱斯",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳梵华里·奥特莱斯",
+    "梵华里·奥特莱斯"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.58
+  },
+  {
+   "slug": "guiyangcaozhuangyuanjiequ",
+   "name": "贵阳曹状元街区(一期)",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳曹状元街区(一期)",
+    "曹状元街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.92
+  },
+  {
+   "slug": "guiyangkasitechengshigongyuan",
+   "name": "贵阳喀斯特城市公园",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳喀斯特城市公园",
+    "喀斯特城市公园"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.8
+  },
+  {
+   "slug": "zhengdejiabanggouwuzhongxin",
+   "name": "正德家邦购物中心",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "正德家邦购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.5
+  },
+  {
+   "slug": "zilinanxingyuemao",
+   "name": "紫林庵·星悦茂",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "紫林庵·星悦茂"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.5
+  },
+  {
+   "slug": "guiganghuaniaoshangyejiequ",
+   "name": "贵钢花鸟商业街区",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵钢花鸟商业街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.4
+  },
+  {
+   "slug": "guiyanghainaguangchang",
+   "name": "贵阳海纳广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳海纳广场",
+    "海纳广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.38
+  },
+  {
+   "slug": "wanyiguangchang",
+   "name": "万宜广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "万宜广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.3
+  },
+  {
+   "slug": "guiyanghuaximingzhushenghuoguangchang",
+   "name": "贵阳花溪明珠生活广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳花溪明珠生活广场",
+    "花溪明珠生活广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.28
+  },
+  {
+   "slug": "zhongguotiejianshuianguangchang",
+   "name": "中国铁建·水岸广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "中国铁建·水岸广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.0
+  },
+  {
+   "slug": "xinglibaihuo",
+   "name": "星力百货(瑞金店)",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "星力百货(瑞金店)"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.97
+  },
+  {
+   "slug": "guiyangyinhaiyuanlongguangchang",
+   "name": "贵阳银海元隆广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳银海元隆广场",
+    "银海元隆广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.86
+  },
+  {
+   "slug": "yunshangfangzhou",
+   "name": "云上方舟",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "云上方舟"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.76
+  },
+  {
+   "slug": "guiyangyihaogouwuzhongxin",
+   "name": "贵阳壹号购物中心",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳壹号购物中心",
+    "壹号购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.5
+  },
+  {
+   "slug": "quwanintmogouwuzhongxin",
+   "name": "趣玩INTMO购物中心",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "趣玩INTMO购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.35
+  },
+  {
+   "slug": "xipanxiangxianli",
+   "name": "溪畔·乡贤里",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "溪畔·乡贤里"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.78
+  },
+  {
+   "slug": "yuntaiguangchang",
+   "name": "云泰广场",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "云泰广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.75
+  },
+  {
+   "slug": "hengfengbuxingjie",
+   "name": "恒峰步行街",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "恒峰步行街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.47
+  },
+  {
+   "slug": "huaguoyuanhailejiequ",
+   "name": "花果园·嗨乐街区",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "花果园·嗨乐街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.36
+  },
+  {
+   "slug": "xintianhailejie",
+   "name": "新添·嗨乐街",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "新添·嗨乐街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.22
+  },
+  {
+   "slug": "jiuyupark",
+   "name": "玖遇PARK",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "玖遇PARK"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.22
+  },
+  {
+   "slug": "huaguoyuanhuimeishishang",
+   "name": "花果园·汇美时尚",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "花果园·汇美时尚"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.18
+  },
+  {
+   "slug": "baiyun1958wenlvjiequ",
+   "name": "白云1958文旅街区",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "白云1958文旅街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.15
+  },
+  {
+   "slug": "guiyangdaxuechengyunchuangguiangu",
+   "name": "贵阳大学城·云创贵安谷",
+   "city": "贵阳",
+   "footfallTier": 4,
+   "keywords": [
+    "贵阳大学城·云创贵安谷",
+    "大学城·云创贵安谷"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.13
+  },
+  {
+   "slug": "zunyiwuyueguangchang",
+   "name": "遵义吾悦广场",
+   "city": "遵义",
+   "footfallTier": 5,
+   "keywords": [
+    "遵义吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.67
+  },
+  {
+   "slug": "renhuaijiudoufangyuanhui",
+   "name": "仁怀酒都·方圆荟",
+   "city": "遵义",
+   "footfallTier": 5,
+   "keywords": [
+    "仁怀酒都·方圆荟",
+    "酒都·方圆荟"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.5
+  },
+  {
+   "slug": "zunyixinglicheng",
+   "name": "遵义星力城",
+   "city": "遵义",
+   "footfallTier": 4,
+   "keywords": [
+    "遵义星力城",
+    "星力城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.92
+  },
+  {
+   "slug": "xishuixiwangchengshidaiguangchanggouwuzhongxin",
+   "name": "习水希望城时代广场购物中心",
+   "city": "遵义",
+   "footfallTier": 4,
+   "keywords": [
+    "习水希望城时代广场购物中心",
+    "希望城时代广场购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.9
+  },
+  {
+   "slug": "zunyihengtechengshiguangchang",
+   "name": "遵义亨特城市广场",
+   "city": "遵义",
+   "footfallTier": 4,
+   "keywords": [
+    "遵义亨特城市广场",
+    "亨特城市广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.68
+  },
+  {
+   "slug": "zunyizhongjianshiguanghui",
+   "name": "遵义中建·拾光荟",
+   "city": "遵义",
+   "footfallTier": 4,
+   "keywords": [
+    "遵义中建·拾光荟",
+    "中建·拾光荟"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.23
+  },
+  {
+   "slug": "zunyi1935jiequ",
+   "name": "遵义·1935街区",
+   "city": "遵义",
+   "footfallTier": 4,
+   "keywords": [
+    "遵义·1935街区",
+    "·1935街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.2
+  },
+  {
+   "slug": "zunyishichangqingtengyuecuicheng",
+   "name": "遵义市·常青藤悦翠城",
+   "city": "遵义",
+   "footfallTier": 4,
+   "keywords": [
+    "遵义市·常青藤悦翠城",
+    "市·常青藤悦翠城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 0.15
+  },
+  {
+   "slug": "fangyuanhuizunjingcaifuguangchang",
+   "name": "方圆荟·樽憬财富广场",
+   "city": "毕节",
+   "footfallTier": 4,
+   "keywords": [
+    "方圆荟·樽憬财富广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.86
+  },
+  {
+   "slug": "bijiezhaoshanghuayuancheng",
+   "name": "毕节招商花园城",
+   "city": "毕节",
+   "footfallTier": 5,
+   "keywords": [
+    "毕节招商花园城",
+    "招商花园城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.0
+  },
+  {
+   "slug": "xingyimenglechenggouwuzhongxin",
+   "name": "兴义梦乐城购物中心",
+   "city": "黔西南",
+   "footfallTier": 5,
+   "keywords": [
+    "兴义梦乐城购物中心",
+    "梦乐城购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.0
+  },
+  {
+   "slug": "xingyihuanlechenggouwuzhongxin",
+   "name": "兴义欢乐橙购物中心",
+   "city": "黔西南",
+   "footfallTier": 4,
+   "keywords": [
+    "兴义欢乐橙购物中心",
+    "欢乐橙购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.0
+  },
+  {
+   "slug": "tongrensifengcaifuguangchang",
+   "name": "铜仁思丰财富广场",
+   "city": "铜仁",
+   "footfallTier": 4,
+   "keywords": [
+    "铜仁思丰财富广场",
+    "思丰财富广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.68
+  },
+  {
+   "slug": "tongrenzhonghuanguojigouwuzhongxin",
+   "name": "铜仁中寰国际购物中心",
+   "city": "铜仁",
+   "footfallTier": 4,
+   "keywords": [
+    "铜仁中寰国际购物中心",
+    "中寰国际购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.86
+  },
+  {
+   "slug": "liupanshuiaiqinhaigouwuzhongxin",
+   "name": "六盘水爱琴海购物中心",
+   "city": "六盘水",
+   "footfallTier": 4,
+   "keywords": [
+    "六盘水爱琴海购物中心",
+    "爱琴海购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.41
+  },
+  {
+   "slug": "kailidongfangaiqinhaigouwuzhongxin",
+   "name": "凯里东方爱琴海购物中心",
+   "city": "凯里",
+   "footfallTier": 4,
+   "keywords": [
+    "凯里东方爱琴海购物中心",
+    "东方爱琴海购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.53
+  },
+  {
+   "slug": "baoshanwuyueguangchang",
+   "name": "保山吾悦广场",
+   "city": "保山",
+   "footfallTier": 5,
+   "keywords": [
+    "保山吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.0
+  },
+  {
+   "slug": "suzhousuningguangchang",
+   "name": "宿州苏宁广场",
+   "city": "宿州",
+   "footfallTier": 6,
+   "keywords": [
+    "宿州苏宁广场",
+    "苏宁广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12.0
+  },
+  {
+   "slug": "nanchangwanxiangcheng",
+   "name": "南昌万象城",
+   "city": "南昌",
+   "footfallTier": 8,
+   "keywords": [
+    "南昌万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 35.0
+  },
+  {
+   "slug": "jiantianhonggouwuzhongxin",
+   "name": "吉安天虹购物中心",
+   "city": "吉安",
+   "footfallTier": 5,
+   "keywords": [
+    "吉安天虹购物中心",
+    "天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.0
+  },
+  {
+   "slug": "ganzhoujunshanggouwuzhongxin",
+   "name": "赣州君尚购物中心",
+   "city": "赣州",
+   "footfallTier": 5,
+   "keywords": [
+    "赣州君尚购物中心",
+    "君尚购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.0
+  },
+  {
+   "slug": "shenyangtiexiwanxianghui",
+   "name": "沈阳铁西万象汇",
+   "city": "沈阳",
+   "footfallTier": 8,
+   "keywords": [
+    "沈阳铁西万象汇",
+    "铁西万象汇"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 37.0
+  },
+  {
+   "slug": "wuhanskp",
+   "name": "武汉SKP",
+   "city": "武汉",
+   "footfallTier": 8,
+   "keywords": [
+    "武汉SKP",
+    "SKP"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 45.0
+  },
+  {
+   "slug": "wuhandayuecheng",
+   "name": "武汉大悦城",
+   "city": "武汉",
+   "footfallTier": 6,
+   "keywords": [
+    "武汉大悦城",
+    "大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 18.7
+  },
+  {
+   "slug": "changshawanxiangcheng",
+   "name": "长沙万象城",
+   "city": "长沙",
+   "footfallTier": 7,
+   "keywords": [
+    "长沙万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30.0
+  },
+  {
+   "slug": "jishoutianhonggouwuzhongxin",
+   "name": "吉首天虹购物中心",
+   "city": "湘西",
+   "footfallTier": 5,
+   "keywords": [
+    "吉首天虹购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.0
+  },
+  {
+   "slug": "xuchangpangdonglaishidaiguangchang",
+   "name": "许昌胖东来时代广场",
+   "city": "许昌",
+   "footfallTier": 9,
+   "keywords": [
+    "许昌胖东来时代广场",
+    "胖东来时代广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 60.0
+  },
+  {
+   "slug": "xuchangpangdonglaitianshicheng",
+   "name": "许昌胖东来天使城",
+   "city": "许昌",
+   "footfallTier": 7,
+   "keywords": [
+    "许昌胖东来天使城",
+    "胖东来天使城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 32.98
+  },
+  {
+   "slug": "xuchangpangdonglaishenghuoguangchang",
+   "name": "许昌胖东来生活广场",
+   "city": "许昌",
+   "footfallTier": 6,
+   "keywords": [
+    "许昌胖东来生活广场",
+    "胖东来生活广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 17.98
+  },
+  {
+   "slug": "xinxiangpangdonglaidapang",
+   "name": "新乡胖东来·大胖",
+   "city": "新乡",
+   "footfallTier": 7,
+   "keywords": [
+    "新乡胖东来·大胖",
+    "胖东来·大胖"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 32.69
+  },
+  {
+   "slug": "xinxiangpangdonglaishenghuoguangchang",
+   "name": "新乡胖东来生活广场(二胖)",
+   "city": "新乡",
+   "footfallTier": 7,
+   "keywords": [
+    "新乡胖东来生活广场(二胖)",
+    "胖东来生活广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 27.0
+  },
+  {
+   "slug": "xidiganggouwuzhongxin",
+   "name": "熙地港(西安)购物中心",
+   "city": "西安",
+   "footfallTier": 7,
+   "keywords": [
+    "熙地港(西安)购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 32.27
+  },
+  {
+   "slug": "xianshenglongguangchanglongshougouwuzhongxin",
+   "name": "西安盛龙广场龙首购物中心(含京东)",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安盛龙广场龙首购物中心(含京东)",
+    "盛龙广场龙首购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 17.9
+  },
+  {
+   "slug": "xianwangfujingdiscovery",
+   "name": "西安王府井Discovery",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安王府井Discovery",
+    "王府井Discovery"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15.8
+  },
+  {
+   "slug": "xianzhongmaoguangchanggouwuzhongxin",
+   "name": "西安中贸广场购物中心",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安中贸广场购物中心",
+    "中贸广场购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12.0
+  },
+  {
+   "slug": "xianyitianjiarishijie",
+   "name": "西安益田假日世界",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安益田假日世界",
+    "益田假日世界"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.7
+  },
+  {
+   "slug": "xianhuayangchenggouwuzhongxin",
+   "name": "西安华阳城购物中心",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安华阳城购物中心",
+    "华阳城购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.5
+  },
+  {
+   "slug": "xiandatangxishixichenggouwuzhongxin",
+   "name": "西安大唐西市西城购物中心",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安大唐西市西城购物中心",
+    "大唐西市西城购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.88
+  },
+  {
+   "slug": "xianchengxiwuyueguangchang",
+   "name": "西安城西吾悦广场",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安城西吾悦广场",
+    "城西吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.8
+  },
+  {
+   "slug": "xianjindiguangchang",
+   "name": "西安金地广场",
+   "city": "西安",
+   "footfallTier": 6,
+   "keywords": [
+    "西安金地广场",
+    "金地广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "xianlongshouyinxiangcheng",
+   "name": "西安龙首印象城",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安龙首印象城",
+    "龙首印象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.9
+  },
+  {
+   "slug": "xianfengxiwuyueguangchang",
+   "name": "西安沣西吾悦广场",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安沣西吾悦广场",
+    "沣西吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.3
+  },
+  {
+   "slug": "xianhanshengouwuguangchang",
+   "name": "西安汉神购物广场",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安汉神购物广场",
+    "汉神购物广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.01
+  },
+  {
+   "slug": "xiannanfeihonglehuizhongxin",
+   "name": "西安南飞鸿乐荟中心",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安南飞鸿乐荟中心",
+    "南飞鸿乐荟中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.89
+  },
+  {
+   "slug": "xianwanhuiyunyangguangtiandigouwuzhongxin",
+   "name": "西安万荟芸阳光天地购物中心",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安万荟芸阳光天地购物中心",
+    "万荟芸阳光天地购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.7
+  },
+  {
+   "slug": "xianyitianjiariligouwuzhongxin",
+   "name": "西安益田假日里购物中心",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安益田假日里购物中心",
+    "益田假日里购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.37
+  },
+  {
+   "slug": "xianjinhuiguangchangd16chuangyijiequ",
+   "name": "西安金辉广场+D16创意街区",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安金辉广场+D16创意街区",
+    "金辉广场+D16创意街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.15
+  },
+  {
+   "slug": "xianchanganwankeguangchang",
+   "name": "西安长安万科广场",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安长安万科广场",
+    "长安万科广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.4
+  },
+  {
+   "slug": "xiansihaitangrenjie",
+   "name": "西安四海唐人街",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安四海唐人街",
+    "四海唐人街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.5
+  },
+  {
+   "slug": "xianlifengguojigouwuguangchang",
+   "name": "西安立丰国际购物广场",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安立丰国际购物广场",
+    "立丰国际购物广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.2
+  },
+  {
+   "slug": "xianlifengchenglecity",
+   "name": "西安立丰城LECITY",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安立丰城LECITY",
+    "立丰城LECITY"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.4
+  },
+  {
+   "slug": "xiantaibaiyinxiangcheng",
+   "name": "西安太白印象城",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安太白印象城",
+    "太白印象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.29
+  },
+  {
+   "slug": "xianlandaoguangchang",
+   "name": "西安兰岛广场",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安兰岛广场",
+    "兰岛广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.1
+  },
+  {
+   "slug": "xianchanbayinxiangcheng",
+   "name": "西安浐灞印象城",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安浐灞印象城",
+    "浐灞印象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.85
+  },
+  {
+   "slug": "xianshenganguangchang",
+   "name": "西安盛安广场",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安盛安广场",
+    "盛安广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.37
+  },
+  {
+   "slug": "xianne99shuziyulexingqiu",
+   "name": "西安NE99数字娱乐星球(改造中)",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安NE99数字娱乐星球(改造中)",
+    "NE99数字娱乐星球"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.5
+  },
+  {
+   "slug": "xiancanwuyiyitfep",
+   "name": "西安参伍壹壹TFEP",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安参伍壹壹TFEP",
+    "参伍壹壹TFEP"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.5
+  },
+  {
+   "slug": "xianboleligouwuguangchang",
+   "name": "西安博乐里购物广场",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安博乐里购物广场",
+    "博乐里购物广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 3.0
+  },
+  {
+   "slug": "xianjinzhengguangchang",
+   "name": "西安金正广场",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安金正广场",
+    "金正广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.75
+  },
+  {
+   "slug": "xianzhangbaixinshishenghuogouwuguangchang",
+   "name": "西安长百新市生活购物广场",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安长百新市生活购物广场",
+    "长百新市生活购物广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.46
+  },
+  {
+   "slug": "xiangtmall",
+   "name": "西安GTMall(含积木家)",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安GTMall(含积木家)",
+    "GTMall"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.23
+  },
+  {
+   "slug": "xianzhengrongcaihonggu",
+   "name": "西安正荣彩虹谷",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安正荣彩虹谷",
+    "正荣彩虹谷"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.05
+  },
+  {
+   "slug": "xianuplazagouwuzhongxin",
+   "name": "西安UPlaza购物中心",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安UPlaza购物中心",
+    "UPlaza购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.05
+  },
+  {
+   "slug": "xianxixianguorunji",
+   "name": "西安西咸国润季",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安西咸国润季",
+    "西咸国润季"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.0
+  },
+  {
+   "slug": "xiant11blockshangyejiequ",
+   "name": "西安T11BLOCK商业街区",
+   "city": "西安",
+   "footfallTier": 4,
+   "keywords": [
+    "西安T11BLOCK商业街区",
+    "T11BLOCK商业街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 1.78
+  },
+  {
+   "slug": "weinanwuyueguangchang",
+   "name": "渭南吾悦广场",
+   "city": "渭南",
+   "footfallTier": 5,
+   "keywords": [
+    "渭南吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.2
+  },
+  {
+   "slug": "weinanhanchengaiqinhaigouwugouwuzhongxin",
+   "name": "渭南韩城爱琴海购物购物中心",
+   "city": "渭南",
+   "footfallTier": 4,
+   "keywords": [
+    "渭南韩城爱琴海购物购物中心",
+    "韩城爱琴海购物购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.8
+  },
+  {
+   "slug": "hanzhongwuyueguangchang",
+   "name": "汉中吾悦广场",
+   "city": "汉中",
+   "footfallTier": 5,
+   "keywords": [
+    "汉中吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.18
+  },
+  {
+   "slug": "yananwuyueguangchang",
+   "name": "延安吾悦广场",
+   "city": "延安",
+   "footfallTier": 5,
+   "keywords": [
+    "延安吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.3
+  },
+  {
+   "slug": "ankangwuyueguangchang",
+   "name": "安康吾悦广场",
+   "city": "安康",
+   "footfallTier": 5,
+   "keywords": [
+    "安康吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6.18
+  },
+  {
+   "slug": "baojiwuyueguangchang",
+   "name": "宝鸡吾悦广场",
+   "city": "宝鸡",
+   "footfallTier": 5,
+   "keywords": [
+    "宝鸡吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.25
+  },
+  {
+   "slug": "yulinguomaozhongxin",
+   "name": "榆林国贸中心",
+   "city": "榆林",
+   "footfallTier": 4,
+   "keywords": [
+    "榆林国贸中心",
+    "国贸中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.39
+  },
+  {
+   "slug": "xianyangguojicaifugouwuzhongxin",
+   "name": "咸阳国际财富购物中心",
+   "city": "咸阳",
+   "footfallTier": 6,
+   "keywords": [
+    "咸阳国际财富购物中心",
+    "国际财富购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.0
+  },
+  {
+   "slug": "taiyuanwanxiangcheng",
+   "name": "太原万象城",
+   "city": "太原",
+   "footfallTier": 7,
+   "keywords": [
+    "太原万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 32.0
+  },
+  {
+   "slug": "taiyuanwuyueguangchang",
+   "name": "太原吾悦广场",
+   "city": "太原",
+   "footfallTier": 6,
+   "keywords": [
+    "太原吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12.0
+  },
+  {
+   "slug": "yunchengwuyueguangchang",
+   "name": "运城吾悦广场",
+   "city": "运城",
+   "footfallTier": 5,
+   "keywords": [
+    "运城吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.61
+  },
+  {
+   "slug": "datongwuyueguangchang",
+   "name": "大同吾悦广场",
+   "city": "大同",
+   "footfallTier": 4,
+   "keywords": [
+    "大同吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.6
+  },
+  {
+   "slug": "lanzhouzhongxin",
+   "name": "兰州中心",
+   "city": "兰州",
+   "footfallTier": 8,
+   "keywords": [
+    "兰州中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 51.9
+  },
+  {
+   "slug": "lanzhoulaojie",
+   "name": "兰州老街",
+   "city": "兰州",
+   "footfallTier": 5,
+   "keywords": [
+    "兰州老街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.6
+  },
+  {
+   "slug": "lanzhouanningwuyueguangchang",
+   "name": "兰州安宁吾悦广场",
+   "city": "兰州",
+   "footfallTier": 5,
+   "keywords": [
+    "兰州安宁吾悦广场",
+    "安宁吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9.08
+  },
+  {
+   "slug": "xiningchengbeiwuyueguangchang",
+   "name": "西宁城北吾悦广场",
+   "city": "西宁",
+   "footfallTier": 5,
+   "keywords": [
+    "西宁城北吾悦广场",
+    "城北吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8.03
+  },
+  {
+   "slug": "xiningchengdongwuyueguangchang",
+   "name": "西宁城东吾悦广场",
+   "city": "西宁",
+   "footfallTier": 5,
+   "keywords": [
+    "西宁城东吾悦广场",
+    "城东吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.42
+  },
+  {
+   "slug": "yinchuanyuecaicheng",
+   "name": "银川阅彩城",
+   "city": "银川",
+   "footfallTier": 7,
+   "keywords": [
+    "银川阅彩城",
+    "阅彩城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30.12
+  },
+  {
+   "slug": "yinchuanxingqingwuyueguangchang",
+   "name": "银川兴庆吾悦广场",
+   "city": "银川",
+   "footfallTier": 5,
+   "keywords": [
+    "银川兴庆吾悦广场",
+    "兴庆吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.12
+  },
+  {
+   "slug": "youyuecheng",
+   "name": "悠阅城",
+   "city": "银川",
+   "footfallTier": 6,
+   "keywords": [
+    "悠阅城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10.95
+  },
+  {
+   "slug": "wulumuqihuizhanwuyueguangchang",
+   "name": "乌鲁木齐会展吾悦广场",
+   "city": "乌鲁木齐",
+   "footfallTier": 6,
+   "keywords": [
+    "乌鲁木齐会展吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11.99
+  },
+  {
+   "slug": "tianshanwankeguangchang",
+   "name": "天山万科广场(含多经汽车)",
+   "city": "乌鲁木齐",
+   "footfallTier": 5,
+   "keywords": [
+    "天山万科广场(含多经汽车)"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7.0
+  },
+  {
+   "slug": "wulumuqimidongwuyueguangchang",
+   "name": "乌鲁木齐米东吾悦广场",
+   "city": "乌鲁木齐",
+   "footfallTier": 5,
+   "keywords": [
+    "乌鲁木齐米东吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5.07
+  },
+  {
+   "slug": "hangzhoushangchenglonghutianjie",
+   "name": "杭州上城龙湖天街",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "杭州上城龙湖天街",
+    "上城龙湖天街"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 4.3,
+   "src": "长图"
+  },
+  {
+   "slug": "linanshaoxishidaiguangchang",
+   "name": "临安苕溪时代广场",
+   "city": "杭州",
+   "footfallTier": 4,
+   "keywords": [
+    "临安苕溪时代广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 2.8,
+   "src": "长图"
+  },
+  {
+   "slug": "ningboshijidongfangguangchang",
+   "name": "宁波世纪东方广场",
+   "city": "宁波",
+   "footfallTier": 7,
+   "keywords": [
+    "宁波世纪东方广场",
+    "世纪东方广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 21,
+   "src": "长图"
+  },
+  {
+   "slug": "ningbohongtaiguangchang",
+   "name": "宁波宏泰广场",
+   "city": "宁波",
+   "footfallTier": 5,
+   "keywords": [
+    "宁波宏泰广场",
+    "宏泰广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7,
+   "src": "长图"
+  },
+  {
+   "slug": "jiafuchengyangguangguojiguangchang",
+   "name": "嘉福城阳光国际广场",
+   "city": "嘉兴",
+   "footfallTier": 5,
+   "keywords": [
+    "嘉福城阳光国际广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5,
+   "src": "长图"
+  },
+  {
+   "slug": "jinhuawantaiaotelaisigouwugongyuan",
+   "name": "金华万泰奥特莱斯购物公园",
+   "city": "金华",
+   "footfallTier": 5,
+   "keywords": [
+    "金华万泰奥特莱斯购物公园",
+    "万泰奥特莱斯购物公园"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5,
+   "src": "长图"
+  },
+  {
+   "slug": "quzhoudongfangguangchang",
+   "name": "衢州东方广场",
+   "city": "衢州",
+   "footfallTier": 5,
+   "keywords": [
+    "衢州东方广场",
+    "东方广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 5,
+   "src": "长图"
+  },
+  {
+   "slug": "wenzhou5050gouwuzhongxin",
+   "name": "温州5050购物中心",
+   "city": "温州",
+   "footfallTier": 6,
+   "keywords": [
+    "温州5050购物中心",
+    "5050购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 14,
+   "src": "长图"
+  },
+  {
+   "slug": "wenzhoulongwanwandaguangchang",
+   "name": "温州龙湾万达广场",
+   "city": "温州",
+   "footfallTier": 6,
+   "keywords": [
+    "温州龙湾万达广场",
+    "龙湾万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "taizhouwandaguangchang",
+   "name": "台州万达广场",
+   "city": "台州",
+   "footfallTier": 6,
+   "keywords": [
+    "台州万达广场",
+    "万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "nanjinghuacaitiandi",
+   "name": "南京华采天地",
+   "city": "南京",
+   "footfallTier": 6,
+   "keywords": [
+    "南京华采天地",
+    "华采天地"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 18,
+   "src": "长图"
+  },
+  {
+   "slug": "nanjingjiangbeihongyuecheng",
+   "name": "南京江北虹悦城",
+   "city": "南京",
+   "footfallTier": 6,
+   "keywords": [
+    "南京江北虹悦城",
+    "江北虹悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 17,
+   "src": "长图"
+  },
+  {
+   "slug": "xuzhouhexinbaolongguangchang",
+   "name": "徐州和信宝龙广场",
+   "city": "徐州",
+   "footfallTier": 6,
+   "keywords": [
+    "徐州和信宝龙广场",
+    "和信宝龙广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "wuxiyueshangaotelaisi",
+   "name": "无锡悦尚奥特莱斯",
+   "city": "无锡",
+   "footfallTier": 6,
+   "keywords": [
+    "无锡悦尚奥特莱斯",
+    "悦尚奥特莱斯"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12,
+   "src": "长图"
+  },
+  {
+   "slug": "wuxibaileshidaiguangchang",
+   "name": "无锡百乐时代广场",
+   "city": "无锡",
+   "footfallTier": 5,
+   "keywords": [
+    "无锡百乐时代广场",
+    "百乐时代广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7,
+   "src": "长图"
+  },
+  {
+   "slug": "fuzhoubaihutingwandaguangchang",
+   "name": "福州白湖亭万达广场",
+   "city": "福州",
+   "footfallTier": 5,
+   "keywords": [
+    "福州白湖亭万达广场",
+    "白湖亭万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "guangzhouyuehuicheng",
+   "name": "广州悦汇城",
+   "city": "广州",
+   "footfallTier": 7,
+   "keywords": [
+    "广州悦汇城",
+    "悦汇城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30,
+   "src": "长图"
+  },
+  {
+   "slug": "longguanglanjingshijie",
+   "name": "龙光蓝鲸世界",
+   "city": "深圳",
+   "footfallTier": 6,
+   "keywords": [
+    "龙光蓝鲸世界"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 18.8,
+   "src": "长图"
+  },
+  {
+   "slug": "chongqingguanyinqiaoshangquan",
+   "name": "重庆观音桥商圈",
+   "city": "重庆",
+   "footfallTier": 8,
+   "keywords": [
+    "重庆观音桥商圈",
+    "观音桥商圈"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 42,
+   "src": "长图"
+  },
+  {
+   "slug": "sanqichengsanqiguangchang",
+   "name": "三祺城·三祺广场",
+   "city": "南宁",
+   "footfallTier": 5,
+   "keywords": [
+    "三祺城·三祺广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "zhengzhouzhenghongcheng",
+   "name": "郑州正弘城",
+   "city": "郑州",
+   "footfallTier": 8,
+   "keywords": [
+    "郑州正弘城",
+    "正弘城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 40,
+   "src": "长图"
+  },
+  {
+   "slug": "zhengzhoucitydarongcheng",
+   "name": "郑州City·大融城",
+   "city": "郑州",
+   "footfallTier": 6,
+   "keywords": [
+    "郑州City·大融城",
+    "City·大融城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "luoyangquanshungouwuzhongxin",
+   "name": "洛阳泉舜购物中心",
+   "city": "洛阳",
+   "footfallTier": 6,
+   "keywords": [
+    "洛阳泉舜购物中心",
+    "泉舜购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12,
+   "src": "长图"
+  },
+  {
+   "slug": "qingdaojindingguangchang",
+   "name": "青岛金鼎广场",
+   "city": "青岛",
+   "footfallTier": 6,
+   "keywords": [
+    "青岛金鼎广场",
+    "金鼎广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12,
+   "src": "长图"
+  },
+  {
+   "slug": "jinanshimaoguangchang",
+   "name": "济南世茂广场",
+   "city": "济南",
+   "footfallTier": 6,
+   "keywords": [
+    "济南世茂广场",
+    "世茂广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15,
+   "src": "长图"
+  },
+  {
+   "slug": "jinanlingxiuchengguihegouwuzhongxin",
+   "name": "济南领秀城贵和购物中心",
+   "city": "济南",
+   "footfallTier": 6,
+   "keywords": [
+    "济南领秀城贵和购物中心",
+    "领秀城贵和购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 13,
+   "src": "长图"
+  },
+  {
+   "slug": "qingdaokaidemallxindouxin",
+   "name": "青岛凯德MALL·新都心",
+   "city": "青岛",
+   "footfallTier": 6,
+   "keywords": [
+    "青岛凯德MALL·新都心",
+    "凯德MALL·新都心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11,
+   "src": "长图"
+  },
+  {
+   "slug": "weifanggudeguangchang",
+   "name": "潍坊谷德广场",
+   "city": "潍坊",
+   "footfallTier": 5,
+   "keywords": [
+    "潍坊谷德广场",
+    "谷德广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "qingdaojinshiguangchang",
+   "name": "青岛金狮广场",
+   "city": "青岛",
+   "footfallTier": 5,
+   "keywords": [
+    "青岛金狮广场",
+    "金狮广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "linyitaishengguangchang",
+   "name": "临沂泰盛广场",
+   "city": "临沂",
+   "footfallTier": 5,
+   "keywords": [
+    "临沂泰盛广场",
+    "泰盛广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "qingdaocbdwandaguangchang",
+   "name": "青岛CBD万达广场",
+   "city": "青岛",
+   "footfallTier": 5,
+   "keywords": [
+    "青岛CBD万达广场",
+    "CBD万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "shenyangzhongxingshangyedasha",
+   "name": "沈阳中兴商业大厦",
+   "city": "沈阳",
+   "footfallTier": 7,
+   "keywords": [
+    "沈阳中兴商业大厦",
+    "中兴商业大厦"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 27,
+   "src": "长图"
+  },
+  {
+   "slug": "changchunmofanghuolicheng",
+   "name": "长春摩坊·活力城",
+   "city": "长春",
+   "footfallTier": 5,
+   "keywords": [
+    "长春摩坊·活力城",
+    "摩坊·活力城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "haerbinzhuozhangouwuzhongxin",
+   "name": "哈尔滨卓展购物中心",
+   "city": "哈尔滨",
+   "footfallTier": 6,
+   "keywords": [
+    "哈尔滨卓展购物中心",
+    "卓展购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15,
+   "src": "长图"
+  },
+  {
+   "slug": "haerbinsongleishangyedasha",
+   "name": "哈尔滨松雷商业大厦",
+   "city": "哈尔滨",
+   "footfallTier": 5,
+   "keywords": [
+    "哈尔滨松雷商业大厦",
+    "松雷商业大厦"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "taiyuantianmeishanshanaotelaisiguangchang",
+   "name": "太原天美杉杉奥特莱斯广场",
+   "city": "太原",
+   "footfallTier": 7,
+   "keywords": [
+    "太原天美杉杉奥特莱斯广场",
+    "天美杉杉奥特莱斯广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30,
+   "src": "长图"
+  },
+  {
+   "slug": "shijiazhuangleitaizhongxin",
+   "name": "石家庄勒泰中心",
+   "city": "石家庄",
+   "footfallTier": 7,
+   "keywords": [
+    "石家庄勒泰中心",
+    "勒泰中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 28,
+   "src": "长图"
+  },
+  {
+   "slug": "baodingweilaishiwandaguangchang",
+   "name": "保定未来石万达广场",
+   "city": "保定",
+   "footfallTier": 5,
+   "keywords": [
+    "保定未来石万达广场",
+    "未来石万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "tangshanbaihuodaloujituan",
+   "name": "唐山百货大楼集团",
+   "city": "唐山",
+   "footfallTier": 8,
+   "keywords": [
+    "唐山百货大楼集团",
+    "百货大楼集团"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 35,
+   "src": "长图"
+  },
+  {
+   "slug": "huhehaoteminzushangchang",
+   "name": "呼和浩特民族商场",
+   "city": "呼和浩特",
+   "footfallTier": 5,
+   "keywords": [
+    "呼和浩特民族商场",
+    "民族商场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "huhehaoteweiduolimoercheng",
+   "name": "呼和浩特维多利摩尔城",
+   "city": "呼和浩特",
+   "footfallTier": 5,
+   "keywords": [
+    "呼和浩特维多利摩尔城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "wulumuqidehuixinshiji",
+   "name": "乌鲁木齐德汇新世纪",
+   "city": "乌鲁木齐",
+   "footfallTier": 6,
+   "keywords": [
+    "乌鲁木齐德汇新世纪",
+    "德汇新世纪"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15,
+   "src": "长图"
+  },
+  {
+   "slug": "xinjianghongxinbaiyijiashenghuoguangchang",
+   "name": "新疆鸿新百翼家生活广场",
+   "city": "乌鲁木齐",
+   "footfallTier": 5,
+   "keywords": [
+    "新疆鸿新百翼家生活广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "hefeihejiafugouwuguangchang",
+   "name": "合肥合家福购物广场",
+   "city": "合肥",
+   "footfallTier": 6,
+   "keywords": [
+    "合肥合家福购物广场",
+    "合家福购物广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "nanchangshanshanaotelaisiguangchang",
+   "name": "南昌杉杉奥特莱斯广场",
+   "city": "南昌",
+   "footfallTier": 6,
+   "keywords": [
+    "南昌杉杉奥特莱斯广场",
+    "杉杉奥特莱斯广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "ganzhoushanshanaotelaisiguangchang",
+   "name": "赣州杉杉奥特莱斯广场",
+   "city": "赣州",
+   "footfallTier": 5,
+   "keywords": [
+    "赣州杉杉奥特莱斯广场",
+    "杉杉奥特莱斯广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "jiujiangjiufanggouwuzhongxin",
+   "name": "九江九方购物中心",
+   "city": "九江",
+   "footfallTier": 5,
+   "keywords": [
+    "九江九方购物中心",
+    "九方购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "nanchanghechangximengcheng",
+   "name": "南昌和昌熙梦城",
+   "city": "南昌",
+   "footfallTier": 5,
+   "keywords": [
+    "南昌和昌熙梦城",
+    "和昌熙梦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 7,
+   "src": "长图"
+  },
+  {
+   "slug": "shanghaishangjiazhongxin",
+   "name": "上海尚嘉中心",
+   "city": "上海",
+   "footfallTier": 7,
+   "keywords": [
+    "上海尚嘉中心",
+    "尚嘉中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 25,
+   "src": "长图"
+  },
+  {
+   "slug": "shanghaijializhongxin",
+   "name": "上海嘉里中心",
+   "city": "上海",
+   "footfallTier": 7,
+   "keywords": [
+    "上海嘉里中心",
+    "嘉里中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 22,
+   "src": "长图"
+  },
+  {
+   "slug": "ningbohuanlehaianzhutishangyejiequ",
+   "name": "宁波欢乐海岸主题商业街区",
+   "city": "宁波",
+   "footfallTier": 5,
+   "keywords": [
+    "宁波欢乐海岸主题商业街区",
+    "欢乐海岸主题商业街区"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "hainingyintaicheng",
+   "name": "海宁银泰城",
+   "city": "嘉兴",
+   "footfallTier": 6,
+   "keywords": [
+    "海宁银泰城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 15,
+   "src": "长图"
+  },
+  {
+   "slug": "pinghuwuyueguangchang",
+   "name": "平湖吾悦广场",
+   "city": "嘉兴",
+   "footfallTier": 5,
+   "keywords": [
+    "平湖吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "wenzhouwanxiangcheng",
+   "name": "温州万象城",
+   "city": "温州",
+   "footfallTier": 7,
+   "keywords": [
+    "温州万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30,
+   "src": "长图"
+  },
+  {
+   "slug": "nantongwenfengchengshiguangchang",
+   "name": "南通文峰城市广场",
+   "city": "南通",
+   "footfallTier": 5,
+   "keywords": [
+    "南通文峰城市广场",
+    "文峰城市广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "zhenjiangwuyueguangchang",
+   "name": "镇江吾悦广场",
+   "city": "镇江",
+   "footfallTier": 5,
+   "keywords": [
+    "镇江吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "xiamenhaishangshijie",
+   "name": "厦门海上世界",
+   "city": "厦门",
+   "footfallTier": 6,
+   "keywords": [
+    "厦门海上世界",
+    "海上世界"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12,
+   "src": "长图"
+  },
+  {
+   "slug": "guangzhouwanxiangcheng",
+   "name": "广州万象城",
+   "city": "广州",
+   "footfallTier": 8,
+   "keywords": [
+    "广州万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 43,
+   "src": "长图"
+  },
+  {
+   "slug": "guangzhoutianhexintiandi",
+   "name": "广州天河新天地",
+   "city": "广州",
+   "footfallTier": 5,
+   "keywords": [
+    "广州天河新天地",
+    "天河新天地"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "shenzhenzhuoyuezhongxin",
+   "name": "深圳卓悦中心",
+   "city": "深圳",
+   "footfallTier": 7,
+   "keywords": [
+    "深圳卓悦中心",
+    "卓悦中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 27,
+   "src": "长图"
+  },
+  {
+   "slug": "shenzhendabaihuiguangchang",
+   "name": "深圳大百汇广场",
+   "city": "深圳",
+   "footfallTier": 6,
+   "keywords": [
+    "深圳大百汇广场",
+    "大百汇广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 18,
+   "src": "长图"
+  },
+  {
+   "slug": "haikouwanxiangcheng",
+   "name": "海口万象城",
+   "city": "海口",
+   "footfallTier": 7,
+   "keywords": [
+    "海口万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 26,
+   "src": "长图"
+  },
+  {
+   "slug": "chengduskp",
+   "name": "成都SKP",
+   "city": "成都",
+   "footfallTier": 9,
+   "keywords": [
+    "成都SKP",
+    "SKP"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 75,
+   "src": "长图"
+  },
+  {
+   "slug": "chengduheshenghui",
+   "name": "成都合生汇",
+   "city": "成都",
+   "footfallTier": 7,
+   "keywords": [
+    "成都合生汇",
+    "合生汇"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 27,
+   "src": "长图"
+  },
+  {
+   "slug": "chengduhejingtaifumofang",
+   "name": "成都合景泰富·摩方",
+   "city": "成都",
+   "footfallTier": 5,
+   "keywords": [
+    "成都合景泰富·摩方",
+    "合景泰富·摩方"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "kunmingwanxiangcheng",
+   "name": "昆明万象城",
+   "city": "昆明",
+   "footfallTier": 7,
+   "keywords": [
+    "昆明万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 22,
+   "src": "长图"
+  },
+  {
+   "slug": "kunminghenglongguangchang",
+   "name": "昆明恒隆广场",
+   "city": "昆明",
+   "footfallTier": 6,
+   "keywords": [
+    "昆明恒隆广场",
+    "恒隆广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 16,
+   "src": "长图"
+  },
+  {
+   "slug": "kunmingdayuecheng",
+   "name": "昆明大悦城",
+   "city": "昆明",
+   "footfallTier": 5,
+   "keywords": [
+    "昆明大悦城",
+    "大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "liuzhouwanxiangcheng",
+   "name": "柳州万象城",
+   "city": "柳州",
+   "footfallTier": 6,
+   "keywords": [
+    "柳州万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "xianqujiangchuangyigu",
+   "name": "西安曲江创意谷",
+   "city": "西安",
+   "footfallTier": 5,
+   "keywords": [
+    "西安曲江创意谷",
+    "曲江创意谷"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "wuhanwushangmengshidai",
+   "name": "武汉武商梦时代",
+   "city": "武汉",
+   "footfallTier": 8,
+   "keywords": [
+    "武汉武商梦时代",
+    "武商梦时代"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 50,
+   "src": "长图"
+  },
+  {
+   "slug": "wuhanwanxiangcheng",
+   "name": "武汉万象城",
+   "city": "武汉",
+   "footfallTier": 7,
+   "keywords": [
+    "武汉万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 30,
+   "src": "长图"
+  },
+  {
+   "slug": "wuhank11select",
+   "name": "武汉K11 Select",
+   "city": "武汉",
+   "footfallTier": 5,
+   "keywords": [
+    "武汉K11 Select",
+    "K11 Select"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "changshabubugaomeixixintiandi",
+   "name": "长沙步步高梅溪新天地",
+   "city": "长沙",
+   "footfallTier": 8,
+   "keywords": [
+    "长沙步步高梅溪新天地",
+    "步步高梅溪新天地"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 40,
+   "src": "长图"
+  },
+  {
+   "slug": "changshabeichensanjiaozhoudayuecheng",
+   "name": "长沙北辰三角洲大悦城",
+   "city": "长沙",
+   "footfallTier": 7,
+   "keywords": [
+    "长沙北辰三角洲大悦城",
+    "北辰三角洲大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 25,
+   "src": "长图"
+  },
+  {
+   "slug": "jinanhenglongguangchang",
+   "name": "济南恒隆广场",
+   "city": "济南",
+   "footfallTier": 7,
+   "keywords": [
+    "济南恒隆广场",
+    "恒隆广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 28,
+   "src": "长图"
+  },
+  {
+   "slug": "jinanwanxiangcheng",
+   "name": "济南万象城",
+   "city": "济南",
+   "footfallTier": 7,
+   "keywords": [
+    "济南万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 26,
+   "src": "长图"
+  },
+  {
+   "slug": "yantaidayuecheng",
+   "name": "烟台大悦城",
+   "city": "烟台",
+   "footfallTier": 6,
+   "keywords": [
+    "烟台大悦城",
+    "大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11,
+   "src": "长图"
+  },
+  {
+   "slug": "qingdaowuyueguangchang",
+   "name": "青岛吾悦广场",
+   "city": "青岛",
+   "footfallTier": 6,
+   "keywords": [
+    "青岛吾悦广场",
+    "吾悦广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11,
+   "src": "长图"
+  },
+  {
+   "slug": "zibowanxianghui",
+   "name": "淄博万象汇",
+   "city": "淄博",
+   "footfallTier": 6,
+   "keywords": [
+    "淄博万象汇",
+    "万象汇"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "shenyangdayuecheng",
+   "name": "沈阳大悦城",
+   "city": "沈阳",
+   "footfallTier": 7,
+   "keywords": [
+    "沈阳大悦城",
+    "大悦城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 28,
+   "src": "长图"
+  },
+  {
+   "slug": "shenyanghuangchenghenglongguangchang",
+   "name": "沈阳皇城恒隆广场",
+   "city": "沈阳",
+   "footfallTier": 7,
+   "keywords": [
+    "沈阳皇城恒隆广场",
+    "皇城恒隆广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 22,
+   "src": "长图"
+  },
+  {
+   "slug": "dalianwanxianghui",
+   "name": "大连万象汇",
+   "city": "大连",
+   "footfallTier": 6,
+   "keywords": [
+    "大连万象汇",
+    "万象汇"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "taiyuanbeimeixintiandin1yishugouwuzhongxin",
+   "name": "太原北美新天地N1艺术购物中心",
+   "city": "太原",
+   "footfallTier": 5,
+   "keywords": [
+    "太原北美新天地N1艺术购物中心",
+    "北美新天地N1艺术购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 9,
+   "src": "长图"
+  },
+  {
+   "slug": "shijiazhuangwanxiangcheng",
+   "name": "石家庄万象城",
+   "city": "石家庄",
+   "footfallTier": 7,
+   "keywords": [
+    "石家庄万象城",
+    "万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 24,
+   "src": "长图"
+  },
+  {
+   "slug": "eerduosixinghecococity",
+   "name": "鄂尔多斯星河COCO City",
+   "city": "鄂尔多斯",
+   "footfallTier": 5,
+   "keywords": [
+    "鄂尔多斯星河COCO City",
+    "星河COCO City"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 6,
+   "src": "长图"
+  },
+  {
+   "slug": "lanzhouwandaguangchang",
+   "name": "兰州万达广场",
+   "city": "兰州",
+   "footfallTier": 6,
+   "keywords": [
+    "兰州万达广场",
+    "万达广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 12,
+   "src": "长图"
+  },
+  {
+   "slug": "hefeibinhuyintaicheng",
+   "name": "合肥滨湖银泰城",
+   "city": "合肥",
+   "footfallTier": 6,
+   "keywords": [
+    "合肥滨湖银泰城",
+    "滨湖银泰城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 16,
+   "src": "长图"
+  },
+  {
+   "slug": "hefeiaotiwanxiangcheng",
+   "name": "合肥奥体万象城",
+   "city": "合肥",
+   "footfallTier": 6,
+   "keywords": [
+    "合肥奥体万象城",
+    "奥体万象城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 11,
+   "src": "长图"
+  },
+  {
+   "slug": "hefeihongyangguangchang",
+   "name": "合肥弘阳广场",
+   "city": "合肥",
+   "footfallTier": 6,
+   "keywords": [
+    "合肥弘阳广场",
+    "弘阳广场"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 10,
+   "src": "长图"
+  },
+  {
+   "slug": "nanchangt16gouwuzhongxin",
+   "name": "南昌T16购物中心",
+   "city": "南昌",
+   "footfallTier": 6,
+   "keywords": [
+    "南昌T16购物中心",
+    "T16购物中心"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 14,
+   "src": "长图"
+  },
+  {
+   "slug": "xiamenbaolongxuhuicheng",
+   "name": "厦门宝龙旭辉城",
+   "city": "厦门",
+   "footfallTier": 5,
+   "keywords": [
+    "厦门宝龙旭辉城",
+    "宝龙旭辉城"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 8,
+   "src": "长图"
+  },
+  {
+   "slug": "hefeiyintaizhongxinerqi",
+   "name": "合肥银泰中心二期",
+   "city": "合肥",
+   "footfallTier": 7,
+   "keywords": [
+    "合肥银泰中心二期",
+    "银泰中心二期"
+   ],
+   "area": null,
+   "openedAt": null,
+   "revenue": 26,
+   "src": "长图"
+  }
+ ],
+ "aliases": {
+  "mall-footfall": {},
+  "mall-media": {},
+  "mall-affinity": {},
+  "mall-firststore": {},
+  "mall-revenue": {}
+ },
+ "$comment": "ka8 2026-09-30：补录联商长图独有 48 家（revenue=长图口径2025，命主拍板）；全表 footfallTier 统一按营收分档（≥100→10/60-100→9/35-60→8/20-35→7/10-20→6/5-10→5/<5→4）；keywords 品牌词多城共享=命主确认集团体系搜索特性。 ka8-R2 2026-09-30：审计漏补录修复二轮 +49 家（同城对照逐行裁定；边界处置：上海合生汇并入五角场合生汇/罗湖万象城三期并入深圳万象城/长沙国金街并入IFS/福州东二环泰禾=命主福州泰禾行/前海壹方城=基线前海万象同场/成都天府和远郊=OCR噪声剔除）。 ka8-R3 2026-09-30：审计二审判 5 对同场双开（EFC/杭州国大/南京金鹰世界/厦门磐基/合肥银泰二期）删除 r2 侧实体保留基线/命主面（金鹰世界 17/银泰二期 26 长图值候命主裁量）；三行简称补齐。 ka8-R4 2026-09-30：命主拍板「改」——前海万象更名深圳前海壹方城(55)+新街口金鹰17+厦门磐基30+银泰二期独立26（看板 d-ka8-qianhai-mixc-name/d-ka8-samevenue-value-ruling decided）。"
+}

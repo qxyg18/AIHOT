@@ -23,9 +23,18 @@ interface UsageRow {
   currency: string | null;
 }
 
+interface TotalRow {
+  model: string;
+  calls: number;
+  ok: number;
+  tokens_in: string | null;
+  tokens_out: string | null;
+  tokens_cached: string | null;
+}
+
 export async function modelsOverview(days = 7) {
   const since = new Date(Date.now() - days * 86400_000);
-  const [sources, usage, prices, history, benches] = await Promise.all([
+  const [sources, usage, totalsRows, prices, history, benches] = await Promise.all([
     modelSources(),
     sql<UsageRow[]>`
       SELECT r.purpose, a.model, r.request->>'promptVersion' AS prompt_version, count(*)::int AS calls,
@@ -39,6 +48,16 @@ export async function modelsOverview(days = 7) {
       FROM receipt_attempts a JOIN receipts r ON r.id = a.receipt_id
       WHERE a.started_at >= ${since} AND a.origin = 'live' AND a.model IS NOT NULL
       GROUP BY 1, 2, 3 ORDER BY 1, 4 DESC`,
+    // 整站密匙消耗合计（按模型分组；全站现在一把 key，所有调用都计入）
+    sql<TotalRow[]>`
+      SELECT a.model, count(*)::int AS calls,
+             count(*) FILTER (WHERE a.status = 'received')::int AS ok,
+             sum((a.usage->>'prompt_tokens')::bigint) AS tokens_in,
+             sum((a.usage->>'completion_tokens')::bigint) AS tokens_out,
+             sum(coalesce((a.usage->'prompt_tokens_details'->>'cached_tokens')::bigint, 0)) AS tokens_cached
+      FROM receipt_attempts a
+      WHERE a.started_at >= ${since} AND a.origin = 'live' AND a.model IS NOT NULL
+      GROUP BY 1 ORDER BY 2 DESC`,
     sql<{ service: string; model: string; currency: string; input_per_mtok: string | null; output_per_mtok: string | null }[]>`
       SELECT service, model, currency, input_per_mtok, output_per_mtok FROM service_prices`,
     sql<{ at: Date; actor: string; subject: string; reason: string | null; before: unknown; after: unknown }[]>`
@@ -82,7 +101,15 @@ export async function modelsOverview(days = 7) {
       })),
   }));
   const choices = Object.values(MODELS).map((m) => ({ key: m.key, service: m.service, vision: !!m.vision }));
-  return { days, capabilities, choices, history, benches };
+  const totals = totalsRows.map((t) => ({
+    model: t.model,
+    calls: t.calls,
+    ok: t.ok,
+    tokensIn: Number(t.tokens_in ?? 0),
+    tokensOut: Number(t.tokens_out ?? 0),
+    tokensCached: Number(t.tokens_cached ?? 0),
+  }));
+  return { days, totals, capabilities, choices, history, benches };
 }
 
 /** Switches a capability to another registered model (or back to the environment/default when null). */

@@ -10,11 +10,14 @@ import { sql } from "../db.ts";
 import { cached } from "../lib/cache.ts";
 import { escapeXml } from "../lib/text.ts";
 import { siteUrl } from "./links.ts";
+import { LEADERBOARD_PUBLIC_BOARDS } from "@aihot/contracts/taxonomy";
 import { leaderboardUrls } from "../leaderboard/read.ts";
 import { topicPageCounts } from "./topics.ts";
 
 async function leaderboardDetailUrls(): Promise<string[]> {
   const fixed = new Set(["/leaderboard", "/leaderboard/sources", "/leaderboard/rules"]);
+  // Category pages are pushed separately below from the same live-board source; keep them out of the
+  // detail list so they are not listed twice.
   return (await leaderboardUrls()).filter((u) => !fixed.has(u) && !u.startsWith("/leaderboard/category/"));
 }
 
@@ -57,7 +60,7 @@ async function build(): Promise<string> {
       { loc: "/leaderboard/sources", changefreq: "weekly", priority: 0.5 },
       { loc: "/leaderboard/rules", changefreq: "monthly", priority: 0.4 },
     );
-    for (const board of ["coding", "reasoning", "knowledge", "professional"]) entries.push({ loc: `/leaderboard/category/${board}`, changefreq: "daily", priority: 0.6 });
+    for (const board of LEADERBOARD_PUBLIC_BOARDS.filter((k) => k !== "brand")) entries.push({ loc: `/leaderboard/category/${board}`, changefreq: "daily", priority: 0.6 });
   }
   if (FEATURES.codexResetMonitor) entries.push({ loc: "/codex-reset", changefreq: "hourly", priority: 0.6 });
   const reports = await sql<{ kind: string; key: string; generated_at: Date }[]>`SELECT kind, key, generated_at FROM reports ORDER BY kind, key DESC`;
@@ -75,7 +78,8 @@ async function build(): Promise<string> {
       WHERE f.story_id = stories.id AND fa.role IN ('primary', 'report') AND p.visibility = 'public' AND p.eligible)
     ORDER BY latest_at DESC NULLS LAST LIMIT 500`;
   for (const s of stories) entries.push({ loc: `/story/${s.public_id}`, lastmod: s.latest_at, changefreq: "daily", priority: 0.5 });
-  // Model pages exist only for models on a public top-30 board; source pages for every registered source.
+  // Model pages exist only for models on a public board (brand capped at 80 entries, mall at 1000);
+  // source pages for every registered source.
   if (FEATURES.leaderboard) for (const loc of await leaderboardDetailUrls()) entries.push({ loc, changefreq: "weekly", priority: 0.4 });
   const items = await sql<{ id: string; t: Date }[]>`
     SELECT article_id AS id, updated_at AS t FROM publications WHERE visibility = 'public' AND indexable ORDER BY timeline_at DESC LIMIT ${MAX_URLS - entries.length}`;

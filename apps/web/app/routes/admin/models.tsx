@@ -26,6 +26,7 @@ interface Usage {
 
 interface Models {
   days: number;
+  totals: Array<{ model: string; calls: number; ok: number; tokensIn: number; tokensOut: number; tokensCached: number }>;
   capabilities: Array<{ key: string; label: string; env: string; defaultModel: string; vision: boolean; current: { model: string; source: "admin" | "env" | "default" }; usage: Usage[] }>;
   choices: Array<{ key: string; service: string; vision: boolean }>;
   history: Array<{ at: string; actor: string; subject: string; reason: string | null; before: { model: string; source: string } | null; after: { model: string; source: string } | null }>;
@@ -55,6 +56,46 @@ export default function ModelsAdmin({ loaderData: m }: Route.ComponentProps) {
       actions={<FilterChips param="days" options={[{ value: "1", label: "24 小时" }, { value: "", label: "7 天" }, { value: "30", label: "30 天" }]} />}
     >
       <div className="grid gap-5">
+        <Card
+          title={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              密匙消耗合计
+              <Badge tone="accent">近 {m.days} 天</Badge>
+            </span>
+          }
+          pad={false}
+        >
+          {(() => {
+            if (m.totals.length === 0) return <Empty>{m.days} 天内没有调用</Empty>;
+            const rows = [
+              ...m.totals,
+              {
+                model: "合计",
+                calls: m.totals.reduce((a, t) => a + t.calls, 0),
+                ok: m.totals.reduce((a, t) => a + t.ok, 0),
+                tokensIn: m.totals.reduce((a, t) => a + t.tokensIn, 0),
+                tokensOut: m.totals.reduce((a, t) => a + t.tokensOut, 0),
+                tokensCached: m.totals.reduce((a, t) => a + t.tokensCached, 0),
+              },
+            ];
+            return (
+              <DataTable
+                dense
+                rows={rows}
+                rowKey={(t) => t.model}
+                columns={[
+                  { key: "m", label: "模型", render: (t) => <span className={`whitespace-nowrap font-mono text-[12px] ${t.model === "合计" ? "font-semibold" : ""}`}>{t.model}</span> },
+                  { key: "c", label: "调用", align: "right", render: (t) => num(t.calls) },
+                  { key: "ok", label: "成功", align: "right", render: (t) => num(t.ok) },
+                  { key: "i", label: "输入 token", align: "right", render: (t) => <span className="whitespace-nowrap">{num(t.tokensIn)}</span> },
+                  { key: "o", label: "输出 token", align: "right", render: (t) => <span className="whitespace-nowrap">{num(t.tokensOut)}</span> },
+                  { key: "t", label: "合计 token", align: "right", render: (t) => <span className="whitespace-nowrap font-semibold">{num(t.tokensIn + t.tokensOut)}</span> },
+                  { key: "k", label: "其中缓存命中", align: "right", render: (t) => <span className="whitespace-nowrap text-ink-3">{num(t.tokensCached)}</span> },
+                ]}
+              />
+            );
+          })()}
+        </Card>
         {m.capabilities.map((c) => {
           const total = c.usage.reduce((a, u) => a + u.calls, 0);
           return (

@@ -3,8 +3,11 @@
 // environment variable or the admin's model page picks one of the named presets below.
 import type { z } from "zod";
 import { config, credential } from "../config.ts";
+import { llmOverrides } from "../admin/llmconfig.ts";
+import { buildLlmRequest, isAnthropicEndpoint, replyText, usageOf } from "./llmEndpoint.ts";
 import { sha256 } from "../lib/ids.ts";
 import { completeReceipt, paidRequest, ProviderRejectedError, rejectReceivedResponse } from "./receipts.ts";
+import { isMimoBalanceError, openMimoCircuit } from "./mimo.ts";
 import { sql } from "../db.ts";
 
 export interface ModelSpec {
@@ -155,74 +158,86 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   const spec = MODELS[opts.model];
   if (!spec) throw new Error(`Unknown model ${opts.model}`);
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const baseUrl = credential("models", spec.baseUrlEnv);
-  const apiKey = credential("models", spec.apiKeyEnv);
-  if (!baseUrl || !apiKey || !spec.model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
+  // The default endpoint additionally takes the admin override (settings `llm.config`), which wins
+  // over env/credentials-file; named presets keep their own keys.
+  const override = spec.key === "default" ? await llmOverrides() : null;
+  const baseUrl = override?.baseUrl?.trim() || credential("models", spec.baseUrlEnv);
+  const apiKey = override?.apiKey?.trim() || credential("models", spec.apiKeyEnv);
+  const model = override?.model?.trim() || spec.model;
+  if (!baseUrl || !apiKey || !model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
   const temperature = opts.temperature ?? 0.2;
   const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.key.endsWith("-think") ? 4000 : 0);
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
-  const body: Record<string, unknown> = {
-    model: spec.model,
-    messages: [
-      // A prompt given as one user message (the title/summary prompts) has no system message.
-      ...(opts.system ? [{ role: "system", content: opts.system }] : []),
-      // Multimodal parts go through as parts; plain objects are sent as JSON text.
-      { role: "user", content: typeof opts.user === "string" || Array.isArray(opts.user) ? opts.user : userText },
-    ],
+  const wire = buildLlmRequest({
+    baseUrl,
+    apiKey,
+    model,
+    system: opts.system,
+    user: typeof opts.user === "string" || Array.isArray(opts.user) ? opts.user : userText,
     temperature,
-    max_tokens: maxTokens,
-    ...(spec.jsonMode && opts.json !== false ? { response_format: { type: "json_object" } } : {}),
-    ...(spec.extra ?? {}),
-  };
+    maxTokens,
+    jsonMode: spec.jsonMode && opts.json !== false,
+    extra: spec.extra,
+  });
 
-  const receipt = await paidRequest(
-    {
-      service: spec.service,
-      model: spec.model,
-      purpose: opts.purpose,
-      subject: opts.subject,
-      identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null },
-      requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
-      attemptTag: opts.attemptTag,
-    },
-    async () => {
-      const started = Date.now();
-      let res: Response;
-      try {
-        res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
-        });
-      } catch (error) {
-        if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);
-        throw error;
-      }
-      const text = await res.text();
-      if (!res.ok) {
-        const retryable = res.status === 429 || res.status >= 500;
-        throw new ProviderRejectedError(`HTTP ${res.status}: ${text.slice(0, 500)}`, res.status, retryable);
-      }
-      let json: Record<string, unknown>;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = { unparsable: text.slice(0, 20000) };
-      }
-      const usage = (json.usage as Record<string, unknown> | undefined) ?? null;
-      return {
-        response: { ...json, _latencyMs: Date.now() - started },
-        requestId: (json.id as string | undefined) ?? res.headers.get("x-request-id"),
-        usage,
-        cost: null,
-      };
-    },
-  );
+  let receipt: Awaited<ReturnType<typeof paidRequest>>;
+  try {
+    receipt = await paidRequest(
+      {
+        service: spec.service,
+        model,
+        purpose: opts.purpose,
+        subject: opts.subject,
+        identity: { model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: (isAnthropicEndpoint(baseUrl) ? null : spec.extra) ?? null },
+        requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
+        attemptTag: opts.attemptTag,
+      },
+      async () => {
+        const started = Date.now();
+        let res: Response;
+        try {
+          res = await fetch(wire.url, {
+            method: "POST",
+            headers: wire.headers,
+            body: wire.body,
+            signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
+          });
+        } catch (error) {
+          if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);
+          throw error;
+        }
+        const text = await res.text();
+        if (!res.ok) {
+          const retryable = res.status === 429 || res.status >= 500;
+          throw new ProviderRejectedError(`HTTP ${res.status}: ${text.slice(0, 500)}`, res.status, retryable);
+        }
+        let json: Record<string, unknown>;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          json = { unparsable: text.slice(0, 20000) };
+        }
+        const usage = usageOf(json);
+        return {
+          response: { ...json, _latencyMs: Date.now() - started },
+          requestId: (json.id as string | undefined) ?? res.headers.get("x-request-id"),
+          usage,
+          cost: null,
+        };
+      },
+    );
+  } catch (error) {
+    // ka3: a balance-type MIMO rejection opens the circuit, so the daytime shift stops calling it
+    // for two hours and heavy work waits for the discounted window again.
+    if (spec.service === "mimo" && error instanceof ProviderRejectedError && isMimoBalanceError(error.status, error.message)) {
+      await openMimoCircuit(error.message);
+    }
+    throw error;
+  }
 
-  const response = receipt.response as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }>; usage?: Record<string, unknown> };
-  const content = response.choices?.[0]?.message?.content ?? "";
+  const response = receipt.response as Record<string, unknown>;
+  const content = replyText(response);
   let parsed: z.infer<S>;
   try {
     parsed = opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
@@ -231,7 +246,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     await rejectReceivedResponse(receipt.receiptId, `unusable output: ${String(error).slice(0, 500)}`);
     throw new ModelOutputError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${String(error).slice(0, 300)}`);
   }
-  return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: response.usage ?? null };
+  return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: usageOf(response) ?? null };
 }
 
 export async function markReceiptsCompleted(ids: number[]): Promise<void> {

@@ -12,6 +12,7 @@ import { banSource, eraseFeedback, feedbackScreenshot, listFeedback, unbanSource
 import { listMonitorEvents, listMonitorPosts, relinkPost, resolveMonitorPost, reviewReceipt, setWithdrawn, updateMonitorEvent } from "@aihot/backend/admin/monitor";
 import { releaseReceipt, requeueFailedArticles, resolveDelivery, runsOverview } from "@aihot/backend/admin/runs";
 import { listBudgets, listTargets, replaceContactQr, setTargetEnabled, updateBudget } from "@aihot/backend/admin/settings";
+import { llmConfigOverview, setLlmConfig, testLlmConnection } from "@aihot/backend/admin/llmconfig";
 import { createSource, fetchNow, listSources, previewSource, sourceDetail, updateSource } from "@aihot/backend/admin/sources";
 import { sql } from "@aihot/backend/db";
 import { loadContact } from "@aihot/backend/site/contact";
@@ -115,6 +116,11 @@ export function registerAdmin(app: FastifyInstance) {
     return orNotFound(req, reply, await setTargetEnabled(param(req, "key"), !!b.enabled, b.reason, actorOf(admin)));
   }));
   app.put("/api/admin/budgets/:service", adminHandler(async (req, _reply, admin) => updateBudget(param(req, "service"), body(req) as never, actorOf(admin))));
+
+  // LLM API endpoint configuration (base URL / API key / model) with a live test button.
+  app.get("/api/admin/llm-config", adminHandler(async () => llmConfigOverview()));
+  app.put("/api/admin/llm-config", adminHandler(async (req, _reply, admin) => setLlmConfig(body(req) as never, actorOf(admin))));
+  app.post("/api/admin/llm/test", adminHandler(async () => testLlmConnection()));
 
 
   // Models and evaluation (F20)

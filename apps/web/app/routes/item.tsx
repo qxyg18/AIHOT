@@ -2,7 +2,7 @@ import { SITE, withSubject } from "@aihot/industry/site";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 import type { Route } from "./+types/item";
-import type { SiteItemDetail } from "@aihot/contracts/site";
+import type { SiteInsightsResponse, SiteItemDetail } from "@aihot/contracts/site";
 import { loadOr404 } from "../lib/api.server";
 import { breadcrumbLd, pageMeta, siteUrl, titled } from "../lib/seo";
 import { fullDateTime, relativeTime } from "../lib/format";
@@ -13,6 +13,9 @@ import { PillTabs } from "../components/ui/Tabs";
 import { ArticleLayout, RailSection } from "../components/ui/Page";
 import { Menu, MenuItem } from "../components/ui/Menu";
 import { StarButton } from "../features/feed/parts";
+import { BrandRailCards, EntityTagRow, MallRailCards, type SiteMallCard } from "../features/item/BrandCards";
+import { DeepRead } from "../features/item/DeepRead";
+import { InsightRailCards } from "../features/item/InsightCards";
 import { GroupSources } from "../features/feed/ReadingGroup";
 import { StoryFollowups } from "../features/item/StoryFollowups";
 import { MediaGallery } from "../features/item/MediaGallery";
@@ -23,7 +26,15 @@ const PosterSheet = lazy(() => import("../features/item/PosterSheet"));
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const item = await loadOr404<SiteItemDetail>(`/api/site/items/${encodeURIComponent(params.id)}`, { signal: request.signal });
-  return { item };
+  // ka2: research reports carry their extracted viewpoints; a miss (not extracted yet) renders nothing.
+  const insights = item.category === "research"
+    ? await loadOr404<SiteInsightsResponse>(`/api/site/insights/article/${encodeURIComponent(item.id)}`, { signal: request.signal }).catch(() => ({ insights: [] }))
+    : { insights: [] };
+  // zx18: deterministic entity tags (brands, malls, chains, channels) for the rail cards.
+  const entityRes = await loadOr404<{ entities: Array<{ type: "brand" | "mall" | "mall-chain" | "channel"; slug: string; name: string }> }>(
+    `/api/site/articles/${encodeURIComponent(item.id)}/entities`, { signal: request.signal },
+  ).catch(() => ({ entities: [] as Array<{ type: "brand" | "mall" | "mall-chain" | "channel"; slug: string; name: string }> }));
+  return { item, insights: insights.insights, entities: entityRes.entities };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -96,7 +107,7 @@ async function shareOrCopy(item: Pick<SiteItemDetail, "id" | "title">): Promise<
 }
 
 export default function ItemPage() {
-  const { item } = useLoaderData<typeof loader>();
+  const { item, insights, entities } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const hasTranslation = item.hasTranslation;
   const lang = item.bodyLanguage;
@@ -242,6 +253,9 @@ export default function ItemPage() {
           </div>
         </RailSection>
       )}
+      <InsightRailCards insights={insights} />
+      <MallRailCards malls={entities.filter((e) => e.type !== "brand") as SiteMallCard[]} />
+      <BrandRailCards brands={item.brands} />
     </>
   );
 
@@ -301,6 +315,9 @@ export default function ItemPage() {
             )}
           </div>
           {!isX && <h1 className="text-[26px] font-bold leading-[1.38] tracking-[-0.01em] text-ink lg:text-[32px] lg:leading-[1.34] xl:text-[36px] xl:leading-[1.3]">{item.title}</h1>}
+          <div className="mt-2.5">
+            <EntityTagRow entities={entities} />
+          </div>
           {!isX && item.originalTitle && <p className="mt-2.5 text-[14px] leading-relaxed text-ink-4">{item.originalTitle}</p>}
 
           {item.summary && (
@@ -309,6 +326,9 @@ export default function ItemPage() {
               <p className="text-[18px] leading-[1.7] text-ink xl:text-[20px] xl:leading-[1.7]">{item.summary}</p>
             </section>
           )}
+
+          {/* ka4：深解读紧跟导读——不点原文也能懂的一段大白话；无品牌/商业体/大盘信号时不渲染。 */}
+          {!summaryOnly && <DeepRead read={item.deepRead} />}
 
           {item.reason && !summaryOnly && (
             <section className="mt-6 border-t border-line pt-4 lg:hidden">

@@ -1,6 +1,7 @@
 // First-party site API (/api/site/*). Not a public API: it may evolve with the website,
 // but it is served from the same public read layer as v1, RSS and MCP.
 import type { CategoryKey, ChannelKey } from "./taxonomy.ts";
+import type { LbProfile } from "./leaderboard.ts";
 
 export type SourceKind = "rss" | "web_list" | "json_list" | "x_search" | "mp_account" | "external";
 
@@ -375,6 +376,46 @@ export interface SiteItemDetail extends Omit<ItemDetail, "x"> {
   x: Omit<XPostView, "text" | "translation"> | null;
   hasTranslation: boolean;
   bodyLanguage: "zh" | "original";
+  /** 标题命中的品牌档案卡（榜单实体名录 keywords 匹配，最多 3 张）；空数组=无命中。 */
+  brands: SiteBrandCard[];
+  /** 深解读（ka4）：不点开原文也能懂的一段大白话；null=本文无品牌/商业体/大盘信号，仅保留 AI 导读。 */
+  deepRead: SiteDeepRead | null;
+}
+
+/** 深解读（ka4）：站内历史+档案支撑的大白话解读，angle 标明依据的是哪类材料。 */
+export interface SiteDeepRead {
+  kind: "brand" | "mall" | "mixed" | "macro";
+  angle: "history" | "analogy" | "direct" | "macro";
+  interpretation: string;
+  entities: Array<{ type: "brand" | "mall"; name: string }>;
+  updatedAt: string;
+}
+
+/** 研报观点（ka2）：研报正文里对品牌/商业体/行业的单条研判，figures 保留数值+单位+口径。 */
+export interface SiteInsight {
+  entityId: string | null;
+  entityName: string | null;
+  kind: "rating" | "forecast" | "performance" | "expansion" | "product" | "risk" | "industry";
+  stance: "positive" | "neutral" | "negative" | null;
+  statement: string;
+  figures: Array<{ value: string; unit: string; caliber: string }>;
+  quote: string | null;
+  org: string | null;
+  publishedAt: string | null;
+  articleUrl: string;
+  articleTitle: string;
+}
+
+export interface SiteInsightsResponse {
+  insights: SiteInsight[];
+}
+
+/** 文章详情右侧的品牌简介卡数据：榜单名录实体 + 人工种子档案。 */
+export interface SiteBrandCard {
+  slug: string;
+  name: string;
+  provider: string | null;
+  profile: LbProfile | null;
 }
 
 export interface StoryFollowup {

@@ -4,11 +4,13 @@ import { FEATURES } from "@aihot/industry/features";
 import { closeDb, sql } from "@aihot/backend/db";
 import { getBoss, stopBoss } from "@aihot/backend/jobs/queue";
 import { registerContentJobs } from "@aihot/backend/jobs/content";
+import { registerInsightJobs } from "@aihot/backend/editorial/insights";
 import { registerSourceJobs } from "@aihot/backend/jobs/sources";
 import { registerEventJobs } from "@aihot/backend/jobs/events";
 import { registerNotifyJobs } from "@aihot/backend/jobs/notify";
 import { registerPublicationJobs } from "@aihot/backend/jobs/publication";
 import { registerSchedules } from "./schedules.ts";
+import { brandProfilesEmpty } from "@aihot/backend/brandprofiles/refresh";
 import { ensureContentTargets } from "@aihot/backend/notify/deliver";
 import { startHeartbeat } from "@aihot/backend/operations/heartbeat";
 
@@ -17,6 +19,7 @@ assertProductionSecrets([["auth", "IMG_PROXY_SIGN_SECRET"]]);
 await ensureContentTargets();
 const boss = await getBoss();
 await registerContentJobs(boss);
+await registerInsightJobs(boss);
 if (process.env.COLLECT_ENABLED !== "false") await registerSourceJobs(boss);
 await registerEventJobs(boss);
 await registerNotifyJobs(boss);
@@ -27,6 +30,8 @@ if (FEATURES.leaderboard) {
   const [published] = await sql`SELECT 1 FROM lb_runs WHERE status = 'published' LIMIT 1`;
   if (!published) await boss.send("cron.leaderboard.round", {}, { singletonKey: "first-round" });
 }
+// Brand profiles (zw14): an empty table gets its first collection round at startup.
+if (await brandProfilesEmpty()) await boss.send("cron.brandprofiles.refresh", {}, { singletonKey: "first-round" });
 const heartbeat = startHeartbeat("worker");
 console.log(JSON.stringify({ level: "info", msg: "worker started", pid: process.pid }));
 
