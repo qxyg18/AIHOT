@@ -258,17 +258,22 @@ test("reserved slots: macro/mall/brand stories fill their quotas on domestic sin
   };
   const freeStory = await setup(`FREE-${T}`, [{ articleId: await article() }, { articleId: await article() }]);
   const macroStory = await setup(`MACRO-${T}`, [{ articleId: await categorized("statistics") }]);
+  // 双参与者 mall 头部稿：同时具备自由位与预留位资格，必须按自由位进榜（无 mall 徽章），配额让给单源候选。
+  const mallLead = await setup(`MALL-LEAD-${T}`, [{ articleId: await categorized("mall") }, { articleId: await article() }]);
   const mallStories = [await setup(`MALL-1-${T}`, [{ articleId: await categorized("mall") }]), await setup(`MALL-2-${T}`, [{ articleId: await categorized("mall") }]), await setup(`MALL-3-${T}`, [{ articleId: await categorized("mall") }])];
   const brandStory = await setup(`BRAND-${T}`, [{ articleId: await categorized("brand-moves") }]);
 
   await computeHotRanking();
   const entries = (await latestHotRanking())!.entries;
   assert.ok(entries.some((e) => e.storyId === freeStory), "the free-slot story (multi-participant) ranks");
+  const lead = entries.find((e) => e.storyId === mallLead);
+  assert.ok(lead, "the multi-participant mall lead ranks on its own merit");
+  assert.ok(!lead.badges.includes("mall"), "a free-slot-qualified story never wears the reserved badge");
   const macro = entries.find((e) => e.storyId === macroStory);
   assert.ok(macro, "a domestic single-source statistics story takes the macro slot");
   assert.ok(macro.badges.includes("macro"), "the macro slot is labelled");
   const mallOn = entries.filter((e) => mallStories.includes(e.storyId));
-  assert.equal(mallOn.length, 2, "the mall quota holds at 2 even with 3 candidates");
+  assert.equal(mallOn.length, 2, "the mall quota holds at 2 even with 3 single-source candidates");
   assert.ok(mallOn.every((e) => e.badges.includes("mall")), "mall slots are labelled");
   const brand = entries.find((e) => e.storyId === brandStory);
   assert.ok(brand?.badges.includes("brand"), "a brand-moves story takes a brand slot");

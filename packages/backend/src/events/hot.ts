@@ -16,7 +16,8 @@ const FOREIGN_TAG = "海外";
 
 /**
  * 预留资讯位（命主 2026-09-30 定）：固定 10 条里宏观市场报告 1、商业体 2、品牌 2。
- * 自由位（多源共振）先选，预留位从同类未入选事件里保底补足（国内单源即可），空槽名额并入自由位。
+ * 自由位（多源共振）先选，预留位从「自由位未选中的」同类国内事件里保底补足（国内 editorial
+ * 参与 ≥1，单源即可），自由位热度尾部为预留让位；预留未填满的名额留在自由位。
  * category 来自代表稿的内容理解（analyses.category），映射 key 见 industry/taxonomy.ts。
  */
 const RESERVED_SLOTS: Array<{ badge: "macro" | "mall" | "brand"; categories: string[]; slots: number }> = [
@@ -118,7 +119,7 @@ async function storyCategories(storyIds: number[], at: Date): Promise<Map<number
     FROM facts f
     JOIN fact_articles fa ON fa.fact_id = f.id
     JOIN publications p ON p.article_id = fa.article_id AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= ${at})
-    JOIN analyses a ON a.article_id = p.article_id
+    JOIN analyses a ON a.article_id = p.article_id AND (a.relevance IS NULL OR a.relevance != 'block')
     WHERE f.story_id = ANY(${storyIds}::bigint[])
     ORDER BY f.story_id, a.score DESC NULLS LAST, a.input_revision DESC`;
   for (const r of rows) out.set(Number(r.story_id), r.category);
@@ -131,31 +132,27 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
   const byHeat = (a: HeatRow, b: HeatRow) => Number(b.heat) - Number(a.heat) || (b.latest_at?.getTime() ?? 0) - (a.latest_at?.getTime() ?? 0);
   // 国内为主：自由位须多源共振（≥2 参与者且国内 editorial 参与）；海外源的参与热度已按权重折算。
   const domestic = (r: HeatRow) => Number(r.domestic_editorial) >= 1;
-  const free = rows.filter((r) => Number(r.participants) >= MIN_PARTICIPANTS && Number(r.editorial_participants) >= 1 && domestic(r)).sort(byHeat);
+  // 自由位先选（至多 10 席）：凭多源共振实力进榜。
+  const free = rows.filter((r) => Number(r.participants) >= MIN_PARTICIPANTS && Number(r.editorial_participants) >= 1 && domestic(r)).sort(byHeat).slice(0, 10);
 
   // 预留资讯位（命主 2026-09-30 定）：固定 10 条里宏观市场报告 1、商业体 2、品牌 2。
-  // 准入放宽到国内单源（事件须有国内信源参与），自由位已选的不重复占位；空槽名额并入自由位。
+  // 预留位从「自由位未选中的」同类国内事件（国内 editorial 参与 ≥1，单源即可）里保底补足；
+  // 自由位热度尾部为预留让位（配额是硬下限），预留未填满的名额留在自由位。
   const categories = await storyCategories(rows.map((r) => r.story_id), at);
+  const freeIds = new Set(free.map((r) => r.story_id));
   const reserved: Array<{ row: HeatRow; badge: "macro" | "mall" | "brand" }> = [];
-  const picked = new Set<number>();
   for (const spec of RESERVED_SLOTS) {
     const pool = rows
-      .filter((r) => domestic(r) && !picked.has(r.story_id) && spec.categories.includes(categories.get(r.story_id) ?? ""))
+      .filter((r) => domestic(r) && !freeIds.has(r.story_id) && spec.categories.includes(categories.get(r.story_id) ?? ""))
       .sort(byHeat)
       .slice(0, spec.slots);
-    for (const row of pool) {
-      reserved.push({ row, badge: spec.badge });
-      picked.add(row.story_id);
-    }
+    for (const row of pool) reserved.push({ row, badge: spec.badge });
   }
-  const freeCapacity = Math.max(0, 10 - reserved.length);
-  const chosen: Array<{ row: HeatRow; badge: "macro" | "mall" | "brand" | null }> = reserved.map(({ row, badge }) => ({ row, badge }));
-  for (const row of free) {
-    if (chosen.length >= 10) break;
-    if (picked.has(row.story_id)) continue;
-    picked.add(row.story_id);
-    chosen.push({ row, badge: null });
-  }
+  const keepFree = Math.max(0, 10 - reserved.length);
+  const chosen: Array<{ row: HeatRow; badge: "macro" | "mall" | "brand" | null }> = [
+    ...free.slice(0, keepFree).map((row) => ({ row, badge: null as "macro" | "mall" | "brand" | null })),
+    ...reserved.map(({ row, badge }) => ({ row, badge: badge as "macro" | "mall" | "brand" | null })),
+  ];
   chosen.sort((x, y) => byHeat(x.row, y.row));
 
   const entries: HotEntry[] = [];

@@ -32,9 +32,9 @@ const BADGES: Record<HotEntryView["badges"][number], { label: string; tone: "hot
   surge: { label: "爆", tone: "hot", hint: "讨论快速增加" },
   new: { label: "新", tone: "accent", hint: "首报 6 小时内" },
   rising: { label: "发酵中", tone: "amber", hint: "讨论仍在增加" },
-  macro: { label: "宏观位", tone: "accent", hint: "宏观市场报告预留位（1 条）" },
-  mall: { label: "商业体位", tone: "accent", hint: "商业体资讯预留位（2 条）" },
-  brand: { label: "品牌位", tone: "accent", hint: "品牌资讯预留位（2 条）" },
+  macro: { label: "宏观位", tone: "accent", hint: "宏观市场报告预留位" },
+  mall: { label: "商业体位", tone: "accent", hint: "商业体资讯预留位" },
+  brand: { label: "品牌位", tone: "accent", hint: "品牌资讯预留位" },
 };
 
 const RANK_COLOR = ["text-rank-1", "text-rank-2", "text-rank-3"];
