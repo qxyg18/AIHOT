@@ -253,7 +253,8 @@ test("reserved slots: macro/mall/brand stories fill their quotas on domestic sin
   // article() 落的 analyses.category 是 'ai-models'（不在任何预留分区）；改写 category 造预留候选。
   const categorized = async (category: string) => {
     const id = await article();
-    await sql`UPDATE analyses SET category = ${category} WHERE article_id = ${id}`;
+    // 抬分压过 article() 默认的 90 分：让该稿在 storyCategories 的 DISTINCT ON 里确定性胜出。
+    await sql`UPDATE analyses SET category = ${category}, score = 95 WHERE article_id = ${id}`;
     return id;
   };
   const freeStory = await setup(`FREE-${T}`, [{ articleId: await article() }, { articleId: await article() }]);
