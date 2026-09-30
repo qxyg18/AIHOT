@@ -1,45 +1,42 @@
 
-【AI 领域翻译规则 — 本平台 100% 是 AI/ML/LLM 行业内容，严格遵守】
+【童装零售领域翻译规则 — 本平台内容全部属于童装、母婴服饰与服装零售行业，严格遵守】
 
-1. 歧义默认值：以下词在中文有非 AI 歧义，**一律按 AI 含义翻译**：
-   - LLM = 大语言模型（绝不译"法学硕士"/"Master of Laws"）
-   - Token / tokens = 模型 token（保留英文；绝不译"代币"/"令牌"）
-   - Transformer = Transformer 架构（保留英文；不译"变压器"）
-   - Diffusion = 扩散模型（AI 生成，不是物理扩散）
-   - Agent / Agentic = AI 智能体 / 智能体的（不译"代理人"/"中介"）
-   - Alignment = 对齐（AI 安全语境）
-   - Inference = 推理（模型生成）
-   - Reasoning = 推理（注意：与 inference 都译"推理"，必要时用"链式推理"区分 CoT；reasoning model 指 o1/o3/R1 这类思考型模型）
-   - Embedding = 嵌入向量（也可保留英文）
-   - Distillation = 知识蒸馏
-   - Hallucination = 模型幻觉
-   - Fine-tune / Fine-tuning = 微调
-   - Pretrain / Pretraining = 预训练
-   - Context window = 上下文窗口
-   - Prompt = 提示词
-   - Skill / Skills = 技能（Claude 等 Agent 框架的能力包，不译"特长"）
+1. 歧义默认值：以下词在中文有歧义，**一律按本行业含义理解和翻译**：
+   - 童装 = 儿童服装（0–14 岁），不是儿童玩具或童书
+   - 婴童 = 婴幼儿与儿童（0–6 岁为主）· 大童 = 中大童（约 7–14 岁）· 小童 = 小童（约 3–6 岁）
+   - 客单 / 客单价 = 每笔交易平均金额（元）
+   - 件单 / 件单价 = 每件商品平均金额（元）
+   - 连带率 = 每笔交易平均购买件数（不译"关联销售"）
+   - 售罄率 = 已售数量占进货数量的比例
+   - 动销率 = 有销售记录的门店或 SKU 占比
+   - 吊牌价 = 商品标价；进货折扣 = 品牌给加盟商的供货折扣（如 52 折 = 按吊牌价 52% 供货）
+   - 正价 = 不打折的零售价；正价率 = 按原价售出的占比
+   - 平效 = 单位营业面积产出
+   - 加盟 = 加盟商独立经营、品牌授权供货；直营 = 品牌自营；联营 = 与商场共同经营并按销售额分成
+   - 铺货 = 把货品配到门店；补货 = 追加供货；调拨 = 门店间转移货品
+   - 上货波段 = 新品到店的时间批次
+   - 订货会 = 加盟商集中下单的会议
+   - 店效 = 单店销售额；可比同店 = 连续开业满一年的门店，用于同口径对比
 
-2. 以下专有名词**一律保留英文原文**，不翻译不加中文括注：
-   - AI 公司：OpenAI / Anthropic / Google DeepMind / xAI / Meta AI / Mistral / DeepSeek / Cohere / HuggingFace（HF）/ Runway / ElevenLabs / Suno / Pika / Midjourney / Perplexity
-   - 模型族（举例 + 通用规则）：GPT / Claude / Gemini / Llama / Qwen / Grok / o 系列 / DeepSeek / Mistral / Mixtral / Phi / Sora / Veo / Imagen
-     **规则**：任何大模型族名、产品代号一律保留英文
-   - 模型版本号（举例 + 通用规则）：GPT-5 / Claude 4.7 / Claude Sonnet 4.6 / Llama 4 / Gemini 3 / o3 / o4 / DeepSeek-V4 / Qwen3.7
-     **规则**：版本号一字不改（包括字母数字后缀如 4o / 4.7 / 405B / V4 / R1），绝不"翻译性扩写"（不要把 "405B" 译成 "4050 亿"，不要把 "V4" 译成 "第 4 代"）
-   - 技术缩写（举例 + 通用规则）：LLM / RAG / RLHF / DPO / LoRA / QLoRA / PEFT / MoE / CoT / ReAct / KV cache / SOTA / AGI / MCP / ADK / NPU / GPU / TPU
-     **规则**：任何 2-5 字母的全大写缩写，默认按 AI/ML 含义保留英文
-   - 评测基准（举例 + 通用规则）：MMLU / GPQA / HumanEval / SWE-bench / SWE-bench Verified / AIME / HLE / ARC-AGI / ARC-AGI 2 / MT-Bench / Chatbot Arena / Aider Polyglot / LiveCodeBench
-     **规则**：以 -bench / -eval 结尾或全大写的评测名一律保留英文
-   - AI 工具/产品：Cursor / Copilot / Codex / Aider / Devin / Cline / Claude Code / Windsurf / Zed / v0 / Bolt / Lovable / Replit Agent
-   - Agent 框架：LangChain / LangGraph / LlamaIndex / CrewAI / AutoGen / Pydantic AI / Vercel AI SDK / DSPy
-   - 推理/部署：Ollama / vLLM / SGLang / TensorRT / Triton / CUDA / ROCm
-   - 通用技术：API / SDK / CLI / IDE / SaaS / CDN / SSO / OAuth / JWT / WebSocket / SSE / gRPC
+2. 以下专有名词**一律保留原写法**，不翻译不加中文括注：
+   - 品牌名：Balabala / Mini Peace / moodytiger / ABC KIDS / LABI BABY / ANTA KIDS / Nike Kids / adidas Kids / LI-NING YOUNG / Peacebird / DAZZLE
+     **规则**：品牌英文名与官方写法一字不改，不要译成中文音译
+   - 上市公司简称与代码（保留代码）：森马服饰（002563）/ 安奈儿（002875）/ 起步股份（603557）/ 金发拉比（002762）/ 孩子王（301078）/ 爱婴室（603214）/ 太平鸟（603877）/ 比音勒芬（002832）/ 地素时尚（603587）/ 安踏体育（02020.HK）/ 李宁（02331.HK）
+   - 渠道与平台名：天猫 / 淘宝 / 京东 / 抖音 / 拼多多 / 唯品会 / 得物 / 小红书 / 微信小程序
+   - 商业缩写：SKU / SPU / GMV / ROI / O2O / DTC / KOL / KOC / IP / CPS / CRM / ERP
+     **规则**：任何全大写缩写默认保留英文
+   - 机构名：国家统计局 / 中国服装协会 / 中国商业联合会 / 中华全国商业信息中心 / 欧睿（Euromonitor）/ 凯度（Kantar）/ 尼尔森IQ
+   - 标准与合规：GB 31701 / GB/T 22854 / 国抽 / 缺陷产品召回 / 3C 认证
 
-3. 中国厂商**优先用官方中文品牌名**（首次出现可双标"千问（Qwen3）"，后续选一种保持一致）：
-   - 千问（Qwen）/ 文心一言 / 智谱（GLM）/ 月之暗面（Kimi）/ 深度求索（DeepSeek）/ 阶跃星辰（Step）/ 零一万物（Yi）/ 百川 / 豆包（字节）/ 混元（腾讯）/ 可灵（Kling，快手）/ 即梦（Jimeng，字节）/ MiniMax（不译）/ 美团 LongCat / 昆仑万维 Skywork / 面壁 MiniCPM / 华为昇腾 / 寒武纪
+3. 海外品牌与零售商**优先用通行中文名，无通行译名则保留英文**：
+   - 保留英文：Carter's / Gymboree / OshKosh / The Children's Place / Next / Primark / Mothercare
+   - 用中文名：优衣库（Uniqlo）/ 沃尔玛（Walmart）/ 塔吉特（Target）/ 梅西百货（Macy's）/ 宜家（IKEA）
+   **规则**：同一篇文章内保持一致，不混用中英文两种写法
 
-4. 代码 / 命令 / URL / 数字单位 **一字不改**保留：
-   - 反引号代码 `code` 不翻译
-   - 命令如 /code-review、pip install、npm run 不译（不要译"代码审查"）
-   - URL 原样
-   - 数字+单位：8k context / 175B params / 3.5x speedup / $3 per M tokens / 99.9%
-   - 金额、参数量、比例、区间必须保留原文的阿拉伯数字和单位；不要把 $10B-$100B 改写成“数百亿至数千亿美元”等中文数量词
+4. 数字、金额与单位**一字不改**保留：
+   - 金额：¥1,200 万 / 3.2 亿元 / $45M / 营收 8,975 万元
+   - 比例与折扣：同比 +5.1% / 环比 -7.2% / 毛利率 41.2% / 52 折 / 6.5 折
+   - 门店数：231 家 / 净减少 21 家 / 净增 8 家
+   - 单店指标：件单价 137 元 / 客单价 265 元 / 平效 1.8 万元/㎡
+   - **禁止**把「同比 +5.1%」改写成「小幅增长」，把「净减少 21 家」改写成「门店数量有所下降」，把具体金额改写成「数千万元」
+   - 折扣统一写成百分位 1 位小数（如 92.1%），原文用「X 折」写法时按原文保留
