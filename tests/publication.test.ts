@@ -211,13 +211,27 @@ test("the hot board is domestic-first: a foreign-only echo stays off, one domest
     { articleId: await article(), sourceId: SOURCE },
     { articleId: await article(), sourceId: FOREIGN },
   ]);
-  await computeHotRanking();
-  const entries = (await latestHotRanking())!.entries;
-  assert.ok(!entries.some((e) => e.storyId === foreignOnly), "a foreign-only echo does not rank");
-  const led = entries.find((e) => e.storyId === domesticLed);
-  assert.ok(led, "one domestic source carries a story onto the board");
-  // 测试源没有 last_ok_at：事件在 behind 分支下参与对比，trend 不得因投影缺失退化成 unknown。
-  assert.notEqual(led.trend, "unknown", "the behind comparison keeps its trend (heat_prev_obs projection intact)");
+  // behind 对比要有判别力：SOURCE 抓取已跟上（不 behind），FOREIGN 保持 last_ok_at 为空（behind 分支必走）；
+  // 再给事件一条 7h 前的国内观测（独立文章，story_signals 主键是 story+article），使 prevAll>0、trend 走 up/unknown 的真实分叉。
+  await sql`UPDATE sources SET last_ok_at = now() WHERE id = ${SOURCE}`;
+  const [ledStory] = await sql<{ id: number }[]>`SELECT id FROM stories WHERE title = ${`DOMESTIC-LED-${T}`}`;
+  const [ledFact] = await sql<{ id: number }[]>`SELECT id FROM facts WHERE story_id = ${ledStory!.id} LIMIT 1`;
+  const earlyArticle = await article();
+  await sql`INSERT INTO fact_articles (fact_id, article_id, role) VALUES (${ledFact!.id}, ${earlyArticle}, 'report')`;
+  await sql`INSERT INTO story_signals (story_id, article_id, participant_key, source_id, kind, observed_at)
+            VALUES (${ledStory!.id}, ${earlyArticle}, ${`participant-early-${T}`}, ${SOURCE}, 'editorial', now() - interval '7 hours')`;
+  try {
+    await computeHotRanking();
+    const entries = (await latestHotRanking())!.entries;
+    assert.ok(!entries.some((e) => e.storyId === foreignOnly), "a foreign-only echo does not rank");
+    const led = entries.find((e) => e.storyId === domesticLed);
+    assert.ok(led, "one domestic source carries a story onto the board");
+    // FOREIGN 参与使事件走 behind 分支：投影若丢失，prev=NaN → pct=null → trend 退化为 unknown，断言必失败。
+    assert.notEqual(led.trend, "unknown", "the behind comparison keeps its trend (heat_prev_obs projection intact)");
+    assert.ok(led.trendPct !== null, "the behind comparison keeps a percentage");
+  } finally {
+    await sql`UPDATE sources SET last_ok_at = NULL WHERE id = ${SOURCE}`;
+  }
 });
 
 test("item pages follow the live rule: unsummarised editorial items keep one, hot_signal items have none", async () => {
