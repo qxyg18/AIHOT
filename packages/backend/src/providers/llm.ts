@@ -167,7 +167,12 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   if (!baseUrl || !apiKey || !model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
   const temperature = opts.temperature ?? 0.2;
-  const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.key.endsWith("-think") ? 4000 : 0);
+  // Reasoning models burn output budget on thinking tokens (GLM 5.3 always reasons;
+  // its Anthropic layer ignores thinking:disabled — ka4). Any spec with thinking
+  // explicitly enabled gets the same headroom as the "-think" variants.
+  const specExtra = (spec.extra ?? {}) as { thinking?: { type?: string }; enable_thinking?: boolean };
+  const thinkingOn = specExtra.thinking?.type === "enabled" || specExtra.enable_thinking === true;
+  const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.key.endsWith("-think") || thinkingOn ? 4000 : 0);
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
   const wire = buildLlmRequest({
     baseUrl,
