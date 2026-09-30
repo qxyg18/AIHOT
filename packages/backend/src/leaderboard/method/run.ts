@@ -59,7 +59,10 @@ export async function runLeaderboardRound(opts: { at?: Date; force?: boolean } =
     Object.entries(b.registry).map(([unit, r]) => ({ key: unit, weight: r.weight, familyKey: r.family, board: b.board, operator: r.operator })),
   );
   const summary = {
-    boards: BOARDS.map((b) => ({ key: b.key, name: b.name, dimensions: b.dimensions.map(({ key, name, weight }) => ({ key, name, weight })) })),
+    boards: BOARDS.map((b) => {
+      const out = outputs.find((o) => o.board === b.key);
+      return { key: b.key, name: b.name, dimensions: b.dimensions.map(({ key, name, weight }) => ({ key, name, weight })), tiers: out?.tiers ?? {} };
+    }),
     sources: sourceRows,
     consensus: {
       input: inputs.boards,
@@ -91,7 +94,7 @@ export async function runLeaderboardRound(opts: { at?: Date; force?: boolean } =
           metric_count: e.sourceCount,
           summary: `${e.sourceCount} 项指标 · ${e.operatorCount} 家来源`,
           component_scores: { dimensions: e.dimensions, mode: out.mode },
-          detail: { mode: out.mode, sampleInsufficient: e.sampleInsufficient, operatorCount: e.operatorCount, dimensionNames: dimNames },
+          detail: { mode: out.mode, sampleInsufficient: e.sampleInsufficient, operatorCount: e.operatorCount, dimensionNames: dimNames, dimensionTiers: out.tiers },
         }));
       for (let i = 0; i < rows.length; i += 500) await tx`INSERT INTO lb_rankings ${tx(rows.slice(i, i + 500) as never)}`;
     }

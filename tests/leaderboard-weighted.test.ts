@@ -1,4 +1,4 @@
-// weighted v2（zw18 权重独立化）纯函数测试：归一/门槛/缺数计零统一分母/业绩滚客流/商场榜降级直榜。
+// weighted v3（rd4 业绩优先+数据置信级）纯函数测试：归一/门槛/缺数计零统一分母/业绩滚客流/直榜分支/置信级透传。
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -7,13 +7,16 @@ import {
   MALL_DIMENSIONS,
   MALL_FOOTFALL_MACHINE_METRICS,
   MENTION_MIN,
+  METRIC_OPERATORS,
+  METRIC_SOURCE_TIER,
   computeBoard,
   dimensionScores,
   type BoardInput,
   type DimensionSpec,
+  type SourceTier,
 } from "@aihot/backend/leaderboard/method/weighted";
 
-const reg = (family: string, weight: number, operator = "test") => ({ family, weight, operator, protocol: "test", direction: "HIGHER" as const, interval_sd: null });
+const reg = (family: string, weight: number, operator = "test", tier: SourceTier = "machine") => ({ family, weight, operator, protocol: "test", direction: "HIGHER" as const, interval_sd: null, tier });
 const sig = (key: string, entries: Array<[string, number]>) => ({ key, rows: entries.map(([modelSlug, score]) => ({ modelSlug, score, lowerBound: null, upperBound: null, configuration: "" })) });
 
 function boardInput(o: Partial<BoardInput> & { registry: BoardInput["registry"]; signals: BoardInput["signals"] }): BoardInput {
@@ -146,7 +149,47 @@ test("M1 regression: winshang snapshot presence upgrades the mall board out of f
 test("brand dimension weights sum to the ruling fractions", () => {
   const sum = (xs: DimensionSpec[]) => xs.reduce((a, d) => a + d.weight, 0);
   assert.equal(Math.round(sum(BRAND_DIMENSIONS) * 100), 100, "品牌榜 20/40/30/10");
-  assert.equal(Math.round(sum(MALL_DIMENSIONS) * 100), 100, "商业体榜 35/20/15/15/15");
+  assert.equal(Math.round(sum(MALL_DIMENSIONS) * 100), 100, "商业体榜 rd4 甲案 30/20/30/12/8");
+  // rd4 乙案（挂决策看板 d-rd4-mall-weight-scheme 候命主）：25/20/35/12/8 同样满足权重和=1，
+  // 命主拍板后改 MALL_DIMENSIONS 即可切换，本断言守住两案口径。
+  assert.equal(Math.round((0.25 + 0.2 + 0.35 + 0.12 + 0.08) * 100), 100, "乙案 25/20/35/12/8");
+});
+
+test("rd4: every metric carries a source tier; mall revenue=report, footfall seed, winshang machine", () => {
+  for (const m of Object.keys(METRIC_OPERATORS)) {
+    assert.ok(METRIC_SOURCE_TIER[m], `${m} 缺置信级映射`);
+  }
+  assert.equal(METRIC_SOURCE_TIER["mall-revenue"], "report", "联商网营收盘点=研报提取档");
+  assert.equal(METRIC_SOURCE_TIER["mall-footfall"], "seed", "人工客流层级=人工种子档");
+  assert.equal(METRIC_SOURCE_TIER["winshang-mall"], "machine", "机器客流源=机器源档");
+});
+
+test("rd4: board output discloses per-dimension tiers (best live metric wins)", () => {
+  const input: BoardInput = boardInput({
+    board: "mall",
+    mode: "weighted",
+    registry: {
+      "mall-footfall": reg("footfall", 0.3, "manual-supplement", "seed"),
+      "mall-affinity": reg("affinity", 0.2, "internal-signal", "machine"),
+      "mall-revenue": reg("revenue", 0.3, "manual-supplement", "report"),
+      "mall-firststore": reg("firststore", 0.12, "internal-signal", "machine"),
+      "mall-media": reg("media", 0.08, "internal-signal", "machine"),
+    },
+    signals: [
+      sig("mall-footfall", [["m1", 8], ["m2", 6]]),
+      sig("mall-affinity", [["m1", MENTION_MIN], ["m2", MENTION_MIN]]),
+      sig("mall-revenue", [["m1", 100], ["m2", 50]]),
+      sig("mall-firststore", [["m1", MENTION_MIN]]),
+      sig("mall-media", [["m2", MENTION_MIN]]),
+    ],
+  });
+  const out = computeBoard(input, MALL_DIMENSIONS);
+  assert.equal(out.mode, "weighted");
+  assert.equal(out.tiers.revenue, "report");
+  assert.equal(out.tiers.footfall, "seed");
+  assert.equal(out.tiers.affinity, "machine");
+  assert.equal(out.tiers.firststore, "machine");
+  assert.equal(out.tiers.media, "machine");
 });
 
 test("ties order by slug deterministically", () => {

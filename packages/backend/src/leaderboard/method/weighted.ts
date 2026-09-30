@@ -1,11 +1,12 @@
-// Weighted-score method v2 (2026-10, zw18 权重独立化): 童装品牌榜 + 全国商业体榜.
-// Replaces the v15 Kemeny consensus as the active method (v15 stays in the tree, unreferenced).
-// 命主定稿权重（2026-09-29）写死在本文件：改任何常量=新方法版本+rules 页同步（架构规矩：页面写的必须和算法一致）。
+// Weighted-score method v3 (2026-10, rd4 业绩优先+数据置信级): 童装品牌榜 + 全国商业体榜.
+// v2 (zw18 权重独立化) → v3 (rd4)：商场榜权重改版（业绩上调声量下调）、维度数据带 source_tier
+// 置信级披露、商场榜机器客流源缺席不再降级直榜（seed 档参排）。v15 stays in the tree, unreferenced.
+// 命主定稿权重写死在本文件：改任何常量=新方法版本+rules 页同步（架构规矩：页面写的必须和算法一致）。
 import { sha256, stableJson } from "../../lib/ids.ts";
 import { sql } from "../../db.ts";
 
-export const METHOD_VERSION = "2026.10-weighted-v2";
-export const SCORE_DEFINITION = "维度内归一后按命主定稿权重加权求和，分母固定为权重总和（各维度独立计权，缺数维度计 0 贡献不补位不猜测）；覆盖度单独披露";
+export const METHOD_VERSION = "2026.10-weighted-v3";
+export const SCORE_DEFINITION = "维度内归一后按命主定稿权重加权求和，分母固定为权重总和（各维度独立计权，缺数维度计 0 贡献不补位不猜测）；覆盖度单独披露；维度数据按来源标注置信级（机器源＞研报提取＞人工种子）";
 export const DISPLAY_METHOD = "weighted-score-1.0";
 /** Equal final scores order by published score then slug — deterministic and disclosed on the rules page. */
 export const TIE_POLICY = "score-then-slug/weighted-1";
@@ -42,11 +43,14 @@ export const BRAND_DIMENSIONS: DimensionSpec[] = [
 ];
 
 export const MALL_DIMENSIONS: DimensionSpec[] = [
-  { key: "footfall", name: "客流规模", weight: 0.35, metrics: ["mall-footfall", "winshang-mall"], logScale: false },
+  // rd4 权重改版（命主 2026-09-30「热点权重下降业绩提上去+排名置信级」）：甲案在役
+  // footfall30/affinity20/revenue30/firststore12/media8；乙案 footfall25/affinity20/revenue35/
+  // firststore12/media8 挂决策看板（d-rd4-mall-weight-scheme）候命主，切换=改本数组+重算 --force。
+  { key: "footfall", name: "客流规模", weight: 0.3, metrics: ["mall-footfall", "winshang-mall"], logScale: false },
   { key: "affinity", name: "童装业态亲和", weight: 0.2, metrics: ["mall-affinity"], logScale: true },
-  { key: "revenue", name: "业绩", weight: 0.15, metrics: ["mall-revenue"], logScale: false, rollToOnEmpty: "footfall" },
-  { key: "firststore", name: "首店快闪动能", weight: 0.15, metrics: ["mall-firststore"], logScale: true },
-  { key: "media", name: "媒体声量", weight: 0.15, metrics: ["mall-media"], logScale: true },
+  { key: "revenue", name: "业绩", weight: 0.3, metrics: ["mall-revenue"], logScale: false, rollToOnEmpty: "footfall" },
+  { key: "firststore", name: "首店快闪动能", weight: 0.12, metrics: ["mall-firststore"], logScale: true },
+  { key: "media", name: "媒体声量", weight: 0.08, metrics: ["mall-media"], logScale: true },
 ];
 
 export const BOARDS: Array<{ key: BoardKind; name: string; dimensions: DimensionSpec[]; directorySource: string }> = [
@@ -70,8 +74,27 @@ export const METRIC_OPERATORS: Record<string, string> = {
   "winshang-mall": "winshang-monthly",
 };
 
-/** winshang 客流快照出现前，商场榜降级为「客流单源直榜」（zw12 失败即停条款的降级口径）。 */
+/** winshang 客流快照出现前，商场榜客流维度由人工种子层级参排（rd4 起 seed 档入加权榜，不再降级直榜）。 */
 export const MALL_FOOTFALL_MACHINE_METRICS = new Set(["winshang-mall"]);
+
+/** rd4 数据置信级：machine=机器源自动采集 > report=研报/新闻整理 > seed=人工种子；值随维度分一路透传到榜单行/详情页角标。 */
+export type SourceTier = "machine" | "report" | "seed";
+export const SOURCE_TIER_RANK: Record<SourceTier, number> = { machine: 3, report: 2, seed: 1 };
+/** 指标 → 置信级。两榜每指标单源（快照按 metric key 唯一），指标级映射与值级字段一一对应。 */
+export const METRIC_SOURCE_TIER: Record<string, SourceTier> = {
+  "brand-volume": "machine",
+  "brand-expansion": "machine",
+  "brand-hotsearch": "machine",
+  "brand-social": "seed",
+  "brand-revenue": "report",
+  "brand-stores": "seed",
+  "mall-footfall": "seed",
+  "mall-affinity": "machine",
+  "mall-firststore": "machine",
+  "mall-media": "machine",
+  "mall-revenue": "report",
+  "winshang-mall": "machine",
+};
 
 export interface SignalRow {
   score: number;
@@ -88,6 +111,8 @@ export interface RegistryEntry {
   protocol: string;
   direction: "HIGHER";
   interval_sd: number | null;
+  /** rd4 置信级：该指标数据的来源档位（machine/report/seed），随 run 落库供前端角标。 */
+  tier: SourceTier;
 }
 
 export interface BoardInput {
@@ -115,6 +140,8 @@ export interface BoardOutput {
   board: BoardKind;
   mode: "weighted" | "footfall-only";
   entries: BoardEntry[];
+  /** rd4 置信级：维度 key → 该维度在役指标的最高档（machine>report>seed），随 run 落库供角标。 */
+  tiers: Record<string, SourceTier>;
 }
 
 export interface WeightedInputs {
@@ -199,15 +226,15 @@ export async function buildWeightedInputs(opts: { at?: Date } = {}): Promise<Wei
     const activeUnits = b.dimensions.flatMap((d) => d.metrics).filter(has);
     if (!activeUnits.length) continue;
 
-    // 商场榜降级判定：客流维度无机器源（winshang）快照 → footfall-only 直榜。
+    // rd4（命主 2026-09-30「业绩优先+数据置信级」）：机器客流源缺席不再降级直榜——人工种子层级
+    // 以 seed 档参与五维加权（置信级角标披露数据成色）；机器源在场时仍只认机器值、种子退位备查
+    // （winshang 或替代机器源接入后自动升档）。
     const footfallMachine = b.dimensions.find((d) => d.key === "footfall");
     let mode: BoardInput["mode"] = "weighted";
     let dims = b.dimensions;
     if (b.key === "mall" && footfallMachine) {
       const machineLive = footfallMachine.metrics.some((m) => MALL_FOOTFALL_MACHINE_METRICS.has(m) && has(m));
-      if (!machineLive) mode = "footfall-only";
-      else {
-        // 机器客流源在场时覆盖人工种子（客流维度只取 winshang，人工层级退位备查）。
+      if (machineLive) {
         dims = dims.map((d) => (d.key === "footfall" ? { ...d, metrics: d.metrics.filter((m) => MALL_FOOTFALL_MACHINE_METRICS.has(m)) } : d));
       }
     }
@@ -244,6 +271,7 @@ export async function buildWeightedInputs(opts: { at?: Date } = {}): Promise<Wei
           protocol: protocolOf(u, snap?.metadata ?? {}),
           direction: "HIGHER",
           interval_sd: null,
+          tier: METRIC_SOURCE_TIER[u] ?? "seed",
         };
       }
     }
@@ -346,6 +374,18 @@ export function computeBoard(board: BoardInput, dims: DimensionSpec[]): BoardOut
   const ordered = [...rankedFirst, ...insufficient];
   const operatorCount = new Set(Object.values(board.registry).map((r) => r.operator)).size;
   const sourceCount = Object.keys(board.registry).length;
+  // 维度置信级=该维度在役指标（进 registry 者）的最高档；footfall-only 直榜只披露客流维度。
+  const tierOf = (d: DimensionSpec): SourceTier | null => {
+    const live = d.metrics.filter((u) => board.registry[u]).map((u) => board.registry[u]!.tier);
+    return live.length ? live.reduce((a, x) => (SOURCE_TIER_RANK[x] > SOURCE_TIER_RANK[a] ? x : a)) : null;
+  };
+  let tiers: Record<string, SourceTier>;
+  if (board.mode === "footfall-only") {
+    const t = tierOf(dims.find((d) => d.key === "footfall")!);
+    tiers = t ? { footfall: t } : {};
+  } else {
+    tiers = Object.fromEntries(activeDims.map((d) => [d.key, tierOf(d)]).filter((p): p is [string, SourceTier] => p[1] != null));
+  }
   const entries: BoardEntry[] = ordered.map((e, i) => {
     const coverage = Math.round(e.coverage * 100) / 100;
     return {
@@ -359,7 +399,7 @@ export function computeBoard(board: BoardInput, dims: DimensionSpec[]): BoardOut
       dimensions: e.dimensions,
     };
   });
-  return { board: board.board, mode: board.mode, entries };
+  return { board: board.board, mode: board.mode, entries, tiers };
 }
 
 export function computeBoards(inputs: WeightedInputs): BoardOutput[] {
