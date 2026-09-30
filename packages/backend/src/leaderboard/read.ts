@@ -20,6 +20,7 @@ import type {
   LbSourceSummary,
   LbStability,
 } from "@aihot/contracts/leaderboard";
+import { LB_DIMENSION_LABELS } from "@aihot/contracts/leaderboard";
 import type { SiteBrandCard } from "@aihot/contracts/site";
 import { readFileSync } from "node:fs";
 import { sql } from "../db.ts";
@@ -457,7 +458,9 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
   if (mallEntry) {
     const dimensions = mallEntry.component_scores?.dimensions ?? null;
     const activeFamilies = [...new Set(Object.values(view.boards.get("mall")!.registry).filter((r) => r.weight > 0).map((r) => r.family))];
-    const dimLabel = (k: string) => mallEntry.detail?.dimensionNames?.[k] ?? k;
+    // 复审 N1（shoumen PASS带条件）：历史 run 的 dimensionNames 落库为空对象（run.ts 曾把 Map 直进
+    // JSON 序列化），fallback 须走契约中文短名，禁英文 key 漏出到页面文案。
+    const dimLabel = (k: string) => mallEntry.detail?.dimensionNames?.[k] ?? LB_DIMENSION_LABELS[k] ?? k;
     mallBoard = {
       rank: mallEntry.rank,
       score: mallEntry.score,

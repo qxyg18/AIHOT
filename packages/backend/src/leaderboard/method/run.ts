@@ -81,7 +81,8 @@ export async function runLeaderboardRound(opts: { at?: Date; force?: boolean } =
     if (status !== "published") return;
     const ids = new Map((await tx<{ id: string; slug: string }[]>`SELECT id, slug FROM lb_models WHERE slug = ANY(${outputs.flatMap((o) => o.entries.map((e) => e.slug))})`).map((r) => [r.slug, r.id]));
     for (const out of outputs) {
-      const dimNames = new Map((BOARDS.find((b) => b.key === out.board)?.dimensions ?? []).map((d) => [d.key, d.name]));
+      // 复审 N1 根治：detail 走 JSON 序列化落库，Map 会序列化成空对象——必须平面对象。
+      const dimNames = Object.fromEntries((BOARDS.find((b) => b.key === out.board)?.dimensions ?? []).map((d) => [d.key, d.name]));
       const rows = out.entries
         .filter((e) => ids.has(e.slug))
         .map((e) => ({
