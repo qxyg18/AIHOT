@@ -183,6 +183,43 @@ test("a withdrawn item leaves the hot board and the hot APIs at once, not at the
   for (const url of exits) assert.ok(!(await get(url)).body.includes(rep!), `${url} still shows the withdrawn item`);
 });
 
+test("the hot board is domestic-first: a foreign-only echo stays off, one domestic source carries a story on", async () => {
+  // 榜单只有 10 席：清掉 48h 窗口内的全部信号，保证下面两个事件的断言是门槛本身给出的结果。
+  // 依赖 node --test 的串行执行器（package.json: --test-concurrency=1）：并行跑法下会删掉并发文件正在写的数据。
+  await sql`DELETE FROM story_signals WHERE observed_at > now() - interval '48 hours'`;
+  const FOREIGN = `${SOURCE}-foreign`;
+  await sql`INSERT INTO sources (id, name, kind, tier, participation_mode, tags, next_fetch_at)
+            VALUES (${FOREIGN}, 'Test foreign', 'rss', 'T2', 'editorial', ARRAY['媒体','海外']::text[], '2100-01-01')`;
+  const setup = async (title: string, refs: Array<{ articleId: string; sourceId: string }>) => {
+    const publicId = randomUUID();
+    const [story] = await sql<{ id: number }[]>`
+      INSERT INTO stories (public_id, title, first_report_at, latest_at) VALUES (${publicId}, ${title}, now() - interval '2 hours', now()) RETURNING id`;
+    const [fact] = await sql<{ id: number }[]>`INSERT INTO facts (public_id, story_id, title) VALUES (${`fact-${publicId}`}, ${story!.id}, ${title}) RETURNING id`;
+    for (const ref of refs) {
+      await sql`INSERT INTO fact_articles (fact_id, article_id, role) VALUES (${fact!.id}, ${ref.articleId}, 'report')`;
+      await sql`INSERT INTO story_signals (story_id, article_id, participant_key, source_id, kind, observed_at)
+                VALUES (${story!.id}, ${ref.articleId}, ${`participant-${ref.articleId}`}, ${ref.sourceId}, 'editorial', now() - interval '1 hour')`;
+      await publishArticle(ref.articleId, released());
+    }
+    return story!.id;
+  };
+  const foreignOnly = await setup(`FOREIGN-ONLY-${T}`, [
+    { articleId: await article(), sourceId: FOREIGN },
+    { articleId: await article(), sourceId: FOREIGN },
+  ]);
+  const domesticLed = await setup(`DOMESTIC-LED-${T}`, [
+    { articleId: await article(), sourceId: SOURCE },
+    { articleId: await article(), sourceId: FOREIGN },
+  ]);
+  await computeHotRanking();
+  const entries = (await latestHotRanking())!.entries;
+  assert.ok(!entries.some((e) => e.storyId === foreignOnly), "a foreign-only echo does not rank");
+  const led = entries.find((e) => e.storyId === domesticLed);
+  assert.ok(led, "one domestic source carries a story onto the board");
+  // 测试源没有 last_ok_at：事件在 behind 分支下参与对比，trend 不得因投影缺失退化成 unknown。
+  assert.notEqual(led.trend, "unknown", "the behind comparison keeps its trend (heat_prev_obs projection intact)");
+});
+
 test("item pages follow the live rule: unsummarised editorial items keep one, hot_signal items have none", async () => {
   const SIGNAL = `${SOURCE}-signal`;
   await sql`INSERT INTO sources (id, name, kind, tier, participation_mode, site_fulltext, syndicate_fulltext, next_fetch_at)

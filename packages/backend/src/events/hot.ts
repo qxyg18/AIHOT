@@ -1,13 +1,18 @@
 // Hot ranking: attention over the last 48 hours from independent participants.
 // Each participant counts once per window (repeat collection does not add heat), decays with a
 // 24-hour half-life, and the source time (not collection time) places evidence in the window.
+// 国内为主、海外为补充：海外源（tags 含「海外」）的参与按 FOREIGN_HEAT_WEIGHT 折算热度，
+// 且无国内 editorial 参与的事件（纯海外互报）不进榜。
 import { sql } from "../db.ts";
 import { tierRank, type HotEntry } from "./hot-read.ts";
 
-export const HOT_RULE_VERSION = "heat-v1-48h-halflife24h";
+export const HOT_RULE_VERSION = "heat-v2-domestic-first-48h-halflife24h";
 const WINDOW_HOURS = 48;
 const HALF_LIFE_HOURS = 24;
 const MIN_PARTICIPANTS = 2;
+/** 海外源参与者对热度的贡献系数（国内源为 1）。 */
+export const FOREIGN_HEAT_WEIGHT = 0.5;
+const FOREIGN_TAG = "海外";
 
 interface HeatRow {
   story_id: number;
@@ -25,6 +30,8 @@ interface HeatRow {
   behind_participants: number;
   recent6h: number;
   editorial_participants: number;
+  /** 参与者中来自国内信源的 editorial 数；上榜要求至少 1。 */
+  domestic_editorial: number;
   signal_participants: number;
 }
 
@@ -53,18 +60,20 @@ export function behindSources(clocks: SourceClock[], at: number, grace: boolean)
 /** Heat of every story at `at` (defaults to now), from story_signals alone; `behind` marks sources not fully observed. */
 async function heatRows(at: Date, behind: string[] = []): Promise<HeatRow[]> {
   const prev = new Date(at.getTime() - 6 * 3600 * 1000);
-  const decayNow = sql`power(0.5, extract(epoch FROM (${at}::timestamptz - last_at)) / 3600.0 / ${HALF_LIFE_HOURS})`;
-  const decayPrev = sql`power(0.5, extract(epoch FROM (${prev}::timestamptz - last_prev)) / 3600.0 / ${HALF_LIFE_HOURS})`;
+  const weight = sql`CASE WHEN domestic THEN 1.0 ELSE ${FOREIGN_HEAT_WEIGHT} END`;
+  const decayNow = sql`power(0.5, extract(epoch FROM (${at}::timestamptz - last_at)) / 3600.0 / ${HALF_LIFE_HOURS}) * ${weight}`;
+  const decayPrev = sql`power(0.5, extract(epoch FROM (${prev}::timestamptz - last_prev)) / 3600.0 / ${HALF_LIFE_HOURS}) * ${weight}`;
   const inPrevWindow = sql`last_prev IS NOT NULL AND last_prev > ${prev}::timestamptz - make_interval(hours => ${WINDOW_HOURS})`;
   return sql<HeatRow[]>`
     WITH obs AS (
-      SELECT story_id, participant_key, max(observed_at) AS last_at, min(observed_at) AS first_at,
-             bool_or(kind = 'editorial') AS editorial,
-             max(observed_at) FILTER (WHERE observed_at <= ${prev}) AS last_prev,
-             bool_or(source_id = ANY(${behind}::text[])) AS behind
-      FROM story_signals
-      WHERE observed_at > ${at}::timestamptz - make_interval(hours => ${WINDOW_HOURS}) AND observed_at <= ${at}
-      GROUP BY story_id, participant_key
+      SELECT ss.story_id, ss.participant_key, max(ss.observed_at) AS last_at, min(ss.observed_at) AS first_at,
+             bool_or(ss.kind = 'editorial') AS editorial,
+             bool_or(NOT (${FOREIGN_TAG} = ANY(s.tags))) AS domestic,
+             max(ss.observed_at) FILTER (WHERE ss.observed_at <= ${prev}) AS last_prev,
+             bool_or(ss.source_id = ANY(${behind}::text[])) AS behind
+      FROM story_signals ss JOIN sources s ON s.id = ss.source_id
+      WHERE ss.observed_at > ${at}::timestamptz - make_interval(hours => ${WINDOW_HOURS}) AND ss.observed_at <= ${at}
+      GROUP BY ss.story_id, ss.participant_key
     ), agg AS (
       SELECT story_id,
         count(*) AS participants,
@@ -75,11 +84,12 @@ async function heatRows(at: Date, behind: string[] = []): Promise<HeatRow[]> {
         count(*) FILTER (WHERE behind) AS behind_participants,
         count(*) FILTER (WHERE first_at > ${prev}) AS recent6h,
         count(*) FILTER (WHERE editorial) AS editorial_participants,
+        count(*) FILTER (WHERE editorial AND domestic) AS domestic_editorial,
         count(*) FILTER (WHERE NOT editorial) AS signal_participants
       FROM obs GROUP BY story_id
     )
     SELECT a.story_id, st.public_id::text AS public_id, st.title, st.first_report_at, st.latest_at,
-           a.participants, a.heat, a.heat_prev, a.heat_obs, a.heat_prev_obs, a.behind_participants, a.recent6h, a.editorial_participants, a.signal_participants
+           a.participants, a.heat, a.heat_prev, a.heat_obs, a.heat_prev_obs, a.behind_participants, a.recent6h, a.editorial_participants, a.domestic_editorial, a.signal_participants
     FROM agg a JOIN stories st ON st.id = a.story_id
     WHERE st.merged_into IS NULL`;
 }
@@ -90,7 +100,8 @@ export function heatIndex(heat: number): number {
 
 export async function computeHotRanking(at = new Date()): Promise<{ id: number; entries: number }> {
   const behind = behindSources(await sourceClocks(), at.getTime(), true);
-  const rows = (await heatRows(at, behind)).filter((r) => Number(r.participants) >= MIN_PARTICIPANTS && Number(r.editorial_participants) >= 1);
+  // 国内为主：纯海外互报（无国内 editorial 参与）的事件不上榜；海外源的参与热度已按权重折算。
+  const rows = (await heatRows(at, behind)).filter((r) => Number(r.participants) >= MIN_PARTICIPANTS && Number(r.editorial_participants) >= 1 && Number(r.domestic_editorial) >= 1);
   rows.sort((a, b) => Number(b.heat) - Number(a.heat) || (b.latest_at?.getTime() ?? 0) - (a.latest_at?.getTime() ?? 0));
 
   const entries: HotEntry[] = [];
@@ -154,7 +165,7 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
   const [row] = await sql<{ id: number }[]>`
     INSERT INTO hot_rankings (computed_at, rule_version, entries, evidence, published)
     VALUES (${at}, ${HOT_RULE_VERSION}, ${sql.json(entries as never)},
-            ${sql.json({ windowHours: WINDOW_HOURS, halfLifeHours: HALF_LIFE_HOURS, minParticipants: MIN_PARTICIPANTS, candidates: rows.length } as never)}, true)
+            ${sql.json({ windowHours: WINDOW_HOURS, halfLifeHours: HALF_LIFE_HOURS, minParticipants: MIN_PARTICIPANTS, foreignHeatWeight: FOREIGN_HEAT_WEIGHT, minDomesticEditorial: 1, candidates: rows.length } as never)}, true)
     RETURNING id`;
   // Keep a bounded history of rankings.
   await sql`DELETE FROM hot_rankings WHERE computed_at < now() - interval '30 days'`;
