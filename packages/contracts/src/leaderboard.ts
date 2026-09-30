@@ -19,6 +19,26 @@ export const LB_CONFIDENCE_LABELS: Record<LbConfidence, string> = {
   LOW: "证据敏感",
 };
 
+/** rd4 数据置信级：machine=机器源 > report=研报提取 > seed=人工种子（榜单行/详情页角标）。 */
+export type LbSourceTier = "machine" | "report" | "seed";
+export const LB_SOURCE_TIER_LABELS: Record<LbSourceTier, string> = {
+  machine: "机器源",
+  report: "研报提取",
+  seed: "人工种子",
+};
+
+/** 维度 key → 角标短名（正本=算法 DimensionSpec.name，此处仅供榜单行置信级角标拼装）。 */
+export const LB_DIMENSION_LABELS: Record<string, string> = {
+  footfall: "客流",
+  affinity: "业态亲和",
+  revenue: "业绩",
+  firststore: "首店快闪",
+  media: "声量",
+  volume: "声量",
+  stores: "规模",
+  expansion: "扩张",
+};
+
 export interface LbBrand {
   /** Site-relative logo path, or null when only a monogram is available. */
   src: string | null;
@@ -82,8 +102,22 @@ export interface LbProfile {
   listed: string | null;
   /** 年业绩预估（亿元人民币） */
   revenueYi: number | null;
+  /** 年业绩口径（财报口径/媒体概数；kb6 命主裁定：预估营收允许上榜，页面带置信标记） */
+  revenueBasis: string | null;
   /** 门店规模预估（家） */
   stores: number | null;
+  /** 价格带定位（大众/中端/中高端/高端；a20 公开常识概数，仅品牌） */
+  priceBand: string | null;
+  /** 目标年龄段（如 0-3岁/0-12岁；a20 公开常识概数，仅品牌） */
+  ageRange: string | null;
+  /** 总部城市（a20 公开常识概数，仅品牌） */
+  hq: string | null;
+  /** 品牌创立年份（a20 公开常识概数，仅品牌） */
+  founded: number | null;
+  /** 子品牌矩阵（文本，null=无/不确定；a20 公开常识概数，仅品牌） */
+  subBrands: string | null;
+  /** 渠道结构概数（加盟为主/直营为主/直营+加盟/电商为主；a20 定性口径，仅品牌） */
+  channelMix: string | null;
   /** 商业体面积（万㎡） */
   areaWanSqm: number | null;
   /** 商业体开业年份 */
@@ -132,6 +166,8 @@ export interface LbBoardEntry {
   dimensions: Record<string, number | null> | null;
   /** weighted v1：榜模式（"weighted" | "footfall-only"），null=非 weighted 运行的历史数据。 */
   mode: string | null;
+  /** rd4：维度 key → 数据置信级（machine/report/seed），null=rd4 之前的历史 run。 */
+  dimensionTiers: Record<string, string> | null;
 }
 
 export interface LbBoardResponse {
@@ -163,6 +199,8 @@ export interface LbEvidenceItem {
   carriedForward: boolean;
   components: Array<{ label: string; display: string }>;
   componentsNote: string | null;
+  /** rd4：该指标数据的置信级（machine/report/seed），null=历史 run 未落。 */
+  tier: LbSourceTier | null;
 }
 
 export interface LbEvidenceGroup {
@@ -208,6 +246,16 @@ export interface LbModelDetail {
   metricCount: number;
   evidence: LbEvidenceGroup[];
   unmeasured: Array<{ key: string; name: string }>;
+  /** rd4：商场实体维度档案——名次/维度分/维度置信级，null=非商场榜实体或历史 run 未落维度明细。 */
+  mallBoard: {
+    rank: number;
+    score: number | null;
+    coverage: number | null;
+    mode: string | null;
+    dimensions: Record<string, number | null> | null;
+    dimensionTiers: Record<string, string> | null;
+    unmeasuredDimensions: Array<{ key: string; name: string }>;
+  } | null;
   comparisons: LbComparison[];
 }
 

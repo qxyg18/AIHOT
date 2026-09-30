@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { LbBoardEntry } from "@aihot/contracts/leaderboard";
 import { LB_CONFIDENCE_LABELS } from "@aihot/contracts/leaderboard";
 import { BrandMark } from "./BrandMark";
-import { EvidenceBadge } from "./Evidence";
+import { EvidenceBadge, TierChips } from "./Evidence";
 import { modelHref } from "./format";
 
 type SortKey = "rank" | "date" | "coverage" | "revenue" | "stores" | "area";
@@ -13,8 +13,8 @@ function sortValue(e: LbBoardEntry, key: SortKey): number | null {
     case "rank":
       return e.rank;
     case "date": {
-      // 上市/开业年份：种子档案优先，其次名录发布日期。
-      const y = e.model.profile?.openedAt ?? e.model.profile?.listed?.match(/(?:19|20)\d{2}/)?.[0] ?? null;
+      // 创立/开业年份：品牌取种子 founded（kb5），商业体取 openedAt；都没有则退名录发布日期。
+      const y = e.model.profile?.openedAt ?? e.model.profile?.founded ?? null;
       return y ? -Number(y) : e.model.releasedAt ? -Date.parse(e.model.releasedAt) : null;
     }
     case "coverage":
@@ -62,10 +62,9 @@ function SortHeader({ k, children, sort, dir, onSort, align = "left", className 
   );
 }
 
-/** 上市年份：优先提取 19xx/20xx 年份（避开 A股/港股代码），没有年份就展示原文（交易所/代码），再没有就「—」。 */
-function listedYear(listed: string | null | undefined): string | null {
-  if (!listed) return null;
-  return listed.match(/(?:19|20)\d{2}/)?.[0] ?? listed;
+/** 创立年份：种子 founded 直显（kb5：上市状态不再占据该列，列语义=品牌诞生时间）。 */
+function foundedText(founded: number | null | undefined): string | null {
+  return founded != null ? String(founded) : null;
 }
 
 // zw13 展示策略：品牌榜每页 15 条翻页；商业体榜全量可见，沿用旧单页密度每页 30 条翻页。
@@ -133,7 +132,8 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
           {isBrand ? (
             <>
               <th scope="col" className="px-3 py-2.5 text-left font-medium">主营品类</th>
-              <SortHeader k="date" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">上市年份</SortHeader>
+              <th scope="col" className="hidden px-3 py-2.5 text-left font-medium lg:table-cell">价格带 · 年龄段</th>
+              <SortHeader k="date" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">创立年份</SortHeader>
             </>
           ) : (
             <>
@@ -178,10 +178,16 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                   {isBrand ? (
                     <>
                       <span className="block">
-                        {e.model.profile?.category ?? "品类待补"} · {listedYear(e.model.profile?.listed) ?? "未上市/待核实"}
+                        {e.model.profile?.category ?? "品类待补"}
+                        {e.model.profile?.founded != null ? ` · ${e.model.profile.founded} 年创立` : ""}
                       </span>
+                      {[e.model.profile?.priceBand, e.model.profile?.ageRange].filter(Boolean).length > 0 && (
+                        <span className="block">
+                          {[e.model.profile?.priceBand, e.model.profile?.ageRange].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
                       <span className="block">
-                        年业绩 <span className="num">{e.model.profile?.revenueYi != null ? `约 ${e.model.profile.revenueYi} 亿` : "—"}</span> · 门店 <span className="num">{e.model.profile?.stores != null ? `约 ${e.model.profile.stores} 家` : "—"}</span>
+                        年业绩 <span className="num">{e.model.profile?.revenueYi != null ? `约 ${e.model.profile.revenueYi} 亿` : "—"}</span>{e.model.profile?.revenueBasis ? <span className="text-[11px] text-ink-4">（{e.model.profile.revenueBasis}）</span> : null} · 门店 <span className="num">{e.model.profile?.stores != null ? `约 ${e.model.profile.stores} 家` : "—"}</span>
                       </span>
                     </>
                   ) : (
@@ -198,12 +204,17 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                     </>
                   )}
                 </span>
+                {/* rd4 置信级角标：该实体在役维度的数据来源档位。 */}
+                <span className="mt-1 block lg:hidden">
+                  <TierChips tiers={e.dimensionTiers} dims={Object.keys(e.dimensions ?? {}).filter((k) => e.dimensions?.[k] != null)} />
+                </span>
               </Link>
             </td>
             {isBrand ? (
               <>
                 <td className="px-3 py-3 text-[12.5px] text-ink-2">{text(e.model.profile?.category)}</td>
-                <td className="mono hidden px-3 py-3 text-[12px] text-ink-3 lg:table-cell">{text(listedYear(e.model.profile?.listed))}</td>
+                <td className="hidden px-3 py-3 text-[12.5px] text-ink-2 lg:table-cell">{text([e.model.profile?.priceBand, e.model.profile?.ageRange].filter(Boolean).join(" · ") || null)}</td>
+                <td className="mono hidden px-3 py-3 text-[12px] text-ink-3 lg:table-cell">{text(foundedText(e.model.profile?.founded))}</td>
               </>
             ) : (
               <>
@@ -220,8 +231,9 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
             <td className="relative z-10 hidden px-3 py-3 lg:table-cell">
               <span className="num block text-[13px] text-ink-2">{e.sourceCount} 项指标</span>
               <EvidenceBadge confidence={e.confidence} stability={e.stability} rank={e.rank} />
+              <TierChips tiers={e.dimensionTiers} dims={Object.keys(e.dimensions ?? {}).filter((k) => e.dimensions?.[k] != null)} />
             </td>
-            <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.revenueYi)}</td>
+            <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.revenueYi)}{e.model.profile?.revenueBasis ? <span className="ml-1 font-normal text-[11px] text-ink-4">（{e.model.profile.revenueBasis}）</span> : null}</td>
             {isBrand && <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.stores)}</td>}
             <td className="py-3 pl-2 pr-4 text-right align-middle lg:pl-3 lg:pr-[22px]">
               <strong className={`mono inline-block text-[20px] font-semibold leading-7 tracking-[-0.02em] ${e.rank <= 3 ? "text-accent" : "text-ink"}`} aria-label={`${e.model.name} 共识指数 ${e.score.toFixed(1)}`}>

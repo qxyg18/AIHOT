@@ -4,13 +4,14 @@ import { Link, useLoaderData, useSearchParams } from "react-router";
 import { Collapse } from "../components/ui/Presence";
 import type { Route } from "./+types/leaderboard-model";
 import type { LbComparison, LbEvidenceItem, LbModelDetail } from "@aihot/contracts/leaderboard";
+import { LB_DIMENSION_LABELS, LB_SOURCE_TIER_LABELS } from "@aihot/contracts/leaderboard";
 import { LEADERBOARD_BOARD_LABELS, LEADERBOARD_PUBLIC_BOARDS } from "@aihot/contracts/taxonomy";
 import { loadOr404 } from "../lib/api.server";
 import type { SiteInsightsResponse } from "@aihot/contracts/site";
 import { EntityInsightList } from "../features/item/InsightCards";
 import { breadcrumbLd, pageMeta, siteUrl, titled } from "../lib/seo";
 import { BrandMark } from "../features/leaderboard/BrandMark";
-import { EvidenceBadge } from "../features/leaderboard/Evidence";
+import { EvidenceBadge, TierChips } from "../features/leaderboard/Evidence";
 import { boardHref, pctFixed, shortStamp } from "../features/leaderboard/format";
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight, IconChevronDown, IconExternal } from "../components/icons";
 
@@ -90,10 +91,14 @@ function profileIntro(d: LbModelDetail, isBrandEntity: boolean): string | null {
   if (isBrandEntity) {
     const segs: string[] = [];
     if (p.category) segs.push(`主营${p.category}`);
-    const y = listedYear(p.listed);
-    if (y) segs.push(`${y} 年上市`);
+    // kb5：创立年份优先（founded），缺档才退上市状态注记。
+    if (p.founded != null) segs.push(`${p.founded} 年创立`);
+    else {
+      const y = listedYear(p.listed);
+      if (y) segs.push(`${y} 年上市`);
+    }
     const scale: string[] = [];
-    if (p.revenueYi != null) scale.push(`年业绩约 ${p.revenueYi} 亿元`);
+    if (p.revenueYi != null) scale.push(`年业绩约 ${p.revenueYi} 亿元${p.revenueBasis ? `（${p.revenueBasis}）` : ""}`);
     if (p.stores != null) scale.push(`门店约 ${p.stores} 家`);
     if (scale.length > 0) segs.push(scale.join("，"));
     if (segs.length === 0) return null;
@@ -261,7 +266,12 @@ function EvidenceCard({ it }: { it: LbEvidenceItem }) {
         <BrandMark brand={it.brand} size={28} className="max-sm:hidden" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13.5px] font-semibold text-ink">{it.sourceName}</span>
-          <small className="text-[11px] text-ink-4">{it.usage}</small>
+          <small className="flex items-center gap-1.5 text-[11px] text-ink-4">
+            {it.usage}
+            {it.tier && (
+              <span className="rounded-mark bg-bg-sunk px-1.5 py-px font-normal text-[10.5px] text-ink-3">{LB_SOURCE_TIER_LABELS[it.tier]}</span>
+            )}
+          </small>
         </span>
         <span className="text-right">
           <span className="mono block text-[19px] font-medium leading-tight text-ink">{it.display}</span>
@@ -381,8 +391,18 @@ export default function LeaderboardModelPage() {
           )}
         </Stat>
         <Stat label="年业绩预估 · 亿元" foot={isBrandEntity ? (profile?.stores != null ? `门店规模约 ${profile.stores} 家` : "门店规模待核实") : profile?.areaWanSqm != null ? "公开报道概数，待核实" : "公开报道概数，待核实"}>
-          {profile?.revenueYi != null ? `约 ${profile.revenueYi}` : <span className="font-sans text-[15px] font-normal text-ink-4">待核实</span>}
+          {profile?.revenueYi != null ? <>约 {profile.revenueYi}{profile?.revenueBasis && <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">（{profile.revenueBasis}）</small>}</> : <span className="font-sans text-[15px] font-normal text-ink-4">待核实</span>}
         </Stat>
+        {isBrandEntity && (
+          <>
+            <Stat label="价格带 / 年龄段">
+              {[profile?.priceBand, profile?.ageRange].filter(Boolean).join(" · ") || <span className="font-sans text-[15px] font-normal text-ink-4">待核实</span>}
+            </Stat>
+            <Stat label="总部 / 创立" foot={profile?.channelMix ?? undefined}>
+              {[profile?.hq, profile?.founded != null ? `${profile.founded} 年创立` : null].filter(Boolean).join(" · ") || <span className="font-sans text-[15px] font-normal text-ink-4">待核实</span>}
+            </Stat>
+          </>
+        )}
         {!isBrandEntity && (
           <>
             <Stat label="类型 / 定位">
@@ -400,6 +420,34 @@ export default function LeaderboardModelPage() {
 
       <section className="mt-12">
         <SectionHead eyebrow="BEHIND THE SCORE" title="每一项数据，都有来处。" sub="下面是该实体的各维度指标数据。展开可查看采集口径与采用方式。" />
+        {d.mallBoard && d.evidence.length === 0 && (
+          <div className="mt-6">
+            <h3 className="flex items-baseline gap-2 text-[14px] font-semibold text-ink">
+              商业体榜五维得分
+              <span className="num text-[11.5px] font-normal text-ink-4">
+                第 {d.mallBoard.rank} 名 · {d.mallBoard.score != null ? d.mallBoard.score.toFixed(1) : "—"} 分
+                {d.mallBoard.coverage != null ? ` · 覆盖度 ${pctFixed(d.mallBoard.coverage)}` : ""}
+              </span>
+            </h3>
+            <ul className="mt-2.5 space-y-2">
+              {Object.entries(d.mallBoard.dimensions ?? {}).map(([k, v]) => (
+                <li key={k} className="flex items-center justify-between gap-3 rounded-card border border-line bg-raised px-4 py-2.5">
+                  <span className="text-[13px] text-ink-2">{LB_DIMENSION_LABELS[k] ?? k}</span>
+                  <span className="flex items-center gap-3">
+                    <TierChips tiers={d.mallBoard!.dimensionTiers} dims={[k]} />
+                    <span className="mono text-[15px] font-semibold text-ink">{v != null ? v.toFixed(1) : "—"}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {d.mallBoard.unmeasuredDimensions.length > 0 && (
+              <p className="mt-2.5 text-[12.5px] text-ink-3">
+                未覆盖维度（计 0 贡献）：{d.mallBoard.unmeasuredDimensions.map((u) => u.name).join("、")}。
+              </p>
+            )}
+            <p className="mt-2 text-[11.5px] text-ink-4">角标=该维度数据来源置信级：机器源＞研报提取＞人工种子；客流正源接入后自动升档。</p>
+          </div>
+        )}
         {d.evidence.map((g) => (
           <div key={g.key} className="mt-6">
             <h3 className="flex items-baseline gap-2 text-[14px] font-semibold text-ink">
@@ -413,7 +461,7 @@ export default function LeaderboardModelPage() {
             </ul>
           </div>
         ))}
-        {d.unmeasured.length > 0 && (
+        {d.mallBoard && d.evidence.length === 0 ? null : d.unmeasured.length > 0 && (
           <div className="mt-6">
             <h3 className="text-[14px] font-semibold text-ink">未覆盖的指标</h3>
             <p className="mt-1 text-[12.5px] text-ink-3">这些指标暂无该实体的数据，该维度计 0 贡献（各维度独立计权，不交叉补位），覆盖度单独披露。</p>

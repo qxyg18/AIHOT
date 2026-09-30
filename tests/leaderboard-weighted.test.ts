@@ -10,6 +10,7 @@ import {
   METRIC_OPERATORS,
   METRIC_SOURCE_TIER,
   computeBoard,
+  computeBoards,
   dimensionScores,
   type BoardInput,
   type DimensionSpec,
@@ -87,7 +88,7 @@ test("coverage below COVERAGE_MIN flags sampleInsufficient", () => {
 });
 
 test("mall board: empty revenue rolls its weight to footfall; footfall-only mode ranks by footfall alone", () => {
-  // 业绩源缺席 → 权重滚给客流（0.35+0.15=0.5，命主定稿维度级条款），实体级缺数按 v2 计零统一分母。
+  // 业绩源缺席 → 权重滚给客流（甲案 v3：footfall 0.3+0.3=0.6，命主定稿维度级条款），实体级缺数按 v2 计零统一分母。
   const dims = MALL_DIMENSIONS;
   const inputMall: BoardInput = boardInput({
     board: "mall",
@@ -108,6 +109,21 @@ test("mall board: empty revenue rolls its weight to footfall; footfall-only mode
   const out = computeBoard(inputMall, dims);
   assert.equal(out.mode, "weighted");
   assert.equal(out.entries[0]!.slug, "m1");
+
+  // rd4（shoumen P1-1 整改）：计分入口 computeBoards 必须吃滚动后的有效维度集。甲案下业绩整体
+  // 缺数 → 客流系数 0.3+0.3=0.6：m1=(0.6×100+0.2×100+0.08×100)=88，m2=(0.12×100+0.08×100)=20；
+  // 若滚动未进计分（仍用静态客流 0.3）m1=58，本断言对「滚客流是否进计分」有区分力。
+  const rolledDims: DimensionSpec[] = [
+    { ...MALL_DIMENSIONS.find((d) => d.key === "footfall")!, weight: 0.6 },
+    { ...MALL_DIMENSIONS.find((d) => d.key === "affinity")! },
+    { ...MALL_DIMENSIONS.find((d) => d.key === "firststore")! },
+    { ...MALL_DIMENSIONS.find((d) => d.key === "media")! },
+  ];
+  const viaEngine = computeBoards({ at: new Date(), snapshotIds: [], boards: [{ ...inputMall, dims: rolledDims }], evidence: {} })[0]!;
+  assert.equal(viaEngine.mode, "weighted");
+  assert.equal(viaEngine.entries.find((e) => e.slug === "m1")!.score, 88, "滚客流后 m1 应为 0.6 加权体系的 88 分");
+  assert.equal(viaEngine.entries.find((e) => e.slug === "m2")!.score, 20, "滚客流后 m2 只有首店+声量贡献");
+  assert.equal(viaEngine.entries[0]!.slug, "m1");
 
   // footfall-only 降级：只按客流维度排，其余维度不进权重。
   const degraded: BoardInput = boardInput({

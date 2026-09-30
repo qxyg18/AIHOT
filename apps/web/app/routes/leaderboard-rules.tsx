@@ -2,7 +2,8 @@
 // The copy states how rankings are actually computed; it changes only together with the method.
 import { SITE } from "@aihot/industry/site";
 import { Link, useLoaderData } from "react-router";
-import type { LbRunInfo } from "@aihot/contracts/leaderboard";
+import type { LbRunInfo, LbSourceTier } from "@aihot/contracts/leaderboard";
+import { LB_SOURCE_TIER_LABELS } from "@aihot/contracts/leaderboard";
 import { loadOr404 } from "../lib/api.server";
 import { breadcrumbLd, pageMeta } from "../lib/seo";
 import { pct } from "../features/leaderboard/format";
@@ -22,6 +23,7 @@ interface RulesBoard {
   name: string;
   mode: string | null;
   dimensions: RulesDimension[];
+  tiers: Record<string, string>;
 }
 
 interface RulesData {
@@ -64,12 +66,17 @@ const STEPS = [
   {
     n: "03",
     title: "按定稿权重加权",
-    body: "品牌榜：声量 20% / 业绩 40% / 规模 30% / 扩张 10%。商业体榜：客流 35% / 童装业态亲和 20% / 业绩 15% / 首店快闪 15% / 媒体声量 15%，业绩缺数时滚给客流。权重为命主定稿，写进算法版本。",
+    body: "品牌榜：声量 20% / 业绩 40% / 规模 30% / 扩张 10%。商业体榜：客流 30% / 童装业态亲和 20% / 业绩 30% / 首店快闪 12% / 媒体声量 8%，业绩维度整体缺数时滚给客流。权重为命主定稿，写进算法版本。",
   },
   {
     n: "04",
     title: "缺数计零，独立计权",
     body: "各维度独立计权，分母固定为权重总和：某实体缺一个维度的数据时，该维度计 0 贡献，不把权重摊给其余维度（缺业绩不能靠规模补位），也不猜测；同时给出覆盖度（有效维度权重占比）。覆盖度不足 30% 的实体标「样本不足」，不进正式名次。",
+  },
+  {
+    n: "05",
+    title: "数据置信级，随分披露",
+    body: "每个维度按数据来源标注置信级：机器源（自动采集）＞研报提取（公开研报/媒体整理）＞人工种子（人工编制档位）。榜单行与实体详情页有角标，读榜时可一并参考数据成色；机器正源接入后同维度自动升档。",
   },
 ];
 
@@ -82,12 +89,12 @@ const ANTI_GAMING = [
 
 const FAQ = [
   {
-    q: "商业体榜为什么现在是「客流单源直榜」？",
-    a: "客流维度的正源是赢商网购物中心人气榜。实测其移动站数据栏目为文章流、大数据子域不可达、PC 站路径 404，公开面没有可抓的结构化榜单接口，按预授权降级条款执行：客流维度暂由人工编制的客流层级种子直榜排序，其余维度照常采集、待客流正源可接入后恢复五维加权。",
+    q: "商业体榜的客流数据可靠吗？",
+    a: "客流维度的正源是机器自动采集的客流数据。公开面结构化客流榜单暂不可得（赢商网实测不可抓），客流维度现由人工编制的客流层级种子以「人工种子」置信档参排，角标如实披露；地图 POI 人气等机器正源（2026-09-30 已定替代源路线）接入后，该维度自动升为机器源档并覆盖种子值，五维加权结构不变。",
   },
   {
     q: "业绩和规模的数据从哪来？",
-    a: "冷启动期为人工种子概数：上市童装公司的童装业务营收取公开财报口径概数，门店数取公开报道的概数档位，均标注待核实。每个实体的覆盖度标签披露其数据完整程度；公告自动抽取接入后人工种子将被逐步替换。",
+    a: "业绩维度取公开研报与媒体整理的概数（商业体=联商网年度盘点口径，标「研报提取」档；品牌=上市财报口径概数），规模/客流层级为人工种子档，均标注待核实。每个实体的覆盖度标签披露其数据完整程度；公告自动抽取接入后人工档将被逐步替换。",
   },
   {
     q: "声量是怎么统计的？",
@@ -108,7 +115,7 @@ const FAQ = [
 ];
 
 const SECTIONS = [
-  ["#rules-steps", "四步得出排名"],
+  ["#rules-steps", "五步得出排名"],
   ["#rules-weights", "两榜权重"],
   ["#rules-anti-gaming", "防扭曲机制"],
   ["#rules-faq", "常见问题"],
@@ -225,6 +232,9 @@ export default function LeaderboardRulesPage() {
                     <span className="mono text-[20px] font-medium text-ink">{pct(d.weight, 0)}</span>
                   </span>
                   <span className="mt-2.5 text-[11.5px] leading-[1.7] text-ink-4">{d.sources.join(" · ") || "—"}</span>
+                  {b.tiers?.[d.key] && (
+                    <span className="mt-1 text-[11.5px] leading-[1.7] text-ink-4">置信级：{LB_SOURCE_TIER_LABELS[b.tiers[d.key] as LbSourceTier] ?? b.tiers[d.key]}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -259,10 +269,10 @@ export default function LeaderboardRulesPage() {
         <Disclosure summary="查看计算细节与当前版本">
           <div className="space-y-3">
             <p>
-              方法版本：<code className="mono rounded-mark bg-bg-sunk px-1.5 py-0.5 text-[12px] text-ink-2">{run.methodologyVersion}</code>。加权分计算：每个指标在其所属榜的实体池内归一（计数类先 log1p 压缩），维度分=维度内各指标归一分的均值，实体总分=Σ(维度分×维度权重)÷有效维度权重和×100。
+              方法版本：<code className="mono rounded-mark bg-bg-sunk px-1.5 py-0.5 text-[12px] text-ink-2">{run.methodologyVersion}</code>。加权分计算：每个指标在其所属榜的实体池内归一（计数类先 log1p 压缩），维度分=维度内各指标归一分的均值，实体总分=Σ(维度分×维度权重)÷权重总和（缺数维度计 0 贡献，不摊权重、不交叉补位）。
             </p>
             <p>
-              覆盖度=有效维度权重和÷全部维度权重和；展示保留一位小数。窗口提及门槛（3 条）、覆盖度门槛（30%）、商业体榜业绩滚给客流的转移规则、降级直榜判定（客流维度无机器源快照时）均为算法内固定常量，变更即升版本并在本页公示。
+              覆盖度=有效维度权重和÷全部维度权重和；展示保留一位小数。窗口提及门槛（3 条）、覆盖度门槛（30%）、商业体榜业绩滚给客流的转移规则、数据置信级分档（机器源＞研报提取＞人工种子，随维度分披露）均为算法内固定常量，变更即升版本并在本页公示。
             </p>
             <p>
               事件词表（扩张/首店快闪）：开店、新开、首店、入驻、开业、新店、新品、联名、快闪、拓店、进场。站内声量引擎统计口径=近 30 天标题级关键词提及；正文级与社媒外站统计随信源扩展升级，升级前如实披露口径边界。

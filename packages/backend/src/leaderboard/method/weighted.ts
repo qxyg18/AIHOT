@@ -123,6 +123,8 @@ export interface BoardInput {
   signals: Array<{ key: string; rows: SignalRow[] }>;
   /** mall only: "weighted" | "footfall-only"（降级直榜模式判定）。 */
   mode: "weighted" | "footfall-only";
+  /** rd4（shoumen P1-1 整改）：计分用有效维度集（机器源过滤+业绩滚客流后的权重），buildWeightedInputs 产出；缺省回退静态 BOARDS 定义。 */
+  dims?: DimensionSpec[];
 }
 
 export interface BoardEntry {
@@ -247,16 +249,16 @@ export async function buildWeightedInputs(opts: { at?: Date } = {}): Promise<Wei
           rolledWeight.set(d.rollToOnEmpty, (rolledWeight.get(d.rollToOnEmpty) ?? 0) + d.weight);
         }
       }
-      if (rolledWeight.size) {
-        dims = b.dimensions.map((d) =>
-          rolledWeight.has(d.key)
-            ? { ...d, weight: d.weight + (rolledWeight.get(d.key) ?? 0) }
-            : !liveKeys.has(d.key) && d.rollToOnEmpty
-              ? { ...d, weight: 0 }
-              : d,
-        );
-      }
+    if (rolledWeight.size) {
+      dims = dims.map((d) =>
+        rolledWeight.has(d.key)
+          ? { ...d, weight: d.weight + (rolledWeight.get(d.key) ?? 0) }
+          : !liveKeys.has(d.key) && d.rollToOnEmpty
+            ? { ...d, weight: 0 }
+            : d,
+      );
     }
+  }
 
     const registry: Record<string, RegistryEntry> = {};
     for (const d of dims) {
@@ -287,6 +289,7 @@ export async function buildWeightedInputs(opts: { at?: Date } = {}): Promise<Wei
         rows: [...unitRows.get(u)!.values()].filter((r) => models.includes(r.modelSlug)).sort((a, z) => (a.modelSlug < z.modelSlug ? -1 : 1)),
       })),
       mode,
+      dims,
     });
   }
 
@@ -406,7 +409,9 @@ export function computeBoards(inputs: WeightedInputs): BoardOutput[] {
   const out: BoardOutput[] = [];
   for (const b of inputs.boards) {
     const spec = BOARDS.find((x) => x.key === b.board)!;
-    out.push(computeBoard(b, spec.dimensions));
+    // rd4（shoumen P1-1 整改）：计分用 buildWeightedInputs 产出的有效维度集（机器源过滤+业绩滚客流
+    // 后的权重）。此前滚动只落 registry/summary 展示层，计分仍用静态定义，公开承诺与实现不符。
+    out.push(computeBoard(b, b.dims ?? spec.dimensions));
   }
   return out;
 }

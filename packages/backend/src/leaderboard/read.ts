@@ -55,7 +55,7 @@ interface RankingRow {
   confidence: string | null;
   metric_count: number | null;
   component_scores: { dimensions?: Record<string, number | null>; mode?: string } | null;
-  detail: { stability?: LbStability; sourceCount?: number; operatorCount?: number; sampleInsufficient?: boolean } | null;
+  detail: { stability?: LbStability; sourceCount?: number; operatorCount?: number; sampleInsufficient?: boolean; dimensionNames?: Record<string, string>; dimensionTiers?: Record<string, string> } | null;
 }
 
 interface SignalRow {
@@ -73,6 +73,7 @@ interface RegistryEntry {
   protocol: string;
   direction: string;
   interval_sd: number | null;
+  tier?: string;
 }
 
 interface EvidenceMeta {
@@ -264,14 +265,14 @@ function seedProfiles(): Map<string, LbProfile> {
   const map = new Map<string, LbProfile>();
   for (const file of [BRANDS_FILE, MALLS_FILE]) {
     const dir = JSON.parse(readFileSync(file, "utf8")) as {
-      brands?: Array<{ slug: string; category?: string; listed?: string; revenue?: number; stores?: number; intro?: string }>;
+      brands?: Array<{ slug: string; category?: string; listed?: string; revenue?: number; revenueBasis?: string; stores?: number; intro?: string; priceBand?: string; ageRange?: string; hq?: string; founded?: number; subBrands?: string; channelMix?: string }>;
       malls?: Array<{ slug: string; area?: number; openedAt?: string; revenue?: number; intro?: string; mallType?: string; positioning?: string; groupCompany?: string; province?: string }>;
     };
     for (const e of dir.brands ?? []) {
-      map.set(e.slug, { category: e.category ?? null, listed: e.listed ?? null, revenueYi: e.revenue ?? null, stores: e.stores ?? null, areaWanSqm: null, openedAt: null, intro: e.intro ?? null, mallType: null, positioning: null, groupCompany: null, province: null });
+      map.set(e.slug, { category: e.category ?? null, listed: e.listed ?? null, revenueYi: e.revenue ?? null, revenueBasis: e.revenueBasis ?? null, stores: e.stores ?? null, priceBand: e.priceBand ?? null, ageRange: e.ageRange ?? null, hq: e.hq ?? null, founded: e.founded ?? null, subBrands: e.subBrands ?? null, channelMix: e.channelMix ?? null, areaWanSqm: null, openedAt: null, intro: e.intro ?? null, mallType: null, positioning: null, groupCompany: null, province: null });
     }
     for (const e of dir.malls ?? []) {
-      map.set(e.slug, { category: null, listed: null, revenueYi: e.revenue ?? null, stores: null, areaWanSqm: e.area ?? null, openedAt: e.openedAt ?? null, intro: e.intro ?? null, mallType: e.mallType ?? null, positioning: e.positioning ?? null, groupCompany: e.groupCompany ?? null, province: e.province ?? null });
+      map.set(e.slug, { category: null, listed: null, revenueYi: e.revenue ?? null, revenueBasis: null, stores: null, priceBand: null, ageRange: null, hq: null, founded: null, subBrands: null, channelMix: null, areaWanSqm: e.area ?? null, openedAt: e.openedAt ?? null, intro: e.intro ?? null, mallType: e.mallType ?? null, positioning: e.positioning ?? null, groupCompany: e.groupCompany ?? null, province: e.province ?? null });
     }
   }
   profileCache = map;
@@ -339,6 +340,7 @@ export async function loadBoard(key: LeaderboardBoardKey): Promise<LbBoardRespon
         sampleInsufficient: e.detail?.sampleInsufficient ?? false,
         dimensions: e.component_scores?.dimensions ?? null,
         mode: e.component_scores?.mode ?? null,
+        dimensionTiers: e.detail?.dimensionTiers ?? null,
       };
     });
   const copy = BOARD_COPY[key];
@@ -404,7 +406,7 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
     meta ? details.find((d) => d.snapshot_id === meta.snapshotId && d.metadata.configurationIdentity === meta.configuration) ?? null : null;
 
   const itemsBySource = new Map<string, LbEvidenceItem>();
-  for (const [unit] of units) {
+  for (const [unit, regEntry] of units) {
     const sourceKey = sourceKeyOfUnit(unit);
     const reg = registrySource(sourceKey);
     const signal = overall!.signals.get(unit)!.get(slug)!;
@@ -435,6 +437,7 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
       carriedForward: meta?.carriedForward ?? false,
       components,
       componentsNote: components.length ? reg?.source.components?.note ?? null : null,
+      tier: (regEntry.tier as LbEvidenceItem["tier"]) ?? null,
     });
   }
   const evidence: LbEvidenceGroup[] = SOURCE_GROUPS.map((g) => ({
@@ -446,6 +449,25 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
   const unmeasured = [...scoredSources]
     .filter((k) => !itemsBySource.has(k))
     .map((k) => ({ key: k, name: registrySource(k)?.source.name ?? k }));
+
+  // rd4（shoumen M1 整改）：商场实体详情页维度与置信级披露。商场榜实体在品牌榜视角 overall 为空，
+  // 上方证据区按品牌榜维度组织恒空；此处直取商场榜行的维度分与维度置信级，供详情页商场档案区块。
+  const mallEntry = view.boards.get("mall")?.bySlug.get(slug) ?? null;
+  let mallBoard: LbModelDetail["mallBoard"] = null;
+  if (mallEntry) {
+    const dimensions = mallEntry.component_scores?.dimensions ?? null;
+    const activeFamilies = [...new Set(Object.values(view.boards.get("mall")!.registry).filter((r) => r.weight > 0).map((r) => r.family))];
+    const dimLabel = (k: string) => mallEntry.detail?.dimensionNames?.[k] ?? k;
+    mallBoard = {
+      rank: mallEntry.rank,
+      score: mallEntry.score,
+      coverage: mallEntry.coverage,
+      mode: mallEntry.component_scores?.mode ?? null,
+      dimensions,
+      dimensionTiers: mallEntry.detail?.dimensionTiers ?? null,
+      unmeasuredDimensions: (dimensions ? activeFamilies.filter((f) => dimensions[f] == null) : activeFamilies).map((f) => ({ key: f, name: dimLabel(f) })),
+    };
+  }
 
   return {
     run: view.info,
@@ -462,6 +484,7 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
     metricCount: itemsBySource.size,
     evidence,
     unmeasured,
+    mallBoard,
     comparisons: overall && overallEntry ? nearbyComparisons(view, overall, slug, overallEntry.rank) : [],
   };
 }
@@ -606,6 +629,8 @@ export interface LbRulesBoard {
   name: string;
   mode: string | null;
   dimensions: LbRulesDimension[];
+  /** rd4：维度 key → 置信级，供 rules 页权重表标注数据成色。 */
+  tiers: Record<string, string>;
 }
 
 export interface LbRulesData {
@@ -617,13 +642,14 @@ export interface LbRulesData {
 export async function loadRulesData(): Promise<LbRulesData> {
   const view = await runView();
   const run = await sql<{ summary: any }[]>`SELECT summary FROM lb_runs WHERE id = ${view.info.id}`;
-  const boardDefs = (run[0]?.summary?.boards ?? []) as Array<{ key: string; name: string; dimensions: Array<{ key: string; name: string; weight: number }> }>;
+  const boardDefs = (run[0]?.summary?.boards ?? []) as Array<{ key: string; name: string; dimensions: Array<{ key: string; name: string; weight: number }>; tiers?: Record<string, string> }>;
   const sources = (run[0]?.summary?.sources ?? []) as Array<{ key: string; familyKey: string; weight: number }>;
   const order = SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => s.key));
   const boards: LbRulesBoard[] = boardDefs.map((b) => ({
     key: b.key,
     name: b.name,
     mode: view.boards.get(b.key)?.mode ?? null,
+    tiers: b.tiers ?? {},
     dimensions: b.dimensions.map((d) => ({
       ...d,
       sources: sources

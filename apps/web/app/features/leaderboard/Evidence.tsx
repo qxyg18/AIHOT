@@ -1,11 +1,37 @@
-import type { LbConfidence, LbStability } from "@aihot/contracts/leaderboard";
-import { LB_CONFIDENCE_LABELS } from "@aihot/contracts/leaderboard";
+import type { LbConfidence, LbSourceTier, LbStability } from "@aihot/contracts/leaderboard";
+import { LB_CONFIDENCE_LABELS, LB_DIMENSION_LABELS, LB_SOURCE_TIER_LABELS } from "@aihot/contracts/leaderboard";
 
 const DOT: Record<LbConfidence, string> = {
   HIGH: "bg-ok",
   MEDIUM: "bg-accent",
   LOW: "bg-amber",
 };
+
+const TIER_DOT: Record<LbSourceTier, string> = {
+  machine: "bg-ok",
+  report: "bg-accent",
+  seed: "bg-amber",
+};
+
+/** rd4 置信级角标：实体的维度 → 数据来源档位（机器源＞研报提取＞人工种子），只展示传入且在役的维度。 */
+export function TierChips({ tiers, dims }: { tiers: Record<string, string> | null; dims?: string[] }) {
+  if (!tiers) return null;
+  const keys = Object.keys(tiers).filter((k) => (dims ? dims.includes(k) : true) && tiers[k]);
+  if (!keys.length) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+      {keys.map((k) => {
+        const t = tiers[k] as LbSourceTier;
+        return (
+          <small key={k} className="inline-flex items-center gap-1 text-[10.5px] leading-[16px] text-ink-4">
+            <span className={`size-[5px] shrink-0 rounded-full ${TIER_DOT[t] ?? "bg-ink-4"}`} aria-hidden="true" />
+            {LB_DIMENSION_LABELS[k] ?? k}·{LB_SOURCE_TIER_LABELS[t] ?? t}
+          </small>
+        );
+      })}
+    </span>
+  );
+}
 
 function rangeText(s: LbStability): string {
   return s.from === s.to ? `第 ${s.from} 名` : `${s.from}—${s.to} 名`;
