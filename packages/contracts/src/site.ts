@@ -210,7 +210,7 @@ export interface HotEntryView {
   heat: number;
   trend: "up" | "down" | "flat" | "new" | "unknown";
   trendPct: number | null;
-  badges: Array<"surge" | "new" | "rising">;
+  badges: Array<"surge" | "new" | "rising" | "macro" | "mall" | "brand">;
   participantCount: number;
   sourceCount: number;
   signalCount: number;

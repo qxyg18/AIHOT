@@ -234,6 +234,46 @@ test("the hot board is domestic-first: a foreign-only echo stays off, one domest
   }
 });
 
+test("reserved slots: macro/mall/brand stories fill their quotas on domestic single-source evidence", async () => {
+  await sql`DELETE FROM story_signals WHERE observed_at > now() - interval '48 hours'`;
+  const setup = async (title: string, refs: Array<{ articleId: string; sourceId?: string }>) => {
+    const publicId = randomUUID();
+    const [story] = await sql<{ id: number }[]>`
+      INSERT INTO stories (public_id, title, first_report_at, latest_at) VALUES (${publicId}, ${title}, now() - interval '2 hours', now()) RETURNING id`;
+    const [fact] = await sql<{ id: number }[]>`INSERT INTO facts (public_id, story_id, title) VALUES (${`fact-${publicId}`}, ${story!.id}, ${title}) RETURNING id`;
+    for (const ref of refs) {
+      const sourceId = ref.sourceId ?? SOURCE;
+      await sql`INSERT INTO fact_articles (fact_id, article_id, role) VALUES (${fact!.id}, ${ref.articleId}, 'report')`;
+      await sql`INSERT INTO story_signals (story_id, article_id, participant_key, source_id, kind, observed_at)
+                VALUES (${story!.id}, ${ref.articleId}, ${`participant-${ref.articleId}`}, ${sourceId}, 'editorial', now() - interval '1 hour')`;
+      await publishArticle(ref.articleId, released());
+    }
+    return story!.id;
+  };
+  // article() 落的 analyses.category 是 'ai-models'（不在任何预留分区）；改写 category 造预留候选。
+  const categorized = async (category: string) => {
+    const id = await article();
+    await sql`UPDATE analyses SET category = ${category} WHERE article_id = ${id}`;
+    return id;
+  };
+  const freeStory = await setup(`FREE-${T}`, [{ articleId: await article() }, { articleId: await article() }]);
+  const macroStory = await setup(`MACRO-${T}`, [{ articleId: await categorized("statistics") }]);
+  const mallStories = [await setup(`MALL-1-${T}`, [{ articleId: await categorized("mall") }]), await setup(`MALL-2-${T}`, [{ articleId: await categorized("mall") }]), await setup(`MALL-3-${T}`, [{ articleId: await categorized("mall") }])];
+  const brandStory = await setup(`BRAND-${T}`, [{ articleId: await categorized("brand-moves") }]);
+
+  await computeHotRanking();
+  const entries = (await latestHotRanking())!.entries;
+  assert.ok(entries.some((e) => e.storyId === freeStory), "the free-slot story (multi-participant) ranks");
+  const macro = entries.find((e) => e.storyId === macroStory);
+  assert.ok(macro, "a domestic single-source statistics story takes the macro slot");
+  assert.ok(macro.badges.includes("macro"), "the macro slot is labelled");
+  const mallOn = entries.filter((e) => mallStories.includes(e.storyId));
+  assert.equal(mallOn.length, 2, "the mall quota holds at 2 even with 3 candidates");
+  assert.ok(mallOn.every((e) => e.badges.includes("mall")), "mall slots are labelled");
+  const brand = entries.find((e) => e.storyId === brandStory);
+  assert.ok(brand?.badges.includes("brand"), "a brand-moves story takes a brand slot");
+});
+
 test("item pages follow the live rule: unsummarised editorial items keep one, hot_signal items have none", async () => {
   const SIGNAL = `${SOURCE}-signal`;
   await sql`INSERT INTO sources (id, name, kind, tier, participation_mode, site_fulltext, syndicate_fulltext, next_fetch_at)

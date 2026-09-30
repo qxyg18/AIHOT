@@ -12,7 +12,7 @@ export interface HotEntry {
   /** "unknown": the earlier participants' sources were behind on collection, so there is no comparison. */
   trend: "up" | "down" | "flat" | "new" | "unknown";
   trendPct: number | null;
-  badges: Array<"surge" | "new" | "rising">;
+  badges: Array<"surge" | "new" | "rising" | "macro" | "mall" | "brand">;
   participantCount: number;
   sourceCount: number;
   signalCount: number;
