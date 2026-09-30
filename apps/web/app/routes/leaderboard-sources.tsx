@@ -14,13 +14,13 @@ export async function loader({ request }: { request: Request }) {
 
 export function meta() {
   return pageMeta({
-    title: "评测来源",
-    description: `了解 ${SITE.name} 采用和观察中的评测来源、方法与数据进展。`,
+    title: "数据来源",
+    description: `了解 ${SITE.name} 两榜采用和观察中的数据来源、口径与进展。`,
     path: "/leaderboard/sources",
     image: "/og/pages/leaderboard.png",
     jsonLd: breadcrumbLd([
-      { name: "模型榜", path: "/leaderboard" },
-      { name: "评测来源", path: "/leaderboard/sources" },
+      { name: "排行榜", path: "/leaderboard" },
+      { name: "数据来源", path: "/leaderboard/sources" },
     ]),
   });
 }
@@ -34,10 +34,10 @@ export default function LeaderboardSourcesPage() {
   return (
     <div className="pb-12">
       <Link to="/leaderboard" className="mt-4 inline-flex items-center gap-1.5 py-2 text-[13px] text-ink-3 transition-colors hover:text-accent lg:mt-0">
-        <IconArrowLeft size={14} /> 返回模型榜
+        <IconArrowLeft size={14} /> 返回排行榜
       </Link>
       <header className="pb-2 pt-3">
-        <h1 className="text-[24px] font-semibold leading-[1.3] text-ink">评测来源</h1>
+        <h1 className="text-[24px] font-semibold leading-[1.3] text-ink">数据来源</h1>
         <p className="mt-1.5 text-[13px] text-ink-3">每个来源测什么、怎样更新、是否进入排名，都可以在这里找到。</p>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
           <div className="flex items-baseline gap-6">
@@ -100,7 +100,7 @@ export default function LeaderboardSourcesPage() {
       ))}
 
       <p className="mt-10 border-t border-line pt-5 text-[12px] leading-relaxed text-ink-4">
-        “观察中”表示仍在核对数据、运行条件或使用边界，不参与综合榜和分类榜。同一评测的重复抓取和展示切片不会增加票权；不同评测之间的题库重叠仍需持续核对。
+        「观察中」表示仍在核对数据、采集条件或使用边界，不参与计分。「等待成绩」表示通道已预留、尚未激活。同一来源的重复抓取不会增加权重，维度权重正本在方法页公示。
       </p>
     </div>
   );

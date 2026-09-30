@@ -36,7 +36,7 @@ export function tokensWan(n: number | null): string {
 }
 
 export function boardHref(key: string): string {
-  return key === "overall" ? "/leaderboard" : `/leaderboard/category/${key}`;
+  return key === "brand" ? "/leaderboard" : `/leaderboard/category/${key}`;
 }
 
 export function modelHref(slug: string, from?: string | null): string {

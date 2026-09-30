@@ -71,6 +71,33 @@ export interface LbModelRef {
   provider: string | null;
   releasedAt: string | null;
   brand: LbBrand;
+  /** 行业档案（人工种子概数，公开口径待核实）：品牌=品类/上市/年业绩/门店，商业体=面积/开业/年业绩。 */
+  profile: LbProfile | null;
+}
+
+export interface LbProfile {
+  /** 品牌主营品类 */
+  category: string | null;
+  /** 上市信息（交易所/代码/年份，文本） */
+  listed: string | null;
+  /** 年业绩预估（亿元人民币） */
+  revenueYi: number | null;
+  /** 门店规模预估（家） */
+  stores: number | null;
+  /** 商业体面积（万㎡） */
+  areaWanSqm: number | null;
+  /** 商业体开业年份 */
+  openedAt: string | null;
+  /** 一句话档案简介（≤50 字，zw14 档案库生成通道）；null=未生成，展示层用档案字段拼兜底句。 */
+  intro: string | null;
+  /** 商业体类型（购物中心/百货/奥特莱斯/商业街区；a18 公开常识概数） */
+  mallType: string | null;
+  /** 商业体定位档次（高端/中高端/中端/中低端/低端；a18 公开常识概数） */
+  positioning: string | null;
+  /** 商业体所属集团（连锁产品线归属，null=独立/未判；a18 公开常识概数） */
+  groupCompany: string | null;
+  /** 商业体省级行政区（由 city 机械映射；a18） */
+  province: string | null;
 }
 
 export interface LbBoardTab {
@@ -99,6 +126,12 @@ export interface LbBoardEntry {
   confidence: LbConfidence;
   stability: LbStability | null;
   price: LbPrice | null;
+  /** weighted v1：有效维度权重占比过低（<0.3），展示在「样本不足」区，不进正式名次。 */
+  sampleInsufficient: boolean;
+  /** weighted v1：该实体的各维度归一分（透明表）；键=维度 key。 */
+  dimensions: Record<string, number | null> | null;
+  /** weighted v1：榜模式（"weighted" | "footfall-only"），null=非 weighted 运行的历史数据。 */
+  mode: string | null;
 }
 
 export interface LbBoardResponse {

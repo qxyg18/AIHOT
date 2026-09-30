@@ -18,7 +18,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   const { source } = loaderData;
   const path = `/leaderboard/sources/${source.key}`;
   return pageMeta({
-    title: `${source.name} · 评测来源`,
+    title: `${source.name} · 数据来源`,
     description: source.description,
     path,
     image: "/og/pages/leaderboard.png",
@@ -33,8 +33,8 @@ export function meta({ loaderData }: Route.MetaArgs) {
         ...(source.officialUrl ? { sameAs: source.officialUrl } : {}),
       },
       breadcrumbLd([
-        { name: "模型榜", path: "/leaderboard" },
-        { name: "评测来源", path: "/leaderboard/sources" },
+        { name: "排行榜", path: "/leaderboard" },
+        { name: "数据来源", path: "/leaderboard/sources" },
         { name: source.name, path },
       ]),
     ],
@@ -60,7 +60,7 @@ export default function LeaderboardSourcePage() {
   return (
     <div className="pb-12">
       <Link to="/leaderboard/sources" className="mt-4 inline-flex items-center gap-1.5 py-2 text-[13px] text-ink-3 transition-colors hover:text-accent lg:mt-0">
-        <IconArrowLeft size={14} /> 评测来源
+        <IconArrowLeft size={14} /> 数据来源
       </Link>
 
       <header className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -81,7 +81,7 @@ export default function LeaderboardSourcePage() {
             rel="noopener noreferrer"
             className="inline-flex h-8 shrink-0 items-center gap-1.5 self-start rounded-full border border-line-strong bg-surface px-3 text-[12.5px] text-ink-2 transition-colors hover:border-ink-4 hover:text-ink"
           >
-            官方评测 <IconArrowUpRight size={13} />
+            官方来源 <IconArrowUpRight size={13} />
           </a>
         )}
       </header>

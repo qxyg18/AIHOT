@@ -1,6 +1,6 @@
-// Public method statement for the leaderboard (method v15, docs/leaderboard.md).
+// Public method statement for the two boards (weighted v1, docs/leaderboard.md).
 // The copy states how rankings are actually computed; it changes only together with the method.
-import { SITE, withSubject } from "@aihot/industry/site";
+import { SITE } from "@aihot/industry/site";
 import { Link, useLoaderData } from "react-router";
 import type { LbRunInfo } from "@aihot/contracts/leaderboard";
 import { loadOr404 } from "../lib/api.server";
@@ -10,10 +10,23 @@ import { fullDateTime } from "../lib/format";
 import { IconArrowLeft, IconChevronRight } from "../components/icons";
 import { AsideCard, ReadingLayout } from "../components/ui/Page";
 
+interface RulesDimension {
+  key: string;
+  name: string;
+  weight: number;
+  sources: string[];
+}
+
+interface RulesBoard {
+  key: string;
+  name: string;
+  mode: string | null;
+  dimensions: RulesDimension[];
+}
+
 interface RulesData {
   run: LbRunInfo;
-  budgets: Array<{ key: string; name: string; weight: number; sources: string[] }>;
-  anchors: string[];
+  boards: RulesBoard[];
 }
 
 export async function loader({ request }: { request: Request }) {
@@ -22,12 +35,12 @@ export async function loader({ request }: { request: Request }) {
 
 export function meta() {
   return pageMeta({
-    title: "共识指数计算方法",
-    description: `查看 ${SITE.name} 模型榜如何核验公开成绩、比较共同参评结果、处理缺失证据，并确定排名和 0—100 共识指数。`,
+    title: "两榜排名怎么算",
+    description: `查看 ${SITE.name} 童装品牌榜与全国商业体榜的维度权重、归一方法、防扭曲机制与冷启动标注。`,
     path: "/leaderboard/rules",
     image: "/og/pages/leaderboard.png",
     jsonLd: breadcrumbLd([
-      { name: "模型榜", path: "/leaderboard" },
+      { name: "排行榜", path: "/leaderboard" },
       { name: "排名怎么算", path: "/leaderboard/rules" },
     ]),
   });
@@ -40,64 +53,64 @@ export function headers() {
 const STEPS = [
   {
     n: "01",
-    title: "先确认，是同一个模型",
-    body: "统一各家榜单的名称和版本。同一模型的不同推理档位只选一个代表配置，选择规则预先确定，不挑最高分。匿名测试代号和混用其他模型完成任务的成绩排除；已正式公开的 Preview 版本可以参加。",
+    title: "先统一实体身份",
+    body: "品牌榜与商业体榜的实体来自站点名录（种子文件维护）。各数据源用自己的叫法提及实体时，统一映射到名录条目；名录外的新实体不凭单条消息上榜，先入名录再参排。",
   },
   {
     n: "02",
-    title: "让真正测过的模型相互比较",
-    body: "只比较同一评测中的真实成绩。双方都有公开误差时，误差范围内的微小差异更接近平局，不当成确定胜负。没有测到，就没有这一场比较。",
+    title: "每个维度内归一",
+    body: "计数类指标（提及、事件）先做对数压缩再归一到 0—100；金额、门店数、层级直接归一。同一维度有多个指标时取均值，指标权重均等，不叠加放大。",
   },
   {
     n: "03",
-    title: "先定票权，再汇总共同意见",
-    body: "每项评测使用预先确定的预算。综合榜至少要求三家评测机构、三个证据家族与三个专项覆盖；同一来源重复抓取或展示切片，不会凭空增加票权。",
+    title: "按定稿权重加权",
+    body: "品牌榜：声量 20% / 业绩 40% / 规模 30% / 扩张 10%。商业体榜：客流 35% / 童装业态亲和 20% / 业绩 15% / 首店快闪 15% / 媒体声量 15%，业绩缺数时滚给客流。权重为命主定稿，写进算法版本。",
   },
   {
     n: "04",
-    title: "寻找冲突最少的完整排名",
-    body: "不同评测的意见可能冲突。我们选择违背共同证据净票权最少的一条顺序，再单独计算展示指数。缺测不补零分，也不猜测未公开的成绩。",
+    title: "缺数计零，独立计权",
+    body: "各维度独立计权，分母固定为权重总和：某实体缺一个维度的数据时，该维度计 0 贡献，不把权重摊给其余维度（缺业绩不能靠规模补位），也不猜测；同时给出覆盖度（有效维度权重占比）。覆盖度不足 30% 的实体标「样本不足」，不进正式名次。",
   },
+];
+
+const ANTI_GAMING = [
+  ["单源封顶", "每个维度内的指标均分该维度权重；同一采集端最多影响它名下的维度（站内引擎=声量+扩张+商场三维度，人工种子=业绩+规模+客流），没有任何单一来源能靠量堆满整张榜。"],
+  ["窗口提及门槛", "提及类与事件类指标要求窗口（30 天）内至少 3 条，低于门槛该维度不计分；靠零星公关稿刷不出名次。"],
+  ["样本不足标注", "有效维度权重占比不足 30% 的实体不进入正式名次，单独列在「样本不足」区，等数据积累够再参排。"],
+  ["分级不进权重", "品牌的 P0/P1/P2 监控分级（站点编辑分层）只用于页面分组展示，不进任何权重计算；戴维贝拉作为名录内品牌正常参排。"],
 ];
 
 const FAQ = [
   {
-    q: "为什么有的模型证据较少，也能上榜？",
-    a: "评测数量与能力是两件事。综合榜至少需要三家机构与跨能力证据。多数分类要求两家机构，知识采用同一机构的两项评测并明确说明。缺测不记零分，但仍可能造成偏差。",
+    q: "商业体榜为什么现在是「客流单源直榜」？",
+    a: "客流维度的正源是赢商网购物中心人气榜。实测其移动站数据栏目为文章流、大数据子域不可达、PC 站路径 404，公开面没有可抓的结构化榜单接口，按预授权降级条款执行：客流维度暂由人工编制的客流层级种子直榜排序，其余维度照常采集、待客流正源可接入后恢复五维加权。",
   },
   {
-    q: "“证据敏感”是什么意思？",
-    a: "删去一项评测或一家机构、将单项权重上下调整 20%、或改变误差处理后，名次范围达到三名或以上、某些情景失去参评资格，或有对照未完成，就会提示证据敏感。详情页的情景范围不是 95% 置信区间，不包含未知成绩。",
+    q: "业绩和规模的数据从哪来？",
+    a: "冷启动期为人工种子概数：上市童装公司的童装业务营收取公开财报口径概数，门店数取公开报道的概数档位，均标注待核实。每个实体的覆盖度标签披露其数据完整程度；公告自动抽取接入后人工种子将被逐步替换。",
   },
   {
-    q: "前面的模型一定在两两比较中获胜吗？",
-    a: "不一定。A 可能胜 B，B 胜 C，C 又胜 A。完整榜单要权衡这些冲突；非相邻名次可能与单独比较不同。数学最优表示按当前规则的总冲突最少，不表示已证明所有真实工作中的能力顺序。",
+    q: "声量是怎么统计的？",
+    a: "站内声量=近 30 天站内采集文章标题对品牌的提及次数（标题级关键词匹配）。热搜命中（DailyHotApi 自部署实例聚合的各平台热搜）与社媒指数（人工补录通道）接入后，声量维度取三个口径的均值。",
   },
   {
-    q: "为什么排名可能和我的体验不同？",
-    a: "榜单汇集公开评测，反映这些证据支持的综合能力。实际体验还受产品版本、推理档位、工具环境和长任务稳定性影响。我们会用新评测检验旧排名；分数接近时，不应把一两名之差理解成明显强弱。",
+    q: "榜单多久更新一次？",
+    a: "每天四轮（02:05 / 08:05 / 14:05 / 20:05）。指标数据变化才发布新榜单；数据没变的轮次保持原榜单与原时间。",
   },
   {
-    q: "新模型什么时候会出现？",
-    a: `${SITE.name} 每天检查四次上游结果。只有评测方实际发布了新模型的成绩，才能用于排名；网页刷新、价格更新或我们的抓取时间，都不算重新评测。`,
+    q: "同分怎么排序？",
+    a: "综合分相同时按实体名录名（slug）排序，规则预先固定，与排名结果无关。",
   },
   {
-    q: "某家榜单暂时打不开，会怎样？",
-    a: "仍有效的来源快照可继续使用。相同评测版本内，临时漏行最多沿用最近七天已核验的记录；仍在公开榜中保留的有效成绩，不因数值长期不变被删除。官方撤回、更正、换版会相应失效或替换，不保留历史最高分。整轮计算失败时保留上一轮有效榜及原时间。",
-  },
-  {
-    q: "综合指数会和专项评测重复计分吗？",
-    a: "我们根据公开的题库与方法说明检查重叠，并限制相关来源的总份额；无法确认的相关性仍是局限。当前 AA 指数占 30%；Arena 整体文本与创作专项共享原有 10% 真人偏好份额，各占 5%。两项有重叠投票，因此仍算同一个证据家族，不假装是两家独立评测。",
-  },
-  {
-    q: "价格或速度会影响排名吗？",
-    a: "都不会。价格只供你了解 API 的使用成本，统一按每百万 Token 展示，并保留厂商官方来源。它不代表订阅费用。",
+    q: "非上市品牌会不会吃亏？",
+    a: "缺业绩数据的品牌该维度计 0 贡献（各维度独立计权，不靠规模补位），分数会如实反映数据完整程度；覆盖度标签披露其数据完整度，读榜时请一并参考。人工补录通道（社媒指数、非上市业绩披露）开放给站方随时补充。",
   },
 ];
 
 const SECTIONS = [
   ["#rules-steps", "四步得出排名"],
-  ["#rules-budgets", "证据怎么分配"],
+  ["#rules-weights", "两榜权重"],
+  ["#rules-anti-gaming", "防扭曲机制"],
   ["#rules-faq", "常见问题"],
   ["#rules-details", "计算细节"],
 ] as const;
@@ -122,7 +135,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 }
 
 export default function LeaderboardRulesPage() {
-  const { run, budgets, anchors } = useLoaderData<typeof loader>();
+  const { run, boards } = useLoaderData<typeof loader>();
   const aside = (
     <>
       <AsideCard title="本页内容" className="hidden lg:block">
@@ -149,8 +162,9 @@ export default function LeaderboardRulesPage() {
       <AsideCard title="继续看">
         <nav aria-label="继续看" className="-mx-2 -mb-1">
           {[
-            ["/leaderboard", "模型榜"],
-            ["/leaderboard/sources", "每一份评测证据"],
+            ["/leaderboard", "童装品牌榜"],
+            ["/leaderboard/category/mall", "全国商业体榜"],
+            ["/leaderboard/sources", "每一份数据来源"],
           ].map(([to, label]) => (
             <Link key={to} to={to!} prefetch="intent" className="flex items-center justify-between rounded-control px-2 py-2 text-[13.5px] text-ink-2 transition-colors hover:bg-bg-sunk hover:text-ink">
               {label}
@@ -164,22 +178,20 @@ export default function LeaderboardRulesPage() {
   return (
     <ReadingLayout aside={aside}>
       <Link to="/leaderboard" className="inline-flex items-center gap-1.5 py-2 text-[13px] text-ink-3 transition-colors hover:text-accent">
-        <IconArrowLeft size={14} /> 返回模型榜
+        <IconArrowLeft size={14} /> 返回排行榜
       </Link>
 
       <header className="pt-3">
         <h1 className="text-[24px] font-semibold leading-[1.3] text-ink">排名怎么算</h1>
-        <p className="mt-1.5 text-[13px] text-ink-3">综合多家公开评测，了解排名背后的证据与方法。</p>
+        <p className="mt-1.5 text-[13px] text-ink-3">童装品牌榜与全国商业体榜的维度权重、归一方法与防扭曲机制，全部公开。</p>
       </header>
 
       <section className="mt-6 grid items-center gap-5 rounded-panel border border-line-soft bg-bg-sunk px-6 py-7 dark:bg-bg-muted/40 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] md:px-10 md:py-9 lg:grid-cols-1 xl:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
         <p className="mono text-[44px] font-medium leading-none tracking-[-0.04em] text-accent md:text-center md:text-[52px]">0—100</p>
         <div>
-          <h2 className="text-[17px] font-bold text-ink">共同的证据，清楚的顺序。</h2>
-          <p className="mt-2.5 text-[13px] leading-[1.8] text-ink-3">综合多家公开评测，在完整排名中尽量减少与已知成绩的冲突。综合榜和四类榜单都最多展示前 30 名。</p>
-          <p className="mt-1.5 text-[13px] leading-[1.8] text-ink-3">
-            共识指数把支持原排名的证据差异换算为 0—100，方便比较，不是正确率或能力差距的百分比。支持接近时可以同分，名次仍由完整证据决定。
-          </p>
+          <h2 className="text-[17px] font-bold text-ink">定稿权重，透明计算。</h2>
+          <p className="mt-2.5 text-[13px] leading-[1.8] text-ink-3">两榜各维度权重由站方定稿并写进算法版本；每个实体的维度得分在详情页完整可见，加权和可复算。</p>
+          <p className="mt-1.5 text-[13px] leading-[1.8] text-ink-3">加权分是维度内相对位置的合成，不是市场份额或能力差距的百分比；同分按固定规则排序。</p>
         </div>
       </section>
 
@@ -193,26 +205,43 @@ export default function LeaderboardRulesPage() {
         ))}
       </ol>
 
-      <section id="rules-budgets" className="mt-12 scroll-mt-6">
-        <Eyebrow>A BALANCED VIEW</Eyebrow>
-        <h2 className="mt-2 text-[20px] font-bold text-ink">综合测试、真人盲选、专项评测，一起看。</h2>
+      <section id="rules-weights" className="mt-12 scroll-mt-6">
+        <Eyebrow>BOARD WEIGHTS</Eyebrow>
+        <h2 className="mt-2 text-[20px] font-bold text-ink">两榜权重表（本轮在役）。</h2>
         <p className="mt-1.5 max-w-[64em] text-[13px] leading-[1.8] text-ink-3">
-          综合评测占 30%，真人盲选占 10%，各项专项评测合计占 60%。新增评测先核对公开说明中的重叠关系，再从对应份额中分配；缺失份额不转给其他评测。
+          权重正本在算法（方法版本随权重变更升级）；下表由本轮计算结果直接生成，页面写的和算法算的一致。
         </p>
-        <ul className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="证据预算分配">
-          {budgets.map((b) => (
-            <li key={b.key} className="card flex flex-col p-4 lg:p-5">
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="text-[13.5px] font-semibold text-ink">{b.name}</span>
-                <span className="mono text-[20px] font-medium text-ink">{pct(b.weight, 0)}</span>
-              </span>
-              <span className="mt-2.5 text-[11.5px] leading-[1.7] text-ink-4">{b.sources.join(" · ") || "—"}</span>
-            </li>
+        {boards.map((b) => (
+          <div key={b.key} className="mt-5">
+            <h3 className="text-[15px] font-bold text-ink">
+              {b.name}
+              {b.mode === "footfall-only" && <span className="ml-2 rounded-mark bg-bg-sunk px-2 py-0.5 text-[11.5px] font-normal text-ink-3">降级期：客流单源直榜</span>}
+            </h3>
+            <ul className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5" aria-label={`${b.name}维度权重`}>
+              {b.dimensions.map((d) => (
+                <li key={d.key} className="card flex flex-col p-4 lg:p-5">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="text-[13.5px] font-semibold text-ink">{d.name}</span>
+                    <span className="mono text-[20px] font-medium text-ink">{pct(d.weight, 0)}</span>
+                  </span>
+                  <span className="mt-2.5 text-[11.5px] leading-[1.7] text-ink-4">{d.sources.join(" · ") || "—"}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+
+      <section id="rules-anti-gaming" className="mt-12 scroll-mt-6">
+        <Eyebrow>ANTI-GAMING</Eyebrow>
+        <h2 className="mt-2 text-[20px] font-bold text-ink">防扭曲机制。</h2>
+        <div className="mt-3 border-t border-line">
+          {ANTI_GAMING.map(([title, body]) => (
+            <Disclosure key={title} summary={title} defaultOpen>
+              {body}
+            </Disclosure>
           ))}
-        </ul>
-        <p className="mt-4 max-w-[64em] text-[12.5px] leading-[1.8] text-ink-3">
-          编程、推理、知识、专业办公分别寻找真实评测，分类分独立计算。视觉理解与多语言证据继续保留在综合榜；调整分类名称不会增加同一份成绩的投票权。综合分不等于分类分的算术平均。分类通常至少有两项有效评测、五个可比较型号才展示。知识目前由 Epoch 的两套评测支持，并明确说明同机构的局限。创作偏好、网页开发等证据继续用于综合榜，首版不单设审美和写作榜。
-        </p>
+        </div>
       </section>
 
       <section id="rules-faq" className="mt-12 scroll-mt-6">
@@ -230,23 +259,21 @@ export default function LeaderboardRulesPage() {
         <Disclosure summary="查看计算细节与当前版本">
           <div className="space-y-3">
             <p>
-              方法版本：<code className="mono rounded-mark bg-bg-sunk px-1.5 py-0.5 text-[12px] text-ink-2">{run.methodologyVersion}</code>。采用加权不完整 Kemeny 排序。每对共同参评模型汇总净支持 M；目标是最小化所有被排反的净支持之和。整数优化返回最优状态和目标上下界，只有完整通过验证的结果才用于正式发布。
+              方法版本：<code className="mono rounded-mark bg-bg-sunk px-1.5 py-0.5 text-[12px] text-ink-2">{run.methodologyVersion}</code>。加权分计算：每个指标在其所属榜的实体池内归一（计数类先 log1p 压缩），维度分=维度内各指标归一分的均值，实体总分=Σ(维度分×维度权重)÷有效维度权重和×100。
             </p>
             <p>
-              双方有明确标准误时，净支持取 2Φ(分差 / 合成标准误) − 1，默认零协方差；其他比较只取原始领先方向。未知误差并非零误差，小分差按序数处理仍是局限。票权针对潜在模型对，覆盖型号多的来源会使用更多比较位置，不能把名义预算解读为最终名次的精确贡献率。
+              覆盖度=有效维度权重和÷全部维度权重和；展示保留一位小数。窗口提及门槛（3 条）、覆盖度门槛（30%）、商业体榜业绩滚给客流的转移规则、降级直榜判定（客流维度无机器源快照时）均为算法内固定常量，变更即升版本并在本页公示。
             </p>
             <p>
-              展示指数保留原排序：逐对反转相邻模型的先后，允许其余模型重排，计算最少增加的逆向净支持。沿原排名累加这些非负支持差，再相对固定参照组用 sigmoid 映射到 0—100。替代顺序同样最优时保留零间距，显示保留一位小数，不人为设置最低分差。指数不参与反向排序；入榜集合、参照型号与证据变化仍会影响指数，分差不等于真实能力距离。同代价求解固定型号 ID 次序；整数优化使用 HiGHS 求解器（highs 1.15.3），误差换算的正态分布函数与 SciPy norm.cdf 采用同一算法；来源、协议、参评资格和每轮计算输入均保存版本。未连接到共同证据网络时不发布跨分量的假精确顺序。
+              事件词表（扩张/首店快闪）：开店、新开、首店、入驻、开业、新店、新品、联名、快闪、拓店、进场。站内声量引擎统计口径=近 30 天标题级关键词提及；正文级与社媒外站统计随信源扩展升级，升级前如实披露口径边界。
             </p>
-            <p>
-              固定参照型号：<span className="mono text-[12px] text-ink-2">{anchors.join("、")}</span>。参照组用于指数尺度，不指定任何厂商应排第几；不同分类的指数不直接比较。
-            </p>
+            <p>上一代方法（AI 模型榜 Kemeny 共识 v15）的代码保留在系统中未删除，历史榜单可回溯；两榜体系不继承其任何票权结构。</p>
           </div>
         </Disclosure>
       </section>
 
       <Link to="/leaderboard/sources" className="mt-8 inline-flex items-center gap-1 text-[13.5px] font-medium text-accent hover:text-accent-ink">
-        查看每一份评测证据 →
+        查看每一份数据来源 →
       </Link>
     </ReadingLayout>
   );

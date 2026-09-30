@@ -54,51 +54,38 @@ export interface BoardCopy {
   howToRead: string;
 }
 
-const GENERAL_READING = "综合多家公开评测，不同模型的参评覆盖不同。";
-
 export const BOARD_COPY: Record<LeaderboardBoardKey, BoardCopy> = {
-  overall: {
-    key: "overall",
-    name: "综合",
-    title: `${SITE.name} 大模型排行榜`,
-    description: "汇集多种能力的真实评测，找到综合表现更强的模型。",
-    howToRead: GENERAL_READING,
+  brand: {
+    key: "brand",
+    name: "童装品牌榜",
+    title: `${SITE.name} 童装品牌榜`,
+    description: "按声量、业绩、规模、扩张四个维度，追踪童装品牌的月度综合表现。",
+    howToRead: "权重=媒体声量 20 / 业绩 40 / 规模 30 / 扩张 10，各维度独立计权（缺数维度计 0 贡献，分母固定为权重总和，不交叉补位）并带覆盖度标签；窗口提及不足 3 条的维度不计分；覆盖度过低的品牌标「样本不足」。",
   },
-  coding: {
-    key: "coding",
-    name: "编程",
-    title: `编程模型排行榜 · ${SITE.name}`,
-    description: "从写代码到改仓库，看模型能不能把软件做出来。",
-    howToRead: GENERAL_READING,
-  },
-  reasoning: {
-    key: "reasoning",
-    name: "推理",
-    title: `推理模型排行榜 · ${SITE.name}`,
-    description: "数学、逻辑与陌生规则，看模型能不能想明白新问题。",
-    howToRead: GENERAL_READING,
-  },
-  knowledge: {
-    key: "knowledge",
-    name: "知识",
-    title: `知识模型排行榜 · ${SITE.name}`,
-    description: "事实问答与研究生级科学知识，看知识掌握与回答准确性。",
-    howToRead: "当前知识榜采用 Epoch 的两项评测，来自同一家机构。",
-  },
-  professional: {
-    key: "professional",
-    name: "专业办公",
-    title: `专业办公模型排行榜 · ${SITE.name}`,
-    description: "金融分析、法律咨询与银行业务，看专业任务能否完成。",
-    howToRead: "当前覆盖金融分析、专业咨询与银行业务，尚不能代表所有文档、表格和演示文稿任务。",
+  mall: {
+    key: "mall",
+    name: "全国商业体榜",
+    title: `${SITE.name} 全国商业体榜`,
+    description: "按客流规模、童装业态亲和、业绩、首店快闪动能、媒体声量五个维度，追踪全国商业体。",
+    howToRead: "权重=客流 35 / 童装业态亲和 20 / 业绩 15 / 首店快闪 15 / 媒体声量 15；业绩缺数时滚给客流。客流数据源降级期为「客流单源直榜」（人工种子层级，见排名方法页冷启动说明）。",
   },
 };
 
-export const BOARD_LIMIT = 30;
+// 榜单实体展示与详情页可见上限（zw13 展示策略）：品牌榜最多 80 名，商业体榜全量可见（防膨胀上限 1000）。
+export const BOARD_ENTRY_LIMITS: Record<string, number> = { brand: 80, mall: 1000 };
+export function boardEntryLimit(key: string): number {
+  return BOARD_ENTRY_LIMITS[key] ?? 80;
+}
+// 来源页单源快照的配置行上限，与榜实体展示无关，沿用旧 30 档。
+export const SNAPSHOT_ROWS_LIMIT = 30;
 
-// How each source publishes its numbers: already in percent, a 0–1 fraction, or a plain score.
-const PERCENT_SOURCES = new Set(["livebench-general", "livebench-coding", "livebench-reasoning", "livebench-writing", "mercor-apex-agents", "vals-finance-agent", "tau-banking"]);
-const PLAIN_SOURCES = new Set(["artificial-analysis", "artificial-analysis-multilingual", "arena-text", "arena-webdev", "arena-vision", "arena-creative-writing", "eq-creative", "eq-longform", "eq-emotional-v4"]);
+// How each source publishes its numbers. 两榜指标全部为计数/金额/层级/指数，展示为整数；v15 时代
+// 的百分比/分数格式集合随评测源退役清空（保留机制供未来源复用）。
+const PERCENT_SOURCES = new Set<string>([]);
+const PLAIN_SOURCES = new Set<string>([
+  "brand-volume", "brand-expansion", "brand-hotsearch", "brand-social", "brand-revenue", "brand-stores",
+  "mall-footfall", "mall-affinity", "mall-firststore", "mall-media", "mall-revenue", "winshang-mall",
+]);
 
 export function scoreFormat(sourceKey: string, sample?: number | null): LbScoreFormat {
   if (PERCENT_SOURCES.has(sourceKey)) return "percent";

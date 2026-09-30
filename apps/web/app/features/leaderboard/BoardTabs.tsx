@@ -6,7 +6,7 @@ import { boardHref } from "./format";
 /** Board switcher. It lives in the shared layout, so the thumb glides between boards. */
 export function BoardTabs() {
   const { pathname } = useLocation();
-  const active = LEADERBOARD_PUBLIC_BOARDS.find((k) => boardHref(k) === pathname) ?? "overall";
+  const active = LEADERBOARD_PUBLIC_BOARDS.find((k) => boardHref(k) === pathname) ?? "brand";
   return (
     <PillTabs
       layoutId="lb-board"

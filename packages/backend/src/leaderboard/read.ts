@@ -11,6 +11,7 @@ import type {
   LbEvidenceItem,
   LbModelDetail,
   LbModelRef,
+  LbProfile,
   LbPrice,
   LbRunInfo,
   LbSourceDetail,
@@ -19,10 +20,14 @@ import type {
   LbSourceSummary,
   LbStability,
 } from "@aihot/contracts/leaderboard";
+import type { SiteBrandCard } from "@aihot/contracts/site";
+import { readFileSync } from "node:fs";
 import { sql } from "../db.ts";
+import { BRANDS_FILE, MALLS_FILE } from "./directory.ts";
 import {
   BOARD_COPY,
-  BOARD_LIMIT,
+  SNAPSHOT_ROWS_LIMIT,
+  boardEntryLimit,
   formatScore,
   modelBrand,
   registrySource,
@@ -49,7 +54,8 @@ interface RankingRow {
   coverage: number | null;
   confidence: string | null;
   metric_count: number | null;
-  detail: { stability?: LbStability; sourceCount?: number; operatorCount?: number } | null;
+  component_scores: { dimensions?: Record<string, number | null>; mode?: string } | null;
+  detail: { stability?: LbStability; sourceCount?: number; operatorCount?: number; sampleInsufficient?: boolean } | null;
 }
 
 interface SignalRow {
@@ -97,6 +103,8 @@ interface BoardView {
   sourceCount: number;
   operatorCount: number;
   modelCount: number;
+  /** weighted v1：商场榜降级直榜标记（"weighted" | "footfall-only"）。 */
+  mode: string | null;
 }
 
 interface RunView {
@@ -158,7 +166,7 @@ async function buildRunView(runId: string): Promise<RunView> {
   };
 
   const rankingRows = await sql<Array<RankingRow & { board: string }>>`
-    SELECT board, model_id, rank, score, coverage, confidence, metric_count, detail FROM lb_rankings WHERE run_id = ${runId} ORDER BY board, rank`;
+    SELECT board, model_id, rank, score, coverage, confidence, metric_count, component_scores, detail FROM lb_rankings WHERE run_id = ${runId} ORDER BY board, rank`;
   const modelIds = [...new Set(rankingRows.map((r) => r.model_id))];
   const modelRows = await sql<ModelRow[]>`
     SELECT id, slug, name, provider, provider_slug, released_at, context_window_tokens FROM lb_models WHERE id = ANY(${modelIds})`;
@@ -188,12 +196,13 @@ async function buildRunView(runId: string): Promise<RunView> {
       sourceCount: new Set(active.map(([unit]) => sourceKeyOfUnit(unit))).size,
       operatorCount: new Set(active.map(([, r]) => r.operator)).size,
       modelCount: entries.length,
+      mode: (input as { mode?: string }).mode ?? null,
     });
   }
 
   const pageSlugs = new Set<string>();
   for (const key of LEADERBOARD_PUBLIC_BOARDS) {
-    for (const e of boards.get(key)?.entries ?? []) if (e.rank <= BOARD_LIMIT) pageSlugs.add(e.slug);
+    for (const e of boards.get(key)?.entries ?? []) if (e.rank <= boardEntryLimit(key)) pageSlugs.add(e.slug);
   }
 
   const priceRows = await sql<{ model_id: string; currency: "CNY" | "USD"; input: number | null; output: number | null; cached_input: number | null; source_url: string | null; verified_on: Date | null }[]>`
@@ -238,6 +247,8 @@ async function buildRunView(runId: string): Promise<RunView> {
 /** Clears the in-memory run so the next read reloads (after a new run is published). */
 export function invalidateLeaderboard() {
   cached = null;
+  profileCache = null;
+  brandCardsCache = null;
 }
 
 function confidenceOf(entry: RankingRow): LbConfidence {
@@ -246,13 +257,57 @@ function confidenceOf(entry: RankingRow): LbConfidence {
   return (entry.coverage ?? 0) >= 0.7 ? "HIGH" : "MEDIUM";
 }
 
-function modelRef(view: RunView, m: ModelRow): LbModelRef {
-  return {
+// 人工种子档案（品类/上市/业绩/门店/面积/开业），种子文件为 SSOT，运行时按 slug 映射；改种子后重启生效。
+let profileCache: Map<string, LbProfile> | null = null;
+function seedProfiles(): Map<string, LbProfile> {
+  if (profileCache) return profileCache;
+  const map = new Map<string, LbProfile>();
+  for (const file of [BRANDS_FILE, MALLS_FILE]) {
+    const dir = JSON.parse(readFileSync(file, "utf8")) as {
+      brands?: Array<{ slug: string; category?: string; listed?: string; revenue?: number; stores?: number; intro?: string }>;
+      malls?: Array<{ slug: string; area?: number; openedAt?: string; revenue?: number; intro?: string; mallType?: string; positioning?: string; groupCompany?: string; province?: string }>;
+    };
+    for (const e of dir.brands ?? []) {
+      map.set(e.slug, { category: e.category ?? null, listed: e.listed ?? null, revenueYi: e.revenue ?? null, stores: e.stores ?? null, areaWanSqm: null, openedAt: null, intro: e.intro ?? null, mallType: null, positioning: null, groupCompany: null, province: null });
+    }
+    for (const e of dir.malls ?? []) {
+      map.set(e.slug, { category: null, listed: null, revenueYi: e.revenue ?? null, stores: null, areaWanSqm: e.area ?? null, openedAt: e.openedAt ?? null, intro: e.intro ?? null, mallType: e.mallType ?? null, positioning: e.positioning ?? null, groupCompany: e.groupCompany ?? null, province: e.province ?? null });
+    }
+  }
+  profileCache = map;
+  return map;
+}
+
+// 文章详情品牌简介卡：按标题对品牌名录 keywords 的命中（与声量引擎 mentions 同口径），
+// 取名录序前 3 张；只认品牌名录（商场卡不在文章详情展示面）。
+let brandCardsCache: Array<SiteBrandCard & { keywords: string[] }> | null = null;
+export function brandCardsForText(text: string): SiteBrandCard[] {
+  if (!brandCardsCache) {
+    const seed = JSON.parse(readFileSync(BRANDS_FILE, "utf8")) as {
+      brands?: Array<{ slug: string; name: string; provider?: string; keywords?: string[] }>;
+    };
+    brandCardsCache = (seed.brands ?? []).map((b) => ({
+      slug: b.slug,
+      name: b.name,
+      provider: b.provider ?? null,
+      profile: seedProfiles().get(b.slug) ?? null,
+      keywords: b.keywords?.length ? b.keywords : [b.name],
+    }));
+  }
+  const lower = text.toLowerCase();
+  return brandCardsCache
+    .filter((b) => b.keywords.some((k) => lower.includes(k.toLowerCase())))
+    .slice(0, 3)
+    .map(({ keywords: _keywords, ...card }) => card);
+}
+
+function modelRef(view: RunView, m: ModelRow): LbModelRef {  return {
     slug: m.slug,
     name: m.name,
     provider: m.provider === "其他" ? null : m.provider,
     releasedAt: m.released_at ? m.released_at.toISOString().slice(0, 10) : null,
     brand: modelBrand(m.slug, m.provider_slug, m.provider, m.name),
+    profile: seedProfiles().get(m.slug) ?? null,
   };
 }
 
@@ -260,7 +315,7 @@ function boardTabs() {
   return LEADERBOARD_PUBLIC_BOARDS.map((key) => ({
     key,
     name: BOARD_COPY[key].name,
-    href: key === "overall" ? "/leaderboard" : `/leaderboard/category/${key}`,
+    href: key === "brand" ? "/leaderboard" : `/leaderboard/category/${key}`,
   }));
 }
 
@@ -269,7 +324,7 @@ export async function loadBoard(key: LeaderboardBoardKey): Promise<LbBoardRespon
   const board = view.boards.get(key);
   if (!board) return null;
   const entries: LbBoardEntry[] = board.entries
-    .filter((e) => e.rank <= BOARD_LIMIT)
+    .filter((e) => e.rank <= boardEntryLimit(key))
     .map((e) => {
       const m = view.modelsById.get(e.model_id)!;
       return {
@@ -281,6 +336,9 @@ export async function loadBoard(key: LeaderboardBoardKey): Promise<LbBoardRespon
         confidence: confidenceOf(e),
         stability: e.detail?.stability ?? null,
         price: view.prices.get(m.id) ?? null,
+        sampleInsufficient: e.detail?.sampleInsufficient ?? false,
+        dimensions: e.component_scores?.dimensions ?? null,
+        mode: e.component_scores?.mode ?? null,
       };
     });
   const copy = BOARD_COPY[key];
@@ -318,10 +376,11 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
   if (!view.pageSlugs.has(slug)) return null;
   const m = view.models.get(slug);
   if (!m) return null;
-  const overall = view.boards.get("overall");
+  // 主榜=品牌榜：模型详情页的证据按品牌榜维度组织（实体可能只出现在商场榜，其 overall 为空）。
+  const overall = view.boards.get("brand");
   const overallEntry = overall?.bySlug.get(slug) ?? null;
 
-  const categories = LEADERBOARD_PUBLIC_BOARDS.filter((k) => k !== "overall").map((key) => {
+  const categories = LEADERBOARD_PUBLIC_BOARDS.filter((k) => k !== "brand").map((key) => {
     const e = view.boards.get(key)?.bySlug.get(slug);
     return {
       key,
@@ -329,7 +388,7 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
       rank: e?.rank ?? null,
       score: e?.score ?? null,
       sourceCount: e?.detail?.sourceCount ?? e?.metric_count ?? 0,
-      onBoard: !!e && e.rank <= BOARD_LIMIT,
+      onBoard: !!e && e.rank <= boardEntryLimit(key),
     };
   });
 
@@ -395,7 +454,7 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
     overall: {
       rank: overallEntry?.rank ?? null,
       score: overallEntry?.score ?? null,
-      onBoard: !!overallEntry && overallEntry.rank <= BOARD_LIMIT,
+      onBoard: !!overallEntry && overallEntry.rank <= boardEntryLimit("brand"),
       confidence: overallEntry ? confidenceOf(overallEntry) : null,
       stability: overallEntry?.detail?.stability ?? null,
     },
@@ -495,7 +554,7 @@ export async function loadSource(key: string): Promise<LbSourceDetail | null> {
       FROM lb_scores c JOIN lb_models m ON m.id = c.model_id
       WHERE c.snapshot_id = ${snapshot.id} ${s.allRows ? sql`` : sql`AND c.selected_for_product`}
       ORDER BY c.source_rank NULLS LAST, c.raw_score DESC NULLS LAST
-      LIMIT ${BOARD_LIMIT}`;
+      LIMIT ${SNAPSHOT_ROWS_LIMIT}`;
     const sample = scoreRows.find((r) => r.raw_score != null)?.raw_score ?? null;
     const format = scoreFormat(key, sample);
     rows = scoreRows.map((r) => ({
@@ -535,26 +594,45 @@ export async function loadSource(key: string): Promise<LbSourceDetail | null> {
   };
 }
 
-export interface LbRulesData {
-  run: LbRunInfo;
-  budgets: Array<{ key: string; name: string; weight: number; sources: string[] }>;
-  anchors: string[];
+export interface LbRulesDimension {
+  key: string;
+  name: string;
+  weight: number;
+  sources: string[];
 }
 
-/** Budget table and anchors for the rules page, straight from the run. */
+export interface LbRulesBoard {
+  key: string;
+  name: string;
+  mode: string | null;
+  dimensions: LbRulesDimension[];
+}
+
+export interface LbRulesData {
+  run: LbRunInfo;
+  boards: LbRulesBoard[];
+}
+
+/** Two-board dimension weight tables for the rules page, straight from the run（页面写的必须和算法一致）. */
 export async function loadRulesData(): Promise<LbRulesData> {
   const view = await runView();
   const run = await sql<{ summary: any }[]>`SELECT summary FROM lb_runs WHERE id = ${view.info.id}`;
-  const sources = (run[0]?.summary?.sources ?? []) as Array<{ key: string; evidenceBudgetKey: string }>;
+  const boardDefs = (run[0]?.summary?.boards ?? []) as Array<{ key: string; name: string; dimensions: Array<{ key: string; name: string; weight: number }> }>;
+  const sources = (run[0]?.summary?.sources ?? []) as Array<{ key: string; familyKey: string; weight: number }>;
   const order = SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => s.key));
-  const budgets = view.budgets.map((b) => ({
-    ...b,
-    sources: sources
-      .filter((s) => s.evidenceBudgetKey === b.key)
-      .sort((a, c) => order.indexOf(a.key) - order.indexOf(c.key))
-      .map((s) => registrySource(s.key)?.source.name ?? s.key),
+  const boards: LbRulesBoard[] = boardDefs.map((b) => ({
+    key: b.key,
+    name: b.name,
+    mode: view.boards.get(b.key)?.mode ?? null,
+    dimensions: b.dimensions.map((d) => ({
+      ...d,
+      sources: sources
+        .filter((s) => s.familyKey === d.key && s.weight > 0)
+        .sort((a, c) => order.indexOf(a.key) - order.indexOf(c.key))
+        .map((s) => registrySource(s.key)?.source.name ?? s.key),
+    })),
   }));
-  return { run: view.info, budgets, anchors: view.anchors };
+  return { run: view.info, boards };
 }
 
 /** Public leaderboard URLs for the sitemap. */
@@ -563,7 +641,7 @@ export async function leaderboardUrls(): Promise<string[]> {
     const view = await runView();
     return [
       "/leaderboard",
-      ...LEADERBOARD_PUBLIC_BOARDS.filter((k) => k !== "overall").map((k) => `/leaderboard/category/${k}`),
+      ...LEADERBOARD_PUBLIC_BOARDS.filter((k) => k !== "brand").map((k) => `/leaderboard/category/${k}`),
       "/leaderboard/sources",
       "/leaderboard/rules",
       ...SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => `/leaderboard/sources/${s.key}`)),

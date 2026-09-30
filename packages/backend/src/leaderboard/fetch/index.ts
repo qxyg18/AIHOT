@@ -1,14 +1,9 @@
-// All upstream fetchers, in the order a refresh runs them.
-import { arena } from "./sources/arena.ts";
-import { artificialAnalysis } from "./sources/artificial-analysis.ts";
-import { deepswe } from "./sources/deepswe.ts";
-import { epoch } from "./sources/epoch.ts";
-import { eqbench } from "./sources/eqbench.ts";
-import { livebench } from "./sources/livebench.ts";
-import { mercor } from "./sources/mercor.ts";
-import { taptap } from "./sources/taptap.ts";
-import { terminalBench } from "./sources/terminal-bench.ts";
-import { vals } from "./sources/vals.ts";
+// All upstream fetchers, in the order a refresh runs them. zw12 改造：AI 评测源随 v15 退役下线
+// （源文件保留在 sources/ 目录不再注册），两榜数据面=站内声量引擎+人工补录+热搜哨兵。
+// 顺序约束：manual-supplement 先行（实体身份全量预写在别名表，任何后续源都能命中）。
+import { internalSignal } from "./sources/internal-signal.ts";
+import { manualSupplement } from "./sources/manual-supplement.ts";
+import { dailyhot } from "./sources/dailyhot.ts";
 import type { Fetcher } from "./types.ts";
 
-export const FETCHERS: Fetcher[] = [artificialAnalysis, arena, livebench, eqbench, epoch, deepswe, taptap, mercor, vals, terminalBench];
+export const FETCHERS: Fetcher[] = [manualSupplement, internalSignal, dailyhot];

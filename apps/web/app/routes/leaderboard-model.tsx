@@ -6,14 +6,19 @@ import type { Route } from "./+types/leaderboard-model";
 import type { LbComparison, LbEvidenceItem, LbModelDetail } from "@aihot/contracts/leaderboard";
 import { LEADERBOARD_BOARD_LABELS, LEADERBOARD_PUBLIC_BOARDS } from "@aihot/contracts/taxonomy";
 import { loadOr404 } from "../lib/api.server";
+import type { SiteInsightsResponse } from "@aihot/contracts/site";
+import { EntityInsightList } from "../features/item/InsightCards";
 import { breadcrumbLd, pageMeta, siteUrl, titled } from "../lib/seo";
 import { BrandMark } from "../features/leaderboard/BrandMark";
 import { EvidenceBadge } from "../features/leaderboard/Evidence";
-import { boardHref, listPrice, pctFixed, shortStamp, tokensWan, yuan } from "../features/leaderboard/format";
+import { boardHref, pctFixed, shortStamp } from "../features/leaderboard/format";
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight, IconChevronDown, IconExternal } from "../components/icons";
 
 export async function loader({ params, request }: Route.LoaderArgs) {
-  return loadOr404<LbModelDetail>(`/api/site/leaderboard/models/${encodeURIComponent(params.slug)}`, { signal: request.signal });
+  const model = await loadOr404<LbModelDetail>(`/api/site/leaderboard/models/${encodeURIComponent(params.slug)}`, { signal: request.signal });
+  // ka2: research viewpoints about this entity; a miss (none extracted yet) renders nothing.
+  const insights = await loadOr404<SiteInsightsResponse>(`/api/site/insights/entity/${encodeURIComponent(params.slug)}`, { signal: request.signal }).catch(() => ({ insights: [] }));
+  return { ...model, insights: insights.insights };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -22,21 +27,21 @@ export function meta({ loaderData }: Route.MetaArgs) {
   const path = `/leaderboard/${model.slug}`;
   return pageMeta({
     title: `${model.name} 排名与各榜成绩`,
-    description: `查看 ${model.name} 的 ${SITE.name} 共识分、当前排名，以及它在各家公开评测榜单中的名次和原始分数。`,
+    description: `查看 ${model.name} 的 ${SITE.name} 加权分、当前排名，以及它在各维度指标中的原始数据与覆盖度。`,
     path,
     image: "/og/pages/leaderboard.png",
     jsonLd: [
       {
         "@context": "https://schema.org",
         "@type": "Dataset",
-        name: `${model.name} 在 ${SITE.name} 模型榜的成绩`,
-        description: `${model.name} 的共识指数、分类名次与各项公开评测的原始成绩。`,
+        name: `${model.name} 在 ${SITE.name} 排行榜的成绩`,
+        description: `${model.name} 的加权分、名次与各维度指标的原始数据。`,
         url: `${siteUrl()}${path}`,
         creator: { "@type": "Organization", name: SITE.name, url: siteUrl() },
         isAccessibleForFree: true,
       },
       breadcrumbLd([
-        { name: "模型榜", path: "/leaderboard" },
+        { name: "排行榜", path: "/leaderboard" },
         { name: model.name, path },
       ]),
     ],
@@ -71,6 +76,37 @@ function Stat({ label, children, foot }: { label: string; children: ReactNode; f
   );
 }
 
+/** 上市年份：避开股票代码，只取 19xx/20xx。 */
+function listedYear(listed: string | null | undefined): string | null {
+  if (!listed) return null;
+  return listed.match(/(?:19|20)\d{2}/)?.[0] ?? null;
+}
+
+/** 档案简介：zw14 生成的 intro 优先；未生成时用种子档案字段拼兜底句，全缺不渲染。 */
+function profileIntro(d: LbModelDetail, isBrandEntity: boolean): string | null {
+  const p = d.model.profile;
+  if (!p) return null;
+  if (p.intro) return p.intro;
+  if (isBrandEntity) {
+    const segs: string[] = [];
+    if (p.category) segs.push(`主营${p.category}`);
+    const y = listedYear(p.listed);
+    if (y) segs.push(`${y} 年上市`);
+    const scale: string[] = [];
+    if (p.revenueYi != null) scale.push(`年业绩约 ${p.revenueYi} 亿元`);
+    if (p.stores != null) scale.push(`门店约 ${p.stores} 家`);
+    if (scale.length > 0) segs.push(scale.join("，"));
+    if (segs.length === 0) return null;
+    return `${d.model.name}${d.model.provider ? `，${d.model.provider}旗下` : ""}，${segs.join("，")}。`;
+  }
+  const segs: string[] = [];
+  if (p.openedAt) segs.push(`${p.openedAt} 开业`);
+  if (p.areaWanSqm != null) segs.push(`面积约 ${p.areaWanSqm} 万㎡`);
+  if (p.revenueYi != null) segs.push(`年业绩约 ${p.revenueYi} 亿元`);
+  if (segs.length === 0) return null;
+  return `${d.model.name}，${segs.join("，")}。`;
+}
+
 function Capability({ d, from }: { d: LbModelDetail; from: string }) {
   return (
     <section className="mt-12">
@@ -93,7 +129,7 @@ function Capability({ d, from }: { d: LbModelDetail; from: string }) {
             {c.score !== null ? (
               <>
                 <span className="mono mt-4 text-[32px] font-medium leading-none tracking-[-0.03em] text-ink">{c.score.toFixed(1)}</span>
-                <span className="mt-auto pt-4 text-[12px] text-ink-3">{c.sourceCount} 项评测支持</span>
+                <span className="mt-auto pt-4 text-[12px] text-ink-3">{c.sourceCount} 项指标支持</span>
               </>
             ) : (
               <>
@@ -238,7 +274,7 @@ function EvidenceCard({ it }: { it: LbEvidenceItem }) {
       <Collapse open={open} duration={300}>
         <dl className="grid gap-3 border-t border-line-soft px-4 py-4 text-[12.5px] sm:grid-cols-2 lg:px-5">
           <div>
-            <dt className="text-ink-4">原榜型号</dt>
+            <dt className="text-ink-4">源记录名</dt>
             <dd className="mt-0.5 break-all font-mono text-[12px] text-ink-2">{it.sourceModelName ?? "—"}{it.sourceRank !== null && <span className="ml-1.5 font-sans text-ink-4">原榜第 {it.sourceRank} 名</span>}</dd>
           </div>
           <div>
@@ -267,7 +303,7 @@ function EvidenceCard({ it }: { it: LbEvidenceItem }) {
             </div>
           )}
           <div className="flex gap-4 sm:col-span-2">
-            <Link to={`/leaderboard/sources/${it.sourceKey}`} className="inline-flex items-center gap-1 font-medium text-accent">查看这项评测 <IconArrowRight size={13} /></Link>
+            <Link to={`/leaderboard/sources/${it.sourceKey}`} className="inline-flex items-center gap-1 font-medium text-accent">查看这项指标 <IconArrowRight size={13} /></Link>
             {it.officialUrl && (
               <a href={it.officialUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ink-3 hover:text-accent">官方来源 <IconExternal size={12} /></a>
             )}
@@ -286,7 +322,10 @@ export default function LeaderboardModelPage() {
   const [fromParam, setFromParam] = useState<string | null>(null);
   useEffect(() => setFromParam(params.get("from")), [params]);
   const from = fromParam && (LEADERBOARD_PUBLIC_BOARDS as readonly string[]).includes(fromParam) ? fromParam : "overall";
-  const { model, price, overall } = d;
+  const { model, overall } = d;
+  const profile = model.profile;
+  const isBrandEntity = profile?.category != null || profile?.stores != null;
+  const intro = profileIntro(d, isBrandEntity);
   const withScores = d.categories.filter((c) => c.score !== null).length;
   return (
     <div className="pb-12">
@@ -300,7 +339,7 @@ export default function LeaderboardModelPage() {
           <div className="min-w-0">
             <h1 className="text-[24px] font-semibold leading-[1.3] tracking-[-0.02em] text-ink">{model.name}</h1>
             <p className="num mt-1 text-[12.5px] text-ink-3">
-              {model.provider ?? "—"} · {model.releasedAt ? `${model.releasedAt} 发布` : "发布日期待核实"} · {shortStamp(d.run.generatedAt)} 更新
+              {(isBrandEntity ? (model.provider ?? "—") : [...new Set([profile?.province, model.provider].filter(Boolean))].join(" · ") || "—")} · {isBrandEntity ? (profile?.listed ?? "上市信息待核实") : profile?.openedAt ? `${profile.openedAt} 开业` : "开业年份待核实"} · {shortStamp(d.run.generatedAt)} 更新
             </p>
           </div>
         </div>
@@ -313,50 +352,54 @@ export default function LeaderboardModelPage() {
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-x-4 gap-y-6 border-y border-line py-6 lg:grid-cols-4" aria-label="模型概览">
+      {intro && (
+        <section className="mt-6" aria-label="档案简介">
+          <div className="rounded-tile border border-line bg-surface px-4 py-3.5 lg:px-5">
+            <p className="text-[14px] leading-[1.8] text-ink-2">{intro}</p>
+            <p className="mt-1.5 text-[11.5px] text-ink-4">档案为公开信息概数（人工种子口径），仅供个人参考，待核实。</p>
+          </div>
+        </section>
+      )}
+
+      <section className="grid grid-cols-2 gap-x-4 gap-y-6 border-y border-line py-6 lg:grid-cols-4" aria-label="实体概览">
         <Stat label="分类成绩">
           {withScores}
           <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">/ 4 项分类</small>
         </Stat>
         <Stat label="已有成绩">
           {d.metricCount}
-          <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">项评测</small>
+          <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">项指标</small>
         </Stat>
-        <Stat label="上下文窗口">
-          {tokensWan(model.contextWindowTokens)}
-          <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">Token</small>
+        <Stat label={isBrandEntity ? "主营品类" : "开业 / 面积"}>
+          {isBrandEntity ? (
+            profile?.category ?? <span className="font-sans text-[15px] font-normal text-ink-4">待补</span>
+          ) : (
+            <>
+              {profile?.openedAt ?? "—"}
+              {profile?.areaWanSqm != null && <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">约 {profile.areaWanSqm} 万㎡</small>}
+            </>
+          )}
         </Stat>
-        <Stat
-          label="API 输入 / 输出 · 每百万 Token"
-          foot={
-            price ? (
-              <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-                {price.cachedCny !== null && <span className="num">缓存 {yuan(price.cachedCny)}</span>}
-                {price.currency === "USD" && (
-                  <span className="num text-ink-4">
-                    原价 {listPrice(price.input, "USD")} / {listPrice(price.output, "USD")}
-                  </span>
-                )}
-                {price.officialUrl && (
-                  <a href={price.officialUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-accent hover:text-accent-ink">
-                    厂商官方价格 <IconArrowUpRight size={12} />
-                  </a>
-                )}
-              </span>
-            ) : (
-              "尚未核到厂商官网价格"
-            )
-          }
-        >
-          {price ? `${yuan(price.inputCny)} / ${yuan(price.outputCny)}` : <span className="font-sans text-[15px] font-normal text-ink-4">待核验</span>}
+        <Stat label="年业绩预估 · 亿元" foot={isBrandEntity ? (profile?.stores != null ? `门店规模约 ${profile.stores} 家` : "门店规模待核实") : profile?.areaWanSqm != null ? "公开报道概数，待核实" : "公开报道概数，待核实"}>
+          {profile?.revenueYi != null ? `约 ${profile.revenueYi}` : <span className="font-sans text-[15px] font-normal text-ink-4">待核实</span>}
         </Stat>
+        {!isBrandEntity && (
+          <>
+            <Stat label="类型 / 定位">
+              {[profile?.mallType, profile?.positioning].filter(Boolean).join(" · ") || <span className="font-sans text-[15px] font-normal text-ink-4">待补</span>}
+            </Stat>
+            <Stat label="所属集团">
+              {profile?.groupCompany ?? <span className="font-sans text-[15px] font-normal text-ink-4">独立 / 待核实</span>}
+            </Stat>
+          </>
+        )}
       </section>
 
       <Capability d={d} from={from} />
       <Stability d={d} />
 
       <section className="mt-12">
-        <SectionHead eyebrow="BEHIND THE SCORE" title="每一项成绩，都有来处。" sub="下面是该模型的公开汇总成绩。展开可查看运行配置与采用方式。" />
+        <SectionHead eyebrow="BEHIND THE SCORE" title="每一项数据，都有来处。" sub="下面是该实体的各维度指标数据。展开可查看采集口径与采用方式。" />
         {d.evidence.map((g) => (
           <div key={g.key} className="mt-6">
             <h3 className="flex items-baseline gap-2 text-[14px] font-semibold text-ink">
@@ -372,8 +415,8 @@ export default function LeaderboardModelPage() {
         ))}
         {d.unmeasured.length > 0 && (
           <div className="mt-6">
-            <h3 className="text-[14px] font-semibold text-ink">没有测到的计分评测</h3>
-            <p className="mt-1 text-[12.5px] text-ink-3">这些评测没有公开该模型的成绩，缺测不记零分。</p>
+            <h3 className="text-[14px] font-semibold text-ink">未覆盖的指标</h3>
+            <p className="mt-1 text-[12.5px] text-ink-3">这些指标暂无该实体的数据，该维度计 0 贡献（各维度独立计权，不交叉补位），覆盖度单独披露。</p>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {d.unmeasured.map((u) => (
                 <Link key={u.key} to={`/leaderboard/sources/${u.key}`} className="chip">
@@ -385,9 +428,11 @@ export default function LeaderboardModelPage() {
         )}
       </section>
 
+      <EntityInsightList insights={d.insights} />
+
       <section className="mt-10 border-t border-line pt-6">
         <h2 className="text-[15px] font-semibold text-ink">还有一些未知</h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">缺失的评测不会记成零分。模型的名次会随新证据变化，分数相近时不宜过度解读细小差距。</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">缺失的指标按 0 贡献计入固定权重的总分。实体的名次会随数据积累变化，分数相近时不宜过度解读细小差距。</p>
         <Link to="/leaderboard/rules" className="mt-2.5 inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:text-accent-ink">
           了解计算方法 →
         </Link>

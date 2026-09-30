@@ -1,11 +1,10 @@
-// The four-times-a-day leaderboard refresh: fetch every upstream source (each on its own — a failing
-// source keeps its last snapshot, which the method carries forward), store the snapshots whose content
-// changed, update the USD/CNY rate used for prices and fill in the official prices of models that have
-// none yet, then run the method round, which publishes only when the evidence changed.
+// The leaderboard refresh: fetch every upstream source (each on its own — a failing source keeps its
+// last snapshot, which the method carries forward), store the snapshots whose content changed, then
+// run the method round, which publishes only when the evidence changed.
+// zw12 改造：两榜无价格维度，v15 时代的汇率/官方价格链路随之下线（refreshFx/importOfficialPrices
+// 函数本体保留在文件里作回滚参考，不再被调用）。
 import { sql } from "../../db.ts";
-import { guardedFetch } from "../../lib/http-fetch.ts";
 import { runLeaderboardRound, type RoundResult } from "../method/run.ts";
-import { importOfficialPrices } from "../prices.ts";
 import { FETCHERS } from "./index.ts";
 import { storeSnapshot } from "./store.ts";
 import type { FetchResult } from "./types.ts";
@@ -70,9 +69,11 @@ export async function fetchSources(opts: { keys?: string[]; force?: boolean } = 
   return states;
 }
 
-/** European Central Bank reference rate via Frankfurter (the rate and date the price column cites). */
+/** European Central Bank reference rate via Frankfurter. Retired with v15 (two boards carry no
+ * price dimension); kept unreferenced for rollback. */
 export async function refreshFx(): Promise<{ asOf: string; rate: number }> {
   const url = "https://api.frankfurter.app/latest?from=USD&to=CNY";
+  const { guardedFetch } = await import("../../lib/http-fetch.ts");
   const res = await guardedFetch(url, { timeoutMs: 20_000 });
   if (res.status !== 200) throw new Error(`frankfurter HTTP ${res.status}`);
   const d = JSON.parse(res.text()) as { date: string; rates: { CNY?: number } };
@@ -82,10 +83,8 @@ export async function refreshFx(): Promise<{ asOf: string; rate: number }> {
   return { asOf: d.date, rate };
 }
 
-export async function refreshLeaderboard(): Promise<{ sources: { ok: number; changed: string[]; failed: Array<{ key: string; error?: string }> }; fx: unknown; prices: unknown; round: Pick<RoundResult, "status" | "runId" | "reason"> }> {
+export async function refreshLeaderboard(): Promise<{ sources: { ok: number; changed: string[]; failed: Array<{ key: string; error?: string }> }; round: Pick<RoundResult, "status" | "runId" | "reason"> }> {
   const states = await fetchSources();
-  const fx = await refreshFx().catch((e: Error) => ({ error: e.message }));
-  const prices = await importOfficialPrices().catch((e: Error) => ({ error: e.message }));
   const round = await runLeaderboardRound();
   const entries = Object.entries(states);
   return {
@@ -94,8 +93,6 @@ export async function refreshLeaderboard(): Promise<{ sources: { ok: number; cha
       changed: entries.filter(([, s]) => s.ok && s.changed).map(([k]) => k),
       failed: entries.filter(([, s]) => !s.ok).map(([key, s]) => ({ key, error: s.error })),
     },
-    fx,
-    prices: "error" in prices ? prices : { written: prices.written },
     round: { status: round.status, runId: round.runId, reason: round.reason },
   };
 }
