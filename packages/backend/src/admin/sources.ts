@@ -8,6 +8,7 @@ import { normalizeUrl } from "../lib/url.ts";
 import { fetchJsonList } from "../sources/json-list.ts";
 import { fetchRss } from "../sources/rss.ts";
 import { assertSupportedConfig } from "../sources/config-keys.ts";
+import { assertOverseasTagged } from "../sources/overseas.ts";
 import type { SourceRow } from "../sources/types.ts";
 import { fetchWebList } from "../sources/web-list.ts";
 import { fetchXSearch } from "../sources/x.ts";
@@ -110,6 +111,15 @@ export async function updateSource(id: string, input: { patch: unknown; version:
     if (patch.config) assertSupportedConfig(before.kind as SourceRow["kind"], patch.config);
     const keys = Object.keys(patch) as Array<keyof typeof patch>;
     if (!keys.length) return before;
+    // Judge the merged post-patch state: an edit that would leave an untagged suspect overseas
+    // source participating in the hot list is refused, whichever field introduced it.
+    assertOverseasTagged({
+      name: (patch.name as string | undefined) ?? (before.name as string),
+      config: (patch.config as Record<string, unknown> | undefined) ?? (before.config as Record<string, unknown>),
+      tags: (patch.tags as string[] | undefined) ?? (before.tags as string[]),
+      participation_mode: (patch.participation_mode as string | undefined) ?? (before.participation_mode as string),
+      enabled: (patch.enabled as boolean | undefined) ?? (before.enabled as boolean),
+    });
     const values = Object.fromEntries(keys.map((k) => [k, k === "config" ? tx.json(patch.config as never) : patch[k]]));
     const [after] = await tx`UPDATE sources SET ${tx(values as never, ...(keys as string[]))}, updated_at = now(),
       health = CASE WHEN ${patch.enabled ?? null}::boolean IS FALSE THEN 'paused' WHEN ${patch.enabled ?? null}::boolean IS TRUE AND health = 'paused' THEN 'unknown' ELSE health END,
@@ -171,6 +181,8 @@ export async function findDuplicateSource(kind: string, config: Record<string, u
 export async function createSource(input: unknown, actor: string) {
   const s = CreateSchema.parse(input);
   assertSupportedConfig(s.kind, s.config);
+  // New sources are enabled on insert: an overseas suspect must carry the tag from birth.
+  assertOverseasTagged({ name: s.name, config: s.config, tags: s.tags, participation_mode: s.participation_mode, enabled: true });
   const dup = await findDuplicateSource(s.kind, s.config);
   if (dup) return { created: false as const, duplicate: dup };
   const [row] = await sql`
