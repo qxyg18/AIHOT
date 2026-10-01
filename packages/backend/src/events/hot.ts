@@ -5,8 +5,9 @@
 // 且无国内 editorial 参与的事件（纯海外互报）不进榜。
 import { sql } from "../db.ts";
 import { tierRank, type HotEntry } from "./hot-read.ts";
+import { MALL_KIND_ORDER, MACRO_SCOPE_ORDER, geoScopeOf, macroScopeRank, mallKindOf, mallKindRank } from "./hot-attributes.ts";
 
-export const HOT_RULE_VERSION = "heat-v3-reserved-slots-48h-halflife24h";
+export const HOT_RULE_VERSION = "heat-v4-scope-mall-priority-48h-halflife24h";
 const WINDOW_HOURS = 48;
 const HALF_LIFE_HOURS = 24;
 const MIN_PARTICIPANTS = 2;
@@ -18,11 +19,16 @@ const FOREIGN_TAG = "海外";
  * 预留资讯位（命主 2026-09-30 定）：固定 10 条里宏观市场报告 1、商业体 2、品牌 2。
  * 自由位（多源共振）先选，预留位从「自由位未选中的」同类国内事件里保底补足（国内 editorial
  * 参与 ≥1，单源即可），自由位热度尾部为预留让位；预留未填满的名额留在自由位。
- * category 来自代表稿的内容理解（analyses.category），映射 key 见 industry/taxonomy.ts。
+ * 评选口径（命主 2026-10-01 定）：宏观位只收「全国」或「一线城市」影响范围的条目、全国优先一线；
+ * 商业体位按消息类型优先序（商业体系重大消息 > 项目业绩大爆 > 新项目开业 > 项目流量高 >
+ * 项目升级 > 项目首店 > 其他）；品牌位维持热度序。同档内一律按热度，判不出来不硬凑。
+ * category 来自代表稿的内容理解（analyses.category），映射 key 见 industry/taxonomy.ts；
+ * 范围与类型从条目公开文本确定性推导，规则见 hot-attributes.ts。
  */
 const RESERVED_SLOTS: Array<{ badge: "macro" | "mall" | "brand"; categories: string[]; slots: number }> = [
-  { badge: "macro", categories: ["statistics", "market", "research"], slots: 1 },
-  { badge: "mall", categories: ["mall"], slots: 2 },
+  // ym40: 11 类收拢 6 类后 market/research 并入 statistics、mall 并入 channel；macro 徽章取数据面，mall 徽章取渠道与商场（含商场+电商）。
+  { badge: "macro", categories: ["statistics"], slots: 1 },
+  { badge: "mall", categories: ["channel"], slots: 2 },
   { badge: "brand", categories: ["brand-moves"], slots: 2 },
 ];
 
@@ -110,19 +116,25 @@ export function heatIndex(heat: number): number {
   return Math.round(heat * 100) / 10; // one decimal on the 10× scale shown to readers
 }
 
-/** Story → the category of its best-scoring public eligible report (null when no analysis exists). */
-async function storyCategories(storyIds: number[], at: Date): Promise<Map<number, string | null>> {
-  const out = new Map<number, string | null>();
+/** Story → its best-scoring public eligible report's category and Chinese headline/summary (for the reserved-slot rules). */
+interface StoryProfile {
+  category: string | null;
+  titleZh: string | null;
+  summaryZh: string | null;
+}
+
+async function storyProfiles(storyIds: number[], at: Date): Promise<Map<number, StoryProfile>> {
+  const out = new Map<number, StoryProfile>();
   if (storyIds.length === 0) return out;
-  const rows = await sql<{ story_id: number; category: string | null }[]>`
-    SELECT DISTINCT ON (f.story_id) f.story_id, a.category
+  const rows = await sql<{ story_id: number; category: string | null; title_zh: string | null; summary_zh: string | null }[]>`
+    SELECT DISTINCT ON (f.story_id) f.story_id, a.category, a.title_zh, a.summary_zh
     FROM facts f
     JOIN fact_articles fa ON fa.fact_id = f.id
     JOIN publications p ON p.article_id = fa.article_id AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= ${at})
     JOIN analyses a ON a.article_id = p.article_id AND (a.relevance IS NULL OR a.relevance != 'block')
     WHERE f.story_id = ANY(${storyIds}::bigint[])
     ORDER BY f.story_id, a.score DESC NULLS LAST, a.input_revision DESC`;
-  for (const r of rows) out.set(Number(r.story_id), r.category);
+  for (const r of rows) out.set(Number(r.story_id), { category: r.category, titleZh: r.title_zh, summaryZh: r.summary_zh });
   return out;
 }
 
@@ -138,15 +150,29 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
   // 预留资讯位（命主 2026-09-30 定）：固定 10 条里宏观市场报告 1、商业体 2、品牌 2。
   // 预留位从「自由位未选中的」同类国内事件（国内 editorial 参与 ≥1，单源即可）里保底补足；
   // 自由位热度尾部为预留让位（配额是硬下限），预留未填满的名额留在自由位。
-  const categories = await storyCategories(rows.map((r) => r.story_id), at);
+  const profiles = await storyProfiles(rows.map((r) => r.story_id), at);
+  const headlineOf = (r: HeatRow) => `${r.title} ${profiles.get(r.story_id)?.titleZh ?? ""}`.trim();
+  const attrTextOf = (r: HeatRow) => `${headlineOf(r)} ${profiles.get(r.story_id)?.summaryZh ?? ""}`.trim();
   const freeIds = new Set(free.map((r) => r.story_id));
   const reserved: Array<{ row: HeatRow; badge: "macro" | "mall" | "brand" }> = [];
   for (const spec of RESERVED_SLOTS) {
-    const pool = rows
-      .filter((r) => domestic(r) && !freeIds.has(r.story_id) && spec.categories.includes(categories.get(r.story_id) ?? ""))
-      .sort(byHeat)
-      .slice(0, spec.slots);
-    for (const row of pool) reserved.push({ row, badge: spec.badge });
+    const pool = rows.filter((r) => domestic(r) && !freeIds.has(r.story_id) && spec.categories.includes(profiles.get(r.story_id)?.category ?? ""));
+    // 宏观位：只收全国/一线城市影响范围（全国优先一线城市）；无合格候选时空位，不硬凑。
+    // 商业体位：按消息类型优先序（标题优先、摘要兜底判定）；品牌位：热度序。
+    const ordered =
+      spec.badge === "macro"
+        ? pool
+            .map((r) => ({ r, rank: macroScopeRank(geoScopeOf(attrTextOf(r))) }))
+            .filter((x): x is { r: HeatRow; rank: number } => x.rank !== null)
+            .sort((a, b) => a.rank - b.rank || byHeat(a.r, b.r))
+            .map((x) => x.r)
+        : spec.badge === "mall"
+          ? pool
+              .map((r) => ({ r, rank: mallKindRank(mallKindOf(headlineOf(r), profiles.get(r.story_id)?.summaryZh ?? "")) }))
+              .sort((a, b) => a.rank - b.rank || byHeat(a.r, b.r))
+              .map((x) => x.r)
+          : [...pool].sort(byHeat);
+    for (const row of ordered.slice(0, spec.slots)) reserved.push({ row, badge: spec.badge });
   }
   const keepFree = Math.max(0, 10 - reserved.length);
   const chosen: Array<{ row: HeatRow; badge: "macro" | "mall" | "brand" | null }> = [
@@ -217,7 +243,7 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
   const [row] = await sql<{ id: number }[]>`
     INSERT INTO hot_rankings (computed_at, rule_version, entries, evidence, published)
     VALUES (${at}, ${HOT_RULE_VERSION}, ${sql.json(entries as never)},
-            ${sql.json({ windowHours: WINDOW_HOURS, halfLifeHours: HALF_LIFE_HOURS, minParticipants: MIN_PARTICIPANTS, foreignHeatWeight: FOREIGN_HEAT_WEIGHT, minDomesticEditorial: 1, reservedSlots: RESERVED_SLOTS.map((s) => ({ badge: s.badge, slots: s.slots })), candidates: rows.length } as never)}, true)
+            ${sql.json({ windowHours: WINDOW_HOURS, halfLifeHours: HALF_LIFE_HOURS, minParticipants: MIN_PARTICIPANTS, foreignHeatWeight: FOREIGN_HEAT_WEIGHT, minDomesticEditorial: 1, reservedSlots: RESERVED_SLOTS.map((s) => ({ badge: s.badge, slots: s.slots })), macroScopeOrder: MACRO_SCOPE_ORDER, mallKindOrder: MALL_KIND_ORDER, candidates: rows.length } as never)}, true)
     RETURNING id`;
   // Keep a bounded history of rankings.
   await sql`DELETE FROM hot_rankings WHERE computed_at < now() - interval '30 days'`;

@@ -258,10 +258,12 @@ test("reserved slots: macro/mall/brand stories fill their quotas on domestic sin
     return id;
   };
   const freeStory = await setup(`FREE-${T}`, [{ articleId: await article() }, { articleId: await article() }]);
-  const macroStory = await setup(`MACRO-${T}`, [{ articleId: await categorized("statistics") }]);
+  // 宏观位按范围评选（命主 2026-10-01）：造一条全国口径的候选，标题即判据文本。
+  const macroStory = await setup(`国家统计局发布社会消费品零售总额-${T}`, [{ articleId: await categorized("statistics") }]);
   // 双参与者 mall 头部稿：同时具备自由位与预留位资格，必须按自由位进榜（无 mall 徽章），配额让给单源候选。
-  const mallLead = await setup(`MALL-LEAD-${T}`, [{ articleId: await categorized("mall") }, { articleId: await article() }]);
-  const mallStories = [await setup(`MALL-1-${T}`, [{ articleId: await categorized("mall") }]), await setup(`MALL-2-${T}`, [{ articleId: await categorized("mall") }]), await setup(`MALL-3-${T}`, [{ articleId: await categorized("mall") }])];
+  // 商业体位取 channel：ym40 十一类收拢六类后 mall 并入 channel，槽位口径随分类搬家。
+  const mallLead = await setup(`MALL-LEAD-${T}`, [{ articleId: await categorized("channel") }, { articleId: await article() }]);
+  const mallStories = [await setup(`MALL-1-${T}`, [{ articleId: await categorized("channel") }]), await setup(`MALL-2-${T}`, [{ articleId: await categorized("channel") }]), await setup(`MALL-3-${T}`, [{ articleId: await categorized("channel") }])];
   const brandStory = await setup(`BRAND-${T}`, [{ articleId: await categorized("brand-moves") }]);
 
   await computeHotRanking();
@@ -278,6 +280,50 @@ test("reserved slots: macro/mall/brand stories fill their quotas on domestic sin
   assert.ok(mallOn.every((e) => e.badges.includes("mall")), "mall slots are labelled");
   const brand = entries.find((e) => e.storyId === brandStory);
   assert.ok(brand?.badges.includes("brand"), "a brand-moves story takes a brand slot");
+});
+
+test("reserved-slot rules: macro takes national over a hotter first-tier item and drops local data; mall follows kind priority, not heat", async () => {
+  await sql`DELETE FROM story_signals WHERE observed_at > now() - interval '48 hours'`;
+  const created: number[] = [];
+  const setup = async (title: string, articleId: string, agoSeconds: number) => {
+    const publicId = randomUUID();
+    const [story] = await sql<{ id: number }[]>`
+      INSERT INTO stories (public_id, title, first_report_at, latest_at) VALUES (${publicId}, ${title}, now() - interval '2 hours', now()) RETURNING id`;
+    const [fact] = await sql<{ id: number }[]>`INSERT INTO facts (public_id, story_id, title) VALUES (${`fact-${publicId}`}, ${story!.id}, ${title}) RETURNING id`;
+    await sql`INSERT INTO fact_articles (fact_id, article_id, role) VALUES (${fact!.id}, ${articleId}, 'report')`;
+    await sql`INSERT INTO story_signals (story_id, article_id, participant_key, source_id, kind, observed_at)
+              VALUES (${story!.id}, ${articleId}, ${`participant-${articleId}`}, ${SOURCE}, 'editorial', now() - make_interval(secs => ${agoSeconds}))`;
+    await publishArticle(articleId, released());
+    created.push(story!.id);
+    return story!.id;
+  };
+  const categorized = async (category: string) => {
+    const id = await article();
+    await sql`UPDATE analyses SET category = ${category}, score = 95 WHERE article_id = ${id}`;
+    return id;
+  };
+  // 宏观：区级本地数据最新（不合格）；一线城市稿次新；全国稿最旧（范围优先序应选全国）。
+  const localMacro = await setup(`成都郫都区人口数据-${T}`, await categorized("statistics"), 30);
+  const firstTierMacro = await setup(`上海社会消费品零售总额数据-${T}`, await categorized("statistics"), 30);
+  const nationalMacro = await setup(`国家统计局发布社会消费品零售总额-${T}`, await categorized("statistics"), 8 * 3600);
+  // 商业体：首店稿最新；开业稿次之；REIT 体系稿最旧（类型优先序应取体系 + 开业）。
+  const mallStore = await setup(`某购物中心引进区域首店-${T}`, await categorized("channel"), 30);
+  const mallOpening = await setup(`某商业广场正式开业-${T}`, await categorized("channel"), 4 * 3600);
+  const mallSystem = await setup(`某集团完成商业不动产REIT发行-${T}`, await categorized("channel"), 8 * 3600);
+  try {
+    await computeHotRanking();
+    const entries = (await latestHotRanking())!.entries;
+    const by = (id: number) => entries.find((e) => e.storyId === id);
+    assert.ok(!by(localMacro), "本地（非一线）区级数据不进榜");
+    assert.ok(by(nationalMacro)?.badges.includes("macro"), "全国范围拿下宏观位");
+    assert.ok(!by(firstTierMacro)?.badges.includes("macro"), "一线城市稿更新（热度更高），仍让位给全国稿");
+    const mallOn = entries.filter((e) => [mallStore, mallOpening, mallSystem].includes(e.storyId)).map((e) => e.storyId).sort((a, b) => a - b);
+    assert.deepEqual(mallOn, [mallOpening, mallSystem].sort((a, b) => a - b), "商业体位按类型优先序取体系与开业，而非热度");
+    assert.ok(!by(mallStore), "首店稿热度最高但未进商业体位");
+  } finally {
+    // 预留位判定依赖本轮造的信号，清掉以免影响后续用例的榜单断言。
+    await sql`DELETE FROM story_signals WHERE story_id = ANY(${created}::bigint[])`;
+  }
 });
 
 test("item pages follow the live rule: unsummarised editorial items keep one, hot_signal items have none", async () => {
