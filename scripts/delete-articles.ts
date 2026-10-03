@@ -51,12 +51,6 @@ if (idList.length < targets.length) console.log(`note: ${targets.length} target(
 const byRowId = new Map(byId.concat(byKey).map((r) => [r.id, r]));
 const rows = idList.map((id) => byRowId.get(id)!);
 
-const selected = await sql<{ article_id: string }[]>`
-  SELECT DISTINCT p.article_id FROM publications p
-  WHERE p.article_id IN ${sql(idList)} AND p.selected_ready_at IS NOT NULL AND p.visibility <> 'withdrawn'`;
-if (selected.length > 0)
-  throw new Error(`refusing: ${selected.length} article(s) still selected — withdraw via the admin surface first: ${selected.map((s) => s.article_id).join(", ")}`);
-
 const manifest = rows.map((r) => ({
   id: r.id,
   identity_key: r.identity_key,
@@ -67,12 +61,19 @@ const manifest = rows.map((r) => ({
   processing_state: r.processing_state,
   published_at: r.published_at,
   created_at: r.created_at,
+  content_hash: r.content_hash,
 }));
 console.log("pre-delete manifest:", JSON.stringify(manifest, null, 2));
 
 await sql.begin(async (tx) => {
   const locked = await tx<{ id: string }[]>`SELECT id FROM articles WHERE id IN ${sql(idList)} FOR UPDATE`;
   if (locked.length !== idList.length) throw new Error(`concurrent change: ${idList.length} target(s) but ${locked.length} locked — retry`);
+
+  const selected = await tx<{ article_id: string }[]>`
+    SELECT DISTINCT p.article_id FROM publications p
+    WHERE p.article_id IN ${sql(idList)} AND p.selected_ready_at IS NOT NULL AND p.visibility <> 'withdrawn'`;
+  if (selected.length > 0)
+    throw new Error(`refusing: ${selected.length} article(s) still selected — withdraw via the admin surface first: ${selected.map((s) => s.article_id).join(", ")}`);
 
   const required = [
     "articles_archive_del", "publications_archive_del", "analyses_archive_del",
