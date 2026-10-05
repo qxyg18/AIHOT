@@ -25,6 +25,12 @@ test("a disabled source refuses ingest with 409 and stores nothing", async () =>
 });
 
 test("an enabled source ingests, and disabling it stops the next push at the gate", async () => {
+  // Force-enable on entry: a previous run (or a concurrent one) may have left the row disabled,
+  // and the test-db sweep only clears articles, not sources.
+  await sql`INSERT INTO sources (id, name, kind, config, tier, participation_mode, interval_minutes, enabled, health, tags)
+            VALUES ('ym357-enabled', 'YM357 Enabled', 'external', '{}'::jsonb, 'T2', 'isolated', 1440, true, 'ok', ARRAY['ym357-test'])
+            ON CONFLICT (id) DO UPDATE SET enabled = true, name = EXCLUDED.name`;
+  await sql`DELETE FROM articles WHERE source_id = 'ym357-enabled'`;
   const ok = await ingestItems({ sourceId: "ym357-enabled", sourceName: "YM357 Enabled", items: [{ title: "正常推送", url: "https://example.org/ym357/b" }] });
   assert.equal(ok.created, 1);
   await sql`UPDATE sources SET enabled = false WHERE id = 'ym357-enabled'`;
