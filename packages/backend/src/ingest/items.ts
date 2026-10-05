@@ -37,6 +37,10 @@ export async function ingestItems(body: { sourceId?: unknown; sourceName?: unkno
     ON CONFLICT (id) DO UPDATE SET last_ok_at = now()
     RETURNING id, participation_mode, enabled`;
 
+  // A disabled source is a paused channel: pushers get 409 instead of a silent store (the
+  // scheduler being disabled on the host machine is not the gate — this one is).
+  if (!source!.enabled) throw new IngestError(409, `source ${source!.id} is disabled — re-enable it before ingesting`);
+
   const seen = new Set<string>();
   let created = 0;
   for (const it of items) {

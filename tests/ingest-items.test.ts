@@ -1,0 +1,37 @@
+// The ingest enabled gate (ym357): a source paused in the sources table refuses pushes with
+// 409 and stores nothing — the scheduler being disabled on the host machine is not the gate.
+import "./setup.ts";
+import assert from "node:assert/strict";
+import { after, test } from "node:test";
+import { sql } from "@aihot/backend/db";
+import { IngestError, ingestItems } from "@aihot/backend/ingest/items";
+import { stopBoss } from "@aihot/backend/jobs/queue";
+
+after(() => stopBoss());
+
+const is409 = (e: unknown) => e instanceof IngestError && e.status === 409;
+
+test("a disabled source refuses ingest with 409 and stores nothing", async () => {
+  await sql`INSERT INTO sources (id, name, kind, config, tier, participation_mode, interval_minutes, enabled, health, tags)
+            VALUES ('ym357-disabled', 'YM357 Disabled', 'external', '{}'::jsonb, 'T2', 'isolated', 1440, false, 'ok', ARRAY['ym357-test'])
+            ON CONFLICT (id) DO UPDATE SET enabled = false, name = EXCLUDED.name`;
+  const pre = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM articles WHERE source_id = 'ym357-disabled'`;
+  await assert.rejects(
+    ingestItems({ sourceId: "ym357-disabled", sourceName: "YM357 Disabled", items: [{ title: "停用期间推送", url: "https://example.org/ym357/a" }] }),
+    is409,
+  );
+  const post = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM articles WHERE source_id = 'ym357-disabled'`;
+  assert.equal(post[0]!.n, pre[0]!.n, "the rejected push stored no article");
+});
+
+test("an enabled source ingests, and disabling it stops the next push at the gate", async () => {
+  const ok = await ingestItems({ sourceId: "ym357-enabled", sourceName: "YM357 Enabled", items: [{ title: "正常推送", url: "https://example.org/ym357/b" }] });
+  assert.equal(ok.created, 1);
+  await sql`UPDATE sources SET enabled = false WHERE id = 'ym357-enabled'`;
+  await assert.rejects(
+    ingestItems({ sourceId: "ym357-enabled", items: [{ title: "停用后的推送", url: "https://example.org/ym357/c" }] }),
+    is409,
+  );
+  const rows = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM articles WHERE source_id = 'ym357-enabled'`;
+  assert.equal(rows[0]!.n, 1, "only the pre-disable article exists");
+});
