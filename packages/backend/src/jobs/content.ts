@@ -4,9 +4,11 @@
 // extraction first. A provider outage makes an article wait and retry with backoff; only a permanent
 // refusal or exhausted retries end in "failed", which the admin re-queues in bulk.
 import type { PgBoss } from "pg-boss";
+import { CATEGORIES } from "@aihot/industry/taxonomy";
 import { sql, type Db } from "../db.ts";
 import { extractArticleBody, pageFetchable } from "../content/extract.ts";
 import { analyzeArticle, AnalysisInterruptedError } from "../editorial/analyze.ts";
+import { ShiftWaitError } from "../editorial/models.ts";
 import { isHistorical } from "../content/materials.ts";
 import { publishArticle } from "../publication/publish.ts";
 import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptUnknownError } from "../providers/receipts.ts";
@@ -58,6 +60,14 @@ async function route(articleId: string, db: Db): Promise<Route | null> {
  * in the serial grouping queue, history behind both.
  */
 const PRIORITY = { live: 0, liveSignal: -1, history: -2 } as const;
+
+/** ym132-⑤：过研报洞见提取的类目=全部编辑类目（taxonomy 六类：统计/渠道/竞品动态/行业/海外/产品）。 */
+const INSIGHT_CATEGORIES: Set<string> = new Set(CATEGORIES.map((c) => c.key));
+
+/** ym132-⑤ 入队闸（导出供构造断言干跑；生产路径见 processArticle 尾段）：pass 且类目在编辑类目内。 */
+export function insightEligible(relevance: string | null | undefined, category: string | null | undefined): boolean {
+  return relevance === "pass" && INSIGHT_CATEGORIES.has(category ?? "");
+}
 
 /**
  * The one way to hand an article to processing. `attemptTag` makes an explicit re-evaluation a new
@@ -117,9 +127,14 @@ export async function processArticle(articleId: string, opts: { attemptTag?: str
     await publishArticle(articleId);
     // History is archived but founds no event (isHistorical).
     if (result.output.relevance === "pass" && !row.historical) await enqueue(QUEUES.group, { articleId }, { singletonKey: articleId, priority: PRIORITY.live });
-    // Research-category reports also feed the insight extraction pass (ka2): viewpoints about
+    // Macro-data reports also feed the insight extraction pass (ka2): viewpoints about
     // brands/malls/the industry are analysis data, wanted for history too — queued behind live work.
-    if (result.output.relevance === "pass" && result.output.category === "research") {
+    // ym40: 原 research 并入 statistics（宏观与数据）；tags 判据（「行业研报」存量覆盖仅 36%）不可靠，取 category 全量，与 item 页展示端同口径。
+    // zw15 (2026-10-01): channel 类里的城市零售报告（客流/空置率/首店）也过提取——逐商场数据点是商场档案的直接素材。
+    // ym132-⑤（命主 2026-10-01 d-ym82 opt-all 拍板）: 提取面放开到全部新闻类目——竞品动态/行业与公司/海外标杆
+    // 同样携带业绩数字与品牌动作，正是实体档案（研报观点+文章信号展示面）的素材；zw15 期间「普通商场动态新闻不扩」
+    // 的成本收缩口径经命主拍板放开。relevance=pass 与 history 后台优先级不变，成本由队列节流消化。
+    if (insightEligible(result.output.relevance, result.output.category)) {
       await enqueue(QUEUES.insight, { articleId }, { singletonKey: `insight:${articleId}`, priority: PRIORITY.history });
     }
     return { state: result.output.relevance };
@@ -144,6 +159,13 @@ async function afterFailure(articleId: string, error: unknown): Promise<{ state:
     // Not the article's fault: the same request is in flight, or the budget window is full.
     const seconds = error instanceof BudgetExceededError ? error.retryAfterSeconds : 60;
     const retryAt = new Date(Date.now() + seconds * 1000);
+    await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId}`;
+    return { state: "waiting", retryAt };
+  }
+  if (error instanceof ShiftWaitError) {
+    // ym434（承 ym431 审计 P1-1）：白天窗禁回落等待信号——窗口/配置面的事，不是文章的错，
+    // 不消耗 processing_attempts；到期由 sweep 重入队，熔断窗过/凭据恢复后自然成功。
+    const retryAt = new Date(Date.now() + error.retryAfterSeconds * 1000);
     await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId}`;
     return { state: "waiting", retryAt };
   }

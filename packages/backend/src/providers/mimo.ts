@@ -20,8 +20,16 @@ export async function mimoCircuitOpen(): Promise<boolean> {
   return Number.isFinite(until) && until > Date.now();
 }
 
-/** Key present (credentials file or env) and circuit closed. No key configured -> never usable,
- *  which keeps an unconfigured deployment byte-for-byte on the old behavior. */
+/** ym434：熔断剩余毫秒（未熔断/无行=null）。白天窗等待信号据此算建议重试间隔。 */
+export async function mimoCircuitRemainingMs(): Promise<number | null> {
+  const rows = await sql<{ value: { openUntil?: string } | null }[]>`SELECT value FROM settings WHERE key = ${MIMO_CIRCUIT_KEY}`;
+  const until = rows[0]?.value?.openUntil ? Date.parse(rows[0].value.openUntil) : NaN;
+  return Number.isFinite(until) && until > Date.now() ? until - Date.now() : null;
+}
+
+/** Key present (credentials file or env) and circuit closed. No key configured -> never usable.
+ *  ym434（承 ym431 审计 P1-1）：未配置/熔断都不再等于「白天窗回落 default」——modelFor 在白天窗
+ *  对两者同样抛等待信号（宁可等，不烧套餐）；套餐窗与显式指派的回落行为不变。 */
 export async function mimoUsable(): Promise<boolean> {
   return !!credential("models", "XIAOMI_MIMO_API_KEY") && !(await mimoCircuitOpen());
 }

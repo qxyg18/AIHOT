@@ -4,7 +4,8 @@
 // affects work done from then on (history is not re-judged).
 import { sql } from "../db.ts";
 import { MODELS } from "../providers/llm.ts";
-import { mimoUsable } from "../providers/mimo.ts";
+import { mimoCircuitRemainingMs, mimoUsable } from "../providers/mimo.ts";
+import { ProviderRejectedError } from "../providers/receipts.ts";
 import { ZHIPU_FREE_KEY } from "../providers/zhipu.ts";
 import { OPENCODE_FREE_KEY } from "../providers/opencode.ts";
 import { mimoEarlyLive, mimoShiftActive, offpeakPlanLive } from "../lib/windows.ts";
@@ -29,6 +30,20 @@ export const SIMPLE_CAPABILITIES: CapabilityKey[] = ["prefilter", "summarize", "
 
 export function routeToMimo(input: { overridden: boolean; planLive: boolean; shift: boolean; usable: boolean }): boolean {
   return !input.overridden && input.planLive && input.shift && input.usable;
+}
+
+/** ym434（承 ym431 审计 P1-1）：白天窗禁回落等待信号。
+ *  白天窗内能力位无免费证书命中且 MIMO 路由不可用（熔断/未配置）时，modelFor 抛本信号而非
+ *  回落 default（智谱套餐）——调用方按既有退避重试（retryAfterSeconds 为建议间隔），等熔断窗
+ *  过/凭据恢复/跨窗自愈后自然成功。继承 ProviderRejectedError（retryable=true）以复用各调用
+ *  面既有的「可重试拒绝」语义（重试/等待，不判 failed）。 */
+export class ShiftWaitError extends ProviderRejectedError {
+  /** 建议重试间隔（秒）：熔断剩余时间（60..1800 夹取）；未配置或其他=1800。 */
+  readonly retryAfterSeconds: number;
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message, null, true);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
 }
 
 export interface Capability {
@@ -116,6 +131,18 @@ export async function modelFor(capability: CapabilityKey): Promise<string> {
   const usable = overridden || !planLive || !shift ? false : await mimoUsable();
   if (routeToMimo({ overridden, planLive, shift, usable })) {
     return MIMO_SHIFT_MODEL;
+  }
+  // ym434（承 ym431 审计 P1-1）：白天窗禁回落——未显式指派、shift 内、免费路由无命中（能走到
+  // 这里即无命中）、MIMO 不可用（熔断或未配置）时，抛等待信号而非回落 default（智谱套餐）。
+  // 调用方按既有退避重试（ShiftWaitError.retryAfterSeconds），等熔断窗过/凭据恢复/跨窗自愈后
+  // 自然成功；显式指派与套餐窗（shift 外）的回落行为不变。
+  if (!overridden && planLive && shift && !usable) {
+    const remaining = await mimoCircuitRemainingMs();
+    const waitSeconds = remaining === null ? 1800 : Math.min(1800, Math.max(60, Math.ceil(remaining / 1000)));
+    throw new ShiftWaitError(
+      `shift-wait: no free-certificate route for ${capability} and MIMO is ${remaining === null ? "not configured" : "circuit-open"} in the daytime window; waiting instead of falling back to the plan model`,
+      waitSeconds,
+    );
   }
   return MODELS[chosen] ? chosen : c.default;
 }
