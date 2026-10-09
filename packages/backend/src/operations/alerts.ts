@@ -8,6 +8,8 @@ import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { sql } from "../db.ts";
 import { beijingDay, beijingStamp, duration, formatAlert, formatRecovery, sendAlert, type Finding, type Level } from "../notify/feishu.ts";
 import { backupConfigured } from "./backup.ts";
+import { zhipuCircuitState } from "../providers/zhipu.ts";
+import { openRouterCircuitState } from "../modelwatch/routing.ts";
 
 const REPEAT_MS: Record<Exclude<Level, "digest">, number> = { now: 3600_000, today: 24 * 3600_000 };
 
@@ -65,7 +67,7 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
         since: p!.waiting >= 10 && p!.oldest ? p!.oldest : undefined,
       });
     }
-    // The daily report is composed at 08:00 and caught up hourly.
+    // The daily report is composed at 07:10 and caught up hourly.
     if (Number(beijingTime(now).slice(0, 2)) >= 10) {
       const [r] = await sql`SELECT 1 FROM reports WHERE kind = 'daily' AND key = ${beijingDate(now)}`;
       if (!r) {
@@ -163,6 +165,31 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
   }
   if (r!.deliveries > 0) out.push({ key: "deliveries.unknown", level: "digest", title: `${r!.deliveries} 条飞书内容群推送不确定是否送达`, detail: "后台“运行”页核对群里有没有，再标记或重发" });
 
+  // ym438：免费通道每日可观测（承接次数/占比/证书覆盖/池水位），有模型调用即出一行。
+  const free = await freeChannelDigest(now);
+  if (free) out.push(free);
+  // ym438：窗口公告解析歧义未自动写（S03「即人工候裁」的露出面）。窗口候选面=free_window 定点页
+  // 与 /notice/ 公告页（与 signals.classifyItem 同口径；ym438 首日实锚：改版后的 usage-revision
+  // 公告正是一例歧义）。静默判定=歧义的「动作时刻」（routing_action.at——存量回填行的动作时刻
+  // ≠行 created_at，ym438 首日实锚踩中）已被更新的窗口规则取代（人工写 manual 或后续解析成功
+  // 写入）——否则未处置会一直提醒，已处置不纠缠。
+  const [wr] = await sql<{ title: string; url: string; reason: string | null }[]>`
+    SELECT title, url, routing_action->>'reason' AS reason FROM zhipu_updates wr
+    WHERE wr.routing_action->>'action' = 'window_refused'
+      AND (wr.kind = 'free_window' OR (wr.kind = 'plan_promo' AND wr.url LIKE '%/notice/%'))
+      AND NOT EXISTS (
+        SELECT 1 FROM settings s WHERE s.key = 'zhipu.plan_window'
+          AND (s.value->>'updatedAt')::timestamptz > (wr.routing_action->>'at')::timestamptz)
+    ORDER BY (wr.routing_action->>'at')::timestamptz DESC LIMIT 1`;
+  if (wr) {
+    out.push({
+      key: "zhipuwatch.window_manual",
+      level: "digest",
+      title: "智谱窗口公告的日期解析不了，窗口规则需要人工确认",
+      detail: `《${wr.title}》：${wr.reason ?? "解析歧义"}；确认后把口径写进 settings 键 zhipu.plan_window（mode=manual），自动解析就不会再覆盖`,
+    });
+  }
+
   // Runnable jobs (deferred ones excluded) that have waited more than two hours.
   const queues = await sql<{ name: string; n: number; oldest: Date }[]>`
     SELECT name, count(*)::int AS n, min(start_after) AS oldest FROM pgboss.job
@@ -238,6 +265,60 @@ async function providerFindings(): Promise<Finding[]> {
     });
   }
   return out;
+}
+
+/** ym438/ym472 免费通道日报行（S04「免费通道每日满载可观测」）：过去 24 小时
+ *  zhipu-free+openrouter+opencode-free 承接次数与占全部实时调用的比例、合格证书覆盖的能力
+ *  位数、OpenRouter 池水位（对照 budgets 日限）与熔断状态。口径：origin=live 且按类统一剔除
+ *  验收/演练调用（一类一策，ym472；三通道分子同窗剔除）——free_capability_test=能力验收轮
+ *  （shoumen P2-1 销项·承接面=业务流量）、modelwatch.certify.*=第三方通道认证批（ym467
+ *  opencode 认证）、*.drill=演练（ym467.drill，智谱侧 2 条同剔）；OpenRouter 池水位按 budgets
+ *  实际计数口径含验收，与真实限额对齐，故单独子查询不过该过滤。 */
+async function freeChannelDigest(now: number): Promise<Finding | null> {
+  const [calls] = await sql<{ zhipu: number; openrouter: number; opencode: number; total: number }[]>`
+    SELECT count(*) FILTER (WHERE a.service = 'zhipu-free')::int AS zhipu,
+           count(*) FILTER (WHERE a.service = 'openrouter')::int AS openrouter,
+           count(*) FILTER (WHERE a.service = 'opencode-free')::int AS opencode,
+           count(*)::int AS total
+    FROM receipt_attempts a JOIN receipts rc ON rc.id = a.receipt_id
+    WHERE a.origin = 'live'
+      AND rc.purpose <> 'free_capability_test'
+      AND rc.purpose NOT LIKE 'modelwatch.certify.%'
+      AND rc.purpose NOT LIKE '%.drill'
+      AND a.started_at > ${new Date(now - 24 * 3600_000)}`;
+  if (!calls || calls.total === 0) return null;
+  const free = calls.zhipu + calls.openrouter + calls.opencode;
+  const share = Math.round((free / calls.total) * 100);
+  const [certs] = await sql<{ zhipu: number; openrouter: number; total: number }[]>`
+    SELECT count(DISTINCT c.capability) FILTER (WHERE c.model_id LIKE 'zhipu:%')::int AS zhipu,
+           count(DISTINCT c.capability) FILTER (WHERE c.model_id NOT LIKE 'zhipu:%')::int AS openrouter,
+           count(DISTINCT c.capability)::int AS total
+    FROM model_free_capabilities c JOIN model_watch_models m ON m.model_id = c.model_id
+    WHERE c.verdict = 'qualified' AND m.status NOT IN ('ended', 'filtered')`;
+  const [orBudget] = await sql<{ per_day: number; used: number }[]>`
+    SELECT b.per_day,
+           (SELECT count(*)::int FROM receipt_attempts a WHERE a.service = b.service AND a.origin = 'live' AND a.started_at > now() - interval '24 hours') AS used
+    FROM budgets b WHERE b.service = 'openrouter'`;
+  const parts = [
+    `智谱免费 ${calls.zhipu} 次、OpenRouter ${calls.openrouter} 次、opencode ${calls.opencode} 次，合计 ${free}/${calls.total}（占 ${share}%）`,
+    `合格证书覆盖 ${certs!.total} 个能力位（智谱 ${certs!.zhipu} / OpenRouter ${certs!.openrouter}）`,
+  ];
+  if (orBudget && orBudget.per_day > 0) {
+    const ratio = orBudget.used / orBudget.per_day;
+    parts.push(`OpenRouter 池 ${orBudget.used}/${orBudget.per_day}${ratio >= 1 ? "（已耗尽，等 24 小时滚动恢复）" : ratio >= 0.8 ? "（接近上限）" : ""}`);
+  } else if (!orBudget) {
+    parts.push("OpenRouter 无 budgets 日限行（免费调用会被 fail-closed 拒发，查 budgets 表）");
+  }
+  const zc = await zhipuCircuitState();
+  if (zc.open) parts.push(`智谱通道熔断中（至 ${beijingStamp(zc.until!)}：${zc.reason ?? ""}）`);
+  const oc = await openRouterCircuitState();
+  if (oc.open) parts.push(`OpenRouter 熔断中（至 ${beijingStamp(oc.until!)}：${oc.reason ?? ""}）`);
+  return {
+    key: "free.share",
+    level: "digest",
+    title: `免费通道过去 24 小时承接 ${free} 次调用（占 ${share}%）${share === 0 ? "，一个免费调用都没有" : ""}`,
+    detail: parts.join("；"),
+  };
 }
 
 interface AlertState {
