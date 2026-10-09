@@ -352,3 +352,29 @@ test("ym249 overview DTO: catalog/fee/budget/policy/parked facts, desensitised",
   const json = JSON.stringify(o);
   assert.ok(!json.includes("test-key"), "no raw credentials in the projection");
 });
+
+test("ym457 overview DTO 智谱观测三行: 熔断/预算用量/缺行告警（缺行正反例，判别性）", async () => {
+  const canonical = { per_minute: 90, per_hour: 5000, per_day: 100000 }; // 0055 迁移规范值
+  // 正例①：budgets 行在位 → 预算投影 + 不告警
+  await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day)
+            VALUES ('zhipu-free', ${canonical.per_minute}, ${canonical.per_hour}, ${canonical.per_day})
+            ON CONFLICT (service) DO NOTHING`;
+  const withRow = await modelWatchOverview();
+  assert.ok(withRow.zhipu, "DTO 含 zhipu 观测块（旧码此处即红）");
+  assert.equal(withRow.zhipu.budgetMissing, false, "行在位不告警");
+  assert.equal(withRow.zhipu.budget?.per_day, canonical.per_day);
+  assert.ok(typeof withRow.zhipu.used24h === "number" && withRow.zhipu.used24h >= 0);
+  assert.ok(typeof withRow.zhipu.circuit.open === "boolean", "熔断状态恒有布尔投影");
+  try {
+    // 反例②：删行 → 缺行告警（fail-closed 判据：requireBudget 无 budgets 行即拒发）
+    await sql`DELETE FROM budgets WHERE service = 'zhipu-free'`;
+    const noRow = await modelWatchOverview();
+    assert.equal(noRow.zhipu.budgetMissing, true, "缺行即告警");
+    assert.equal(noRow.zhipu.budget, null, "缺行时预算投影为空");
+  } finally {
+    // 恢复规范值（不影响他套件；同时把「此前被误删」的态修回）
+    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day)
+              VALUES ('zhipu-free', ${canonical.per_minute}, ${canonical.per_hour}, ${canonical.per_day})
+              ON CONFLICT (service) DO UPDATE SET per_minute = EXCLUDED.per_minute, per_hour = EXCLUDED.per_hour, per_day = EXCLUDED.per_day`;
+  }
+});
