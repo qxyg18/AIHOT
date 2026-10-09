@@ -1,7 +1,7 @@
 // Cron-style schedules (Asia/Shanghai). Each run is recorded in job_runs; missed slots run once.
 import type { PgBoss } from "pg-boss";
 import { FEATURES } from "@aihot/industry/features";
-import { credential } from "@aihot/backend/config";
+import { credential, config } from "@aihot/backend/config";
 import { ensureQueue, recordRun } from "@aihot/backend/jobs/queue";
 import { sweepUnprocessed } from "@aihot/backend/jobs/content";
 import { translatePending } from "@aihot/backend/editorial/translate";
@@ -18,7 +18,8 @@ import { refreshLeaderboard } from "@aihot/backend/leaderboard/fetch/refresh";
 import { refreshBrandProfiles } from "@aihot/backend/brandprofiles/refresh";
 import { sweepDeepReads } from "@aihot/backend/editorial/deepread";
 import { mimoUsable } from "@aihot/backend/providers/mimo";
-import { mimoShiftActive, offpeakActive, offpeakPlanLive, quietActive } from "@aihot/backend/lib/windows";
+import { freeChannelUsable } from "@aihot/backend/modelwatch/routing";
+import { offpeakPlanLive, planActive } from "@aihot/backend/lib/windows";
 import { monitorTick } from "@aihot/backend/monitor/scan";
 import { dailyRetention } from "@aihot/backend/operations/retention";
 import { submitIndexNow } from "@aihot/backend/operations/indexnow";
@@ -29,33 +30,35 @@ import { backupConfigured, runBackup } from "@aihot/backend/operations/backup";
 import { sourceHealthWeekly } from "@aihot/backend/operations/reports";
 import { markStalePendingReceipts } from "@aihot/backend/providers/receipts";
 import { markStaleDeliveries } from "@aihot/backend/notify/deliver";
+import { scanModelWatch } from "@aihot/backend/modelwatch/monitor";
+import { runCapabilityTests } from "@aihot/backend/modelwatch/capability-test";
+import { scanOssWatch } from "@aihot/backend/osswatch/scan";
+import { reviewDueDigests } from "@aihot/backend/osswatch/review";
+import { scanZhipuWatch } from "@aihot/backend/zhipuwatch/scan";
+import { reviewDueDigests as reviewZhipuDigests } from "@aihot/backend/zhipuwatch/review";
+import { scanOpencodeWatch } from "@aihot/backend/opencodewatch/scan";
+import { runDiscoveryRound, runProbeRound, runActivationRound } from "@aihot/backend/jobs/admission";
 
 interface Scheduled {
   name: string;
   cron: string;
   run: () => Promise<unknown>;
   missed?: "skip" | "once";
-  // zw20 off-peak plan: model-heavy jobs run only inside the daily discount window below.
-  // The window never overlaps the weekday quiet hours, so they carry no quiet marking.
+  // ym431: marks model-heavy jobs — kept for the MIMO-availability guard in the worker handler.
+  // (zw20's "run only in the discount window" gating is retired; jobs run on their cadence all day.)
   offpeak?: boolean;
-  // zw20 off-peak plan: "exempt" still runs inside the weekday quiet window (ops, monitoring,
-  // archive snapshots; also missed-catchup of reports so a downtime never loses a report).
+  // zw20 annotation, retained on the rows: these ran even in the retired quiet window.
   quiet?: "exempt";
 }
 
 const collecting = process.env.COLLECT_ENABLED !== "false";
 
-// zw20 (owner directive 2026-09-30): from 2026-10-08 Beijing time, no site updates on weekdays
-// 12:00-18:00 (Coding Plan peak hours) and model-heavy jobs only in the discounted window
-// 23:00-07:30 (ka3: or the MIMO pay-as-you-go shift 9:00-22:59 while its balance holds). Before
-// the effective date every gate passes and behavior is unchanged. Skipped slots are silent in
-// job_runs: the time distribution of that table is the audit evidence.
-export const gateAllows = (s: { offpeak?: boolean; quiet?: "exempt" }, now = Date.now()) => {
-  if (!offpeakPlanLive(now)) return true;
-  if (s.offpeak) return offpeakActive(now) || (mimoShiftActive(now) && !quietActive(now));
-  if (quietActive(now)) return s.quiet === "exempt";
-  return true;
-};
+// ym431 (owner directive 2026-10-08): the zw20 quiet window and time-of-day gating are retired —
+// the site updates around the clock and every job runs on its own cadence. Which model pays is
+// decided in modelFor (plan window = Zhipu plan; otherwise free models first + MIMO pay-as-you-go),
+// with the MIMO-availability guard in the worker handler keeping heavy jobs off the plan outside
+// its window. The signature stays for the schedule rows and the boundary tests.
+export const gateAllows = (_s: { offpeak?: boolean; quiet?: "exempt" }, _now = Date.now()) => true;
 
 export const SCHEDULES: Scheduled[] = [
   { name: "content.sweep", cron: "*/5 * * * *", offpeak: true, run: sweepUnprocessed },
@@ -69,8 +72,10 @@ export const SCHEDULES: Scheduled[] = [
   { name: "stories.status", cron: "7 * * * *", offpeak: true, run: refreshStoryStatuses },
   { name: "stories.links", cron: "12 * * * *", offpeak: true, run: linkRelatedStories },
   // Reports are composed inside the discount window; "exempt" keeps a missed catch-up (downtime
-  // recovery) from being dropped by the quiet gate instead of running late.
-  { name: "reports.daily", cron: "30 23 * * *", missed: "once", quiet: "exempt", run: () => composeDaily(beijingDate(Date.now())) },
+  // recovery) from being dropped by the quiet gate instead of running late. ym41: deadline moved
+  // to 07:00 Beijing (owner ruling 2026-10-01) — the day's issue covers [D-1 07:00, D 07:00) and
+  // goes out at 07:10, still inside the zw20 discount window.
+  { name: "reports.daily", cron: "10 7 * * *", missed: "once", quiet: "exempt", run: () => composeDaily(beijingDate(Date.now())) },
   { name: "reports.weekly", cron: "50 23 * * 1", missed: "once", quiet: "exempt", run: () => composeWeekly(isoWeekLabel(addDays(beijingDate(Date.now()), -7))) },
   {
     name: "reports.monthly",
@@ -88,6 +93,29 @@ export const SCHEDULES: Scheduled[] = [
   // unchanged source text keeps its paid summary, so a quiet round makes no model calls.
   { name: "brandprofiles.refresh", cron: "35 3 * * 1", missed: "once", quiet: "exempt", run: () => refreshBrandProfiles() },
   { name: "sources.icons", cron: "40 4 * * *", missed: "once", quiet: "exempt", run: refreshSourceIcons },
+  // 免费模型信源监控（命主 2026-10-02）：每 24 小时拉一次 OpenRouter 模型表，盯免费窗口
+  // 开启/结束并重算路由（只启用上下文 ≥1M 的）。探针打的是免费模型（零成本），不算
+  // model-heavy，quiet 豁免保证节奏不被静默窗吞掉。
+  { name: "model-watch.scan", cron: "30 6 * * *", missed: "once", quiet: "exempt", run: () => scanModelWatch() },
+  // 免费模型能力级验收（ym196 命主令）：每免费模型×每能力位 10 次真实调用（免费零成本），
+  // 付费模型判卷（≥9/10 合格→进能力路由；付费降为断链过渡档）。滚动批：每晚 8 组合，
+  // 未测优先、7 天复测；判卷走付费 default，优惠窗折扣价。
+  { name: "model-watch.capability-test", cron: "40 23 * * *", missed: "once", quiet: "exempt", offpeak: true, run: () => runCapabilityTests() },
+  // 开源项目跟踪（ym190 建卡；ym195 命主令改双轮）：白天轮 06:47 扫描后立刻出解读——
+  // 免费模型优先（免费路由在役主力即写即出，免费窗口未开回落 MIMO 付费班次），不等优惠窗。
+  { name: "oss.watch", cron: "47 6 * * *", missed: "once", quiet: "exempt", run: () => scanOssWatch() },
+  // 复核轮 23:33（优惠窗内）：强模型（ossDigestReview，显式指派计划模型保独立性）对照原始
+  // 材料复核白天的解读，问题提炼成教训沉淀（osswatch.lessons），次日白天解读注入教训段。
+  { name: "oss.review", cron: "33 23 * * *", missed: "once", quiet: "exempt", offpeak: true, run: () => reviewDueDigests() },
+  // 智谱关注（ym437 命主点名需求②）：日扫 06:53 拉 5 定点页（.md 直取）+ sitemap 差分，有料才出刊，
+  // 解读走免费通道优先（zhipu 免费档证书）；复核轮 23:36 用强模型（zhipuDigestReview，排除免费路由）
+  // 对照原始材料复核清晨的免费解读。
+  { name: "zhipu.watch", cron: "53 6 * * *", missed: "once", quiet: "exempt", run: () => scanZhipuWatch() },
+  { name: "zhipu.review", cron: "36 23 * * *", missed: "once", quiet: "exempt", offpeak: true, run: () => reviewZhipuDigests() },
+  // opencode 免费档目录同步与存在性预检（ym467 S05）：直连宿主 opencode serve 客户端
+  // （GET /provider，Basic 鉴权），免费双信号（-free 后缀/白名单 + 客户端零价）入池；
+  // 目录消失的成员置 ended 出池（行保留可回）；版本/免费集合快照落 settings 供漂移探测。
+  { name: "opencode.watch", cron: "57 6 * * *", missed: "once", quiet: "exempt", run: () => scanOpencodeWatch() },
   // IndexNow for new indexable pages (off unless INDEXNOW_SUBMIT_ENABLED).
   { name: "seo.indexnow", cron: "50 5 * * *", missed: "once", quiet: "exempt", run: () => submitIndexNow() },
   // Work a stopped process left half way becomes visible, and unknown paid requests get their one
@@ -100,7 +128,7 @@ export const SCHEDULES: Scheduled[] = [
   { name: "feedback.forward", cron: "*/10 * * * *", quiet: "exempt", run: () => forwardPendingFeedback() },
   ...(backupConfigured() ? [{ name: "ops.backup", cron: "10 4 * * *", missed: "once" as const, quiet: "exempt" as const, run: () => runBackup() }] : []),
   { name: "reports.source-health", cron: "0 9 * * 1", missed: "once", quiet: "exempt", run: () => sourceHealthWeekly() },
-  // Four upstream checks a day; a new run is published only when the evidence changed. With collection
+  // Three upstream checks a day; a new run is published only when the evidence changed. With collection
   // off only the computation runs, over the snapshots already stored. The 14:05 slot is gone (zw20:
   // weekday quiet hours); 02:05/08:05/20:05 stay clear of them.
   ...(FEATURES.leaderboard
@@ -113,6 +141,23 @@ export const SCHEDULES: Scheduled[] = [
         // WeChat official accounts (paid), each once per its interval.
         { name: "sources.mp-reconcile", cron: "*/15 * * * *", run: () => scheduleMpReconcile() },
       ]
+    : []),
+  // Source admission engine (ym312): discovery and probe entries, each behind its own valve
+  // (SOURCE_DISCOVERY_ENABLED / SOURCE_PROBE_ENABLED, both default off — the BUILD-disabled state
+  // holds until the activation card turns them on). Removing a valve unregisters the schedule (the
+  // sweep below clears its cron) and leaves the other valve's candidates and append-only checks.
+  ...(config.sourceDiscoveryEnabled
+    ? [{ name: "sources.admission.discover", cron: "50 4 * * *", missed: "once" as const, quiet: "exempt" as const, run: () => runDiscoveryRound() }]
+    : []),
+  ...(config.sourceProbeEnabled
+    ? [{ name: "sources.admission.probe", cron: "20 */2 * * *", run: () => runProbeRound() }]
+    : []),
+  // Activation round (ym257/T06): eligible candidates become collecting sources via ym311's
+  // activateCandidate. Shares the probe valve — probe off = the engine's write side fully off
+  // (eligible rows just wait). 20 min after the probe slot; an overlap is harmless (advisory
+  // lock + idempotent replay). Missed slots skip: eligible rows are persistent, nothing is lost.
+  ...(config.sourceProbeEnabled
+    ? [{ name: "sources.admission.activate", cron: "40 */2 * * *", run: () => runActivationRound() }]
     : []),
   // Codex reset monitor: checked every minute, scanned every 5 (every 3 while hot). It reads X through
   // SocialData, so without that key there is nothing to run.
@@ -131,11 +176,11 @@ export async function registerSchedules(boss: PgBoss) {
     await boss.schedule(queue, s.cron, {}, { tz: "Asia/Shanghai", missed: s.missed ?? "skip" });
     // Schedules fire at minute boundaries; a 15 s pickup keeps them on time with a third of the polling.
     await boss.work(queue, { pollingIntervalSeconds: 15 }, async () => {
-      if (!gateAllows(s)) return; // zw20: outside the allowed window; silent skip, no job_runs row
-      // ka3: once the plan is live, model-heavy jobs on the MIMO shift (outside the discount
-      // window) run only while MIMO is configured and its circuit is closed; before the plan is
-      // live this branch never triggers and the pre-plan behavior (run all day) is untouched.
-      if (offpeakPlanLive() && s.offpeak && !offpeakActive() && !(await mimoUsable())) return;
+      if (!gateAllows(s)) return;
+      // ka3/ym431 guard: outside the plan window (free/MIMO hours), model-heavy jobs run only
+      // while MIMO or a free channel (ym436: Zhipu free family / OpenRouter pool with members)
+      // can take them — never fall back to the plan there.
+      if (offpeakPlanLive() && s.offpeak && !planActive() && !(await mimoUsable()) && !(await freeChannelUsable())) return;
       return recordRun(s.name, s.run);
     });
   }
