@@ -55,10 +55,11 @@ export interface MaterialResult {
   created: boolean;
   revised: boolean;
   backfill: boolean;
-  /** True when this upsert filled a previously-NULL published_at (metadata-only, no revision). */
-  metaDateFilled: boolean;
-  /** True when that fill turned the article historical (its heat evidence leaves the event graph). */
-  metaHistoricalFlip: boolean;
+  /** Set (true) only when this upsert filled a previously-NULL published_at; absent otherwise —
+   *  `undefined` is the contract the ym253 tests assert ("a second date is not a fill"). */
+  metaDateFilled?: boolean;
+  /** Set only together with metaDateFilled: the fill turned the article historical. */
+  metaHistoricalFlip?: boolean;
 }
 
 // Material first discovered more than this long after its source time is archived by source time,
@@ -156,7 +157,7 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
              VALUES (${newId}, 1, ${hash}, ${title}, ${m.bodyText ?? null})`;
     await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
              VALUES (${newId}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
-    return { articleId: newId, created: true, revised: false, backfill: t.backfill, metaDateFilled: false, metaHistoricalFlip: false };
+    return { articleId: newId, created: true, revised: false, backfill: t.backfill };
   }
 
   const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; published_at: Date | null; title: string; body_text: string | null; excerpt: string | null }[]>`
@@ -177,7 +178,11 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
                     updated_at = now()
               WHERE id = ${existing!.id}`;
   }
-  const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill, metaDateFilled, metaHistoricalFlip };
+  // The meta fields are carried only on the fill itself; their absence (undefined) is the
+  // no-fill contract (tests/meta-enrich: "a report does not take the metadata path").
+  const metaFields = metaDateFilled ? { metaDateFilled: true as const, metaHistoricalFlip } : {};
+  const backfillNow = metaDateFilled ? t.backfill : existing!.backfill;
+  const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: backfillNow, ...metaFields };
   // Another source listing the same material (an aggregator, a translated mirror, a hot signal) is a
   // discovery only: its title and summary are its own rendering, and taking them made the article flip
   // between the two sources' versions on every fetch. Only the article's own source revises it.
@@ -219,5 +224,5 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
     RETURNING revision`;
   await db`INSERT INTO article_revisions (article_id, revision, content_hash, title, body_text)
            VALUES (${existing!.id}, ${row!.revision}, ${next}, ${title}, ${bodyText})`;
-  return { articleId: existing!.id, created: false, revised: true, backfill: existing!.backfill, metaDateFilled, metaHistoricalFlip };
+  return { articleId: existing!.id, created: false, revised: true, backfill: backfillNow, ...metaFields };
 }
