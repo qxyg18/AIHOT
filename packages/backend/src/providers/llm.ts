@@ -132,6 +132,11 @@ export const MODELS: Record<string, ModelSpec> = {
 
 export type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
+/** ym450：智谱免费面的 max_tokens 硬上限——glm-4-flash-250414 生产 400/1210「限制数值范围
+ *  [1,16384]」；免费家族候选的思考余量（+4000）在此夹取（understand 位 16384+4000=20384
+ *  越界即生产实证）。非智谱候选不受影响。 */
+const ZHIPU_FREE_MAX_TOKENS = 16_384;
+
 export interface ChatJsonOptions<S extends z.ZodType> {
   model: string;
   purpose: string;
@@ -236,6 +241,13 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   // 成立），防结构化输出被 reasoning 吃光后截断。
   const baseMaxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.key.endsWith("-think") || thinkingOn ? 4000 : 0);
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
+  // ym450：带图请求（ContentPart[]）落到免费三通道时按纯文本降级——智谱 paas/v4 只收 text
+  // part（生产 400/1210 content.type）、OpenRouter 免费端点无图像输入（404 image input）、
+  // opencode 线协议只发文本；与 analyze 的「模型拒图后改发文本」同语义，但不再先浪费一发
+  // 被拒请求。降级在回执 requestSummary 留痕（imageDropped）。钉选调用（认证/探针）保持
+  // 请求形状原样——认证的 image variant 就是测目标模型在真实线上的图像接受面。
+  const imageRequested = Array.isArray(opts.user);
+  const textOnlyUser = imageRequested ? (opts.user as ContentPart[]).map((p) => (p.type === "text" ? p.text : "")).join("") : userText;
 
   // 候选链：免费模型「能力路由钉选 > 主力」+ 替补（切换免费模型时上一任留作替补，命主
   // 2026-10-02）；测试钉选（pinnedModel）优先级最高。其余模型单候选。各候选各记各的回执。
@@ -311,7 +323,11 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     const candidate = runnable[ci]!;
     const creds = credsOf(candidate);
     const candService = serviceOf(candidate);
-    const candMaxTokens = baseMaxTokens + (candidate.channel === "zhipu" ? 4000 : 0);
+    const candMaxTokens = candidate.channel === "zhipu" ? Math.min(baseMaxTokens + 4000, ZHIPU_FREE_MAX_TOKENS) : baseMaxTokens;
+    // ym450：免费候选无图像接受面（按候选所属面判）——带图请求降级为纯文本 + 回执留痕；
+    // 钉选（认证/探针）与非免费候选保持请求形状原样。
+    const degradeImage = imageRequested && !opts.pinnedModel && candidate.channel !== null;
+    const candUser = degradeImage ? textOnlyUser : opts.user;
     const candExtra = extraOf(candidate);
     const freeOnly = candidate.channel !== null;
     // ym467：opencode 面不走 OpenAI/Anthropic 线（callOpencode 自建会话线：POST /session →
@@ -325,7 +341,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
           apiKey: creds.apiKey!,
           model: candidate.model,
           system: opts.system,
-          user: typeof opts.user === "string" || Array.isArray(opts.user) ? opts.user : userText,
+          user: candUser,
           temperature,
           maxTokens: candMaxTokens,
           jsonMode: spec.jsonMode && opts.json !== false,
@@ -342,7 +358,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
           purpose: opts.purpose,
           subject: opts.subject,
           identity: { model: candidate.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens: candMaxTokens, extra: (isAnthropicEndpoint(creds.baseUrl!) ? null : candExtra) ?? null },
-          requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens: candMaxTokens },
+          requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens: candMaxTokens, ...(degradeImage ? { imageDropped: true } : {}) },
           attemptTag: opts.attemptTag,
           // ym249: free-only calls are one operation across candidate models — the operation key carries no
           // model, so an unknown first attempt blocks the fallback candidate inside paidRequest already.
@@ -364,7 +380,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
               password: creds.apiKey!,
               model: candidate.model,
               system: opts.system,
-              user: typeof opts.user === "string" ? opts.user : userText,
+              user: typeof candUser === "string" ? candUser : userText,
               timeoutMs: opts.timeoutMs ?? 120_000,
             });
             return {
