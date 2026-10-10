@@ -69,6 +69,8 @@ before(async () => {
   // api.server 在模块加载时读 API_BASE_URL，必须先设 env 再动态 import 生产 build。
   process.env.API_BASE_URL = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
   const { createRequestListener } = await import("@react-router/node");
+  // build/server/index.js 由 `npm run build -w @aihot/web` 产出，无类型声明文件。
+  // @ts-expect-error TS7016 构建产物缺声明（与 server.ts 经 pathToFileURL 动态导入同一产物）
   const build = await import("../build/server/index.js");
   web.addListener("request", createRequestListener({ build, mode: "production" }));
   web.listen(0, "127.0.0.1");

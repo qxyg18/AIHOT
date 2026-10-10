@@ -39,7 +39,8 @@ interface Manifest {
   changed_hunks?: Array<{ path: string }>; roots?: string[];
   closure?: Array<{ node: string; disposition: string; evidence: string }>;
   checks_run?: Array<{ check: string; exit_code: number }>;
-  external?: Array<{ path: string }>; independent_audit?: { path: string; sha256: string };
+  external?: Array<{ path: string; owner?: string }>; external_policy?: string;
+  independent_audit?: { path: string; sha256: string };
 }
 const base = (over: Manifest): Manifest => ({
   schema: "tzr-change/1",

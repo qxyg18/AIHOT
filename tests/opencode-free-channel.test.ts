@@ -12,7 +12,7 @@ import { isOpencodeChannelFailure, OPENCODE_FREE_KEY, OPENCODE_CIRCUIT_KEY } fro
 import { MODELS } from "../packages/backend/src/providers/llm.ts";
 import { ZHIPU_FREE_KEY } from "../packages/backend/src/providers/zhipu.ts";
 
-const row = (over: Partial<QualifiedRow>): QualifiedRow => ({
+const row = (over: Partial<QualifiedRow> = {}): QualifiedRow => ({
   capability: "summarize",
   model_id: "opencode:big-pickle",
   supports_vision: false,
