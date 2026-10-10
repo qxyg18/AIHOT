@@ -8,6 +8,7 @@ import { normalizeUrl } from "../lib/url.ts";
 import { fetchJsonList } from "../sources/json-list.ts";
 import { fetchRss } from "../sources/rss.ts";
 import { assertSupportedConfig } from "../sources/config-keys.ts";
+import { previewFilterStats } from "../sources/collect.ts";
 import { assertOverseasTagged } from "../sources/overseas.ts";
 import type { SourceRow } from "../sources/types.ts";
 import { fetchWebList } from "../sources/web-list.ts";
@@ -80,6 +81,9 @@ export async function previewSource(draft: Pick<SourceRow, "id" | "kind" | "conf
   return {
     ms: Date.now() - started,
     count: candidates.length,
+    // The same two gates the collect pipeline applies, in the same order, so an editor sees what a
+    // config change would keep before saving it (include first, noise second).
+    ...previewFilterStats(candidates, source),
     items: candidates.slice(0, 20).map((c) => ({ title: c.title, url: c.url, publishedAt: c.publishedAt?.toISOString() ?? null, excerpt: (c.excerpt ?? c.bodyText ?? "").slice(0, 200) })),
   };
 }

@@ -10,7 +10,7 @@ import { allowed, fetchDetail, fetchWebList, type DetailNeed } from "./web-list.
 import { unsupportedConfig } from "./config-keys.ts";
 import { fetchJsonList } from "./json-list.ts";
 import { fetchXSearch, planXShards, readXSearch, shardHandle, shardQuery, SHARDABLE_SQL, tweetToCandidate, type XBacklog, type XRead } from "./x.ts";
-import { FetchError, type Candidate, type SourceRow } from "./types.ts";
+import { FetchError, type Candidate, type IngestIncludeFilter, type SourceRow } from "./types.ts";
 
 export interface CollectResult {
   sourceId: string;
@@ -35,6 +35,27 @@ export function noiseFiltered(c: Candidate, source: SourceRow): boolean {
   const hay = `${title}\n${(c.excerpt ?? "").toLowerCase()}`;
   if (has(hay, f.keepIfMatches)) return false;
   return has(title, f.dropMarkersTitleOnly) || has(hay, f.dropMarkers);
+}
+
+/** True when the include gate (ingestIncludeFilter) drops the item: none of `any` appears in the
+ *  chosen frozen listing fields. An unset filter or empty `any` keeps everything (the old behavior).
+ *  The gate runs before the noise filter and is independent of it: keepIfMatches still only lifts
+ *  noise, it never satisfies inclusion. */
+export function includeFiltered(c: Candidate, source: SourceRow): boolean {
+  const f = source.config.ingestIncludeFilter as IngestIncludeFilter | undefined;
+  const words = f?.any;
+  if (!words?.length) return false;
+  const fields = f?.fields?.length ? f.fields : (["title", "excerpt"] as const);
+  const hay = fields.map((x) => (x === "title" ? c.title : c.excerpt ?? "").toLowerCase()).join("\n");
+  return !words.some((k) => hay.includes(k.toLowerCase()));
+}
+
+/** What a preview reports: how many items the fetch found, how many the include gate keeps, and how
+ *  many of those the noise filter then drops. Inclusion first, noise second — the same order as the
+ *  collect pipeline. */
+export function previewFilterStats(candidates: Candidate[], source: SourceRow): { found: number; included: number; noiseDropped: number } {
+  const kept = candidates.filter((c) => !includeFiltered(c, source));
+  return { found: candidates.length, included: kept.length, noiseDropped: kept.filter((c) => noiseFiltered(c, source)).length };
 }
 
 function rewriteUrl(c: Candidate, source: SourceRow): Candidate {
@@ -123,7 +144,7 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
       detail = { pages: x.pages, truncated: x.truncated, backlog: x.backlog.length, backlogPages: x.backlogPages, dropped: x.dropped };
     }
     found = candidates.length;
-    candidates = candidates.filter((c) => allowed(c.url, source)).map((c) => rewriteUrl(c, source)).filter((c) => !noiseFiltered(c, source));
+    candidates = candidates.filter((c) => allowed(c.url, source)).map((c) => rewriteUrl(c, source)).filter((c) => !includeFiltered(c, source)).filter((c) => !noiseFiltered(c, source));
     if (source.config.sortByPublishedAt) candidates.sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0));
 
     // First import of a new source: bounded, and archived by source time (never "today", never pushed).

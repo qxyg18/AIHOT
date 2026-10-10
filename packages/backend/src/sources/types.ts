@@ -22,6 +22,16 @@ export type Candidate = Omit<MaterialInput, "sourceId" | "via"> & {
   categories?: string[];
 };
 
+/**
+ * Independent include gate applied before the noise filter: with `any` set, a listing item must
+ * carry one of the words in the frozen listing fields (`fields`, title and excerpt by default) to
+ * be stored at all. Config of sources; the noise filter and its keepIfMatches exemption are unchanged.
+ */
+export interface IngestIncludeFilter {
+  any: string[];
+  fields?: ("title" | "excerpt")[];
+}
+
 export class FetchError extends Error {
   readonly status: number | null;
   constructor(message: string, status: number | null = null) {
