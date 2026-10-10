@@ -1,79 +1,93 @@
-// Off-peak windows (zw20) and the MIMO daytime shift (ka3): weekday 12:00-18:00 Beijing quiets
-// every site update, model-heavy jobs run 23:00-07:30 on the Zhipu plan or 9:00-22:59 on MIMO,
-// and nothing changes before 2026-10-08 Beijing time. Pure date math, fixed timestamps on
-// purpose (2026-10-08 is a Thursday, 2026-10-10 a Saturday).
+// Provider-routed day plan (ym431, owner directive 2026-10-08; night window retired by ym436 the
+// same day after the official night free-window activity 2026-09-03~10-07 expired): the site
+// updates around the clock, model work runs on the Zhipu plan only from 2026-10-13 18:00 (daily
+// 18:00-09:00 — "恢复智谱套餐的18:00后运行"); every hour before that is free models first +
+// MIMO pay-as-you-go. Date math with fixed timestamps on purpose (2026-10-08 is a Thursday,
+// 2026-10-10 a Saturday, 2026-10-13 a Tuesday). ym438 起 windows.ts 带套餐窗 settings 层（连库），
+// planActive 求值会触发后台刷新——测完关库，否则打开的连接挂住进程，--test 下一文件起不来。
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { quietActive, offpeakActive, mimoShiftActive, offpeakPlanLive } from "../packages/backend/src/lib/windows.ts";
+import { after, test } from "node:test";
+import { closeDb } from "../packages/backend/src/db.ts";
+import { mimoShiftActive, offpeakPlanLive } from "../packages/backend/src/lib/windows.ts";
 import { gateAllows } from "../apps/worker/src/schedules.ts";
 import { routeToMimo } from "../packages/backend/src/editorial/models.ts";
 import { isMimoBalanceError } from "../packages/backend/src/providers/mimo.ts";
 
+after(async () => {
+  await closeDb();
+});
+
 // Beijing wall clock -> epoch ms (input expressed as UTC minus 8h).
 const bj = (y: number, m: number, d: number, h: number, min = 0) => Date.UTC(y, m - 1, d, h - 8, min);
 
-test("quiet window covers weekdays 12:00-17:59 Beijing only", () => {
-  assert.equal(quietActive(bj(2026, 10, 8, 11, 59)), false); // Thu before noon
-  assert.equal(quietActive(bj(2026, 10, 8, 12, 0)), true); // Thu 12:00 sharp
-  assert.equal(quietActive(bj(2026, 10, 8, 17, 59)), true); // Thu last quiet minute
-  assert.equal(quietActive(bj(2026, 10, 8, 18, 0)), false); // Thu reopening
-  assert.equal(quietActive(bj(2026, 10, 10, 14, 0)), false); // Saturday midday stays open
-  assert.equal(quietActive(bj(2026, 10, 11, 14, 0)), false); // Sunday too
-  assert.equal(quietActive(bj(2026, 10, 12, 14, 0)), true); // Monday midday quiets
+test("quiet window is retired: every job runs at weekday midday (ym431)", () => {
+  const quietNoon = bj(2026, 10, 8, 14, 0); // Thursday 14:00 — zw20's dead zone
+  assert.equal(gateAllows({}, quietNoon), true); // zw20 silenced this
+  assert.equal(gateAllows({ quiet: "exempt" }, quietNoon), true);
+  assert.equal(gateAllows({ offpeak: true }, quietNoon), true); // model jobs too
+  const morning = bj(2026, 10, 8, 10, 0);
+  assert.equal(gateAllows({ offpeak: true }, morning), true);
+  const night = bj(2026, 10, 9, 2, 0);
+  assert.equal(gateAllows({ offpeak: true }, night), true);
+  assert.equal(gateAllows({}, night), true);
 });
 
-test("discount window is 23:00-07:30 Beijing every day", () => {
-  assert.equal(offpeakActive(bj(2026, 10, 8, 22, 59)), false);
-  assert.equal(offpeakActive(bj(2026, 10, 8, 23, 0)), true);
-  assert.equal(offpeakActive(bj(2026, 10, 9, 0, 0)), true); // past midnight
-  assert.equal(offpeakActive(bj(2026, 10, 9, 7, 29)), true); // last discounted minute
-  assert.equal(offpeakActive(bj(2026, 10, 9, 7, 30)), false);
-  assert.equal(offpeakActive(bj(2026, 10, 10, 14, 0)), false); // weekend midday is not discounted
+test("no dead gap: 08:00 belongs to the plan window and runs (ym431)", () => {
+  // zw20 left 07:30-09:00 as a neither-window gap where model jobs were skipped.
+  assert.equal(gateAllows({ offpeak: true }, bj(2026, 10, 9, 8, 0)), true);
 });
 
-test("MIMO shift is 9:00-22:59 Beijing every day (ka3)", () => {
-  assert.equal(mimoShiftActive(bj(2026, 10, 8, 8, 59)), false);
-  assert.equal(mimoShiftActive(bj(2026, 10, 8, 9, 0)), true);
+test("night plan priority is retired until the Tuesday switch (ym436)", async () => {
+  // The official night free-window activity (23:00-09:00 zero-quota GLM-5.3-Flash) ran 09-03~10-07
+  // and was not extended — so the interim night plan window died with it: every hour before the
+  // Tuesday switch is free/MIMO.
+  const { planActive } = await import("../packages/backend/src/lib/windows.ts");
+  assert.equal(planActive(bj(2026, 10, 8, 22, 59)), false);
+  assert.equal(planActive(bj(2026, 10, 8, 23, 0)), false); // the old night window start — retired
+  assert.equal(planActive(bj(2026, 10, 9, 2, 0)), false); // past midnight: free/MIMO now
+  assert.equal(planActive(bj(2026, 10, 9, 8, 59)), false);
+  assert.equal(planActive(bj(2026, 10, 12, 23, 59)), false); // last pre-switch night
+});
+
+test("from 2026-10-13 18:00 the plan window starts at 18:00 (ym431)", async () => {
+  const { planActive } = await import("../packages/backend/src/lib/windows.ts");
+  assert.equal(planActive(bj(2026, 10, 13, 17, 59)), false); // Tuesday afternoon still free/MIMO
+  assert.equal(planActive(bj(2026, 10, 13, 18, 0)), true); // the switch itself
+  assert.equal(planActive(bj(2026, 10, 13, 20, 0)), true);
+  assert.equal(planActive(bj(2026, 10, 14, 8, 59)), true); // night tail still plan
+  assert.equal(planActive(bj(2026, 10, 14, 9, 0)), false);
+  assert.equal(planActive(bj(2026, 10, 14, 17, 59)), false);
+  assert.equal(planActive(bj(2026, 10, 14, 18, 0)), true);
+});
+
+test("free/MIMO day window is the plan window's complement (ym431)", () => {
+  assert.equal(mimoShiftActive(bj(2026, 10, 8, 9, 0)), true); // 09:00 opens the day window
+  assert.equal(mimoShiftActive(bj(2026, 10, 8, 14, 0)), true); // weekday midday runs now
   assert.equal(mimoShiftActive(bj(2026, 10, 8, 22, 59)), true);
-  assert.equal(mimoShiftActive(bj(2026, 10, 8, 23, 0)), false); // hands over to the discount window
-  assert.equal(mimoShiftActive(bj(2026, 10, 10, 14, 0)), true); // weekend midday is a MIMO shift
+  assert.equal(mimoShiftActive(bj(2026, 10, 8, 23, 0)), true); // ym436: night priority retired pre-switch
+  assert.equal(mimoShiftActive(bj(2026, 10, 9, 8, 0)), true); // ym436: pre-switch tail is free/MIMO too
+  assert.equal(mimoShiftActive(bj(2026, 10, 10, 14, 0)), true); // weekends too
+  assert.equal(mimoShiftActive(bj(2026, 10, 13, 20, 0)), false); // after the switch evenings are plan
 });
 
-test("plan is not live before 2026-10-08 Beijing and live right after", () => {
+test("plan live date gate is unchanged", () => {
   assert.equal(offpeakPlanLive(bj(2026, 10, 7, 23, 59)), false);
   assert.equal(offpeakPlanLive(bj(2026, 10, 8, 0, 0)), true);
 });
 
-test("gate keeps pre-effective dates unchanged for every job kind", () => {
+test("gate is date-neutral around the old effective date (ym431)", () => {
   const before = bj(2026, 10, 7, 23, 59);
   assert.equal(gateAllows({}, before), true);
   assert.equal(gateAllows({ offpeak: true }, before), true);
-});
-
-test("gate enforces both windows after 2026-10-08 (model jobs: discount window or MIMO shift)", () => {
-  const quietNoon = bj(2026, 10, 8, 14, 0);
-  assert.equal(gateAllows({}, quietNoon), false); // default job silenced
-  assert.equal(gateAllows({ quiet: "exempt" }, quietNoon), true); // ops stay on
-  assert.equal(gateAllows({ offpeak: true }, quietNoon), false); // even MIMO yields to quiet hours
-  const morning = bj(2026, 10, 8, 10, 0);
-  assert.equal(gateAllows({ offpeak: true }, morning), true); // MIMO shift before noon
-  const night = bj(2026, 10, 9, 2, 0);
-  assert.equal(gateAllows({ offpeak: true }, night), true); // discount window
-  assert.equal(gateAllows({}, night), true); // regular evening/night work is fine
-  const saturdayNoon = bj(2026, 10, 10, 14, 0);
-  assert.equal(gateAllows({}, saturdayNoon), true); // weekend updates all day
-  assert.equal(gateAllows({ offpeak: true }, saturdayNoon), true); // ...and MIMO runs weekends too
-  const gap = bj(2026, 10, 9, 8, 0); // 07:30-09:00 gap: neither window
-  assert.equal(gateAllows({ offpeak: true }, gap), false);
 });
 
 test("model router sends unoverridden defaults to MIMO only on a live, usable shift (ka3)", () => {
   const on = { overridden: false, planLive: true, shift: true, usable: true };
   assert.equal(routeToMimo(on), true);
   assert.equal(routeToMimo({ ...on, overridden: true }), false); // explicit admin/env choice wins
-  assert.equal(routeToMimo({ ...on, planLive: false }), false); // before 2026-10-08 nothing changes
-  assert.equal(routeToMimo({ ...on, shift: false }), false); // night keeps the discounted plan
-  assert.equal(routeToMimo({ ...on, usable: false }), false); // no key / circuit open -> old behavior
+  assert.equal(routeToMimo({ ...on, planLive: false }), false); // before the plan nothing changes
+  assert.equal(routeToMimo({ ...on, shift: false }), false); // plan window keeps the Zhipu plan
+  assert.equal(routeToMimo({ ...on, usable: false }), false); // no key / circuit open -> plan model
 });
 
 test("balance-type failures are recognized across provider wordings", () => {
