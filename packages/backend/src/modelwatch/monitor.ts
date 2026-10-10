@@ -28,6 +28,14 @@ export function eligibleForUse(m: OrModel): boolean {
   return m.tier === "promo" && m.contextLength >= MIN_FREE_CONTEXT_TOKENS;
 }
 
+/** 非 OpenRouter 通道前缀（ym436 智谱 / ym473 opencode）：其成员不在 OpenRouter 目录，
+ *  免费与否/连通性由各自通道盯守轴管理（zhipu-watch / opencodewatch），因此不进
+ *  OpenRouter 面三处：目录差分（不随 OpenRouter 差分判 ended）、observing 探针面、
+ *  legacy 主力/替补/简单槽位。 */
+export function isForeignChannelModel(modelId: string): boolean {
+  return modelId.startsWith("zhipu:") || modelId.startsWith("opencode:");
+}
+
 export interface ScanSummary {
   at: string;
   ok: boolean;
@@ -71,7 +79,8 @@ export function pickRouting(
 ): { primary: WatchRow | null; fallback: WatchRow | null; simple: WatchRow | null; changed: boolean } {
   // ym436：legacy 主力/替补/简单档是 OpenRouter 专属槽位——智谱成员（zhipu: 前缀）只走证书
   // 路由不进这里，防止 zhipu 模型 id 被 openrouter-free 预设发到 OpenRouter 端点。
-  const rows = rowsIn.filter((r) => !r.model_id.startsWith("zhipu:"));
+  // ym473：opencode 成员同款（外通道成员统一不进 OpenRouter 槽位面）。
+  const rows = rowsIn.filter((r) => !isForeignChannelModel(r.model_id));
   if (!config.autoSwitch) {
     const byId = new Map(rows.map((r) => [r.model_id, r]));
     return {
@@ -137,8 +146,9 @@ async function probeAndVerdict(rows: WatchRow[], opts: ScanOptions, now: Date): 
   // 在役主力/简单档先探（漂移复查），再补观察窗里最早到点的；同一模型只探一次。
   const driftTargets = rows.filter((r) => (r.status === "vetted" || r.status === "simple") && (r.model_id === routing?.primary || r.model_id === routing?.simple));
   // ym436：observing 探针走 OpenRouter 端点——智谱成员不经此面（其连通性由通道端点实弹与
-  // 能力验收管线负责）。
-  const observing = rows.filter((r) => r.status === "observing" && !r.model_id.startsWith("zhipu:")).sort((a, b) => Number(a.observe_until ?? 0) - Number(b.observe_until ?? 0));
+  // 能力验收管线负责）。ym473：opencode 成员同款（连通性归客户端中介链实弹与验收管线；
+  // 且其 observe_until 为空，若进本面会恒占探针名额、饿死 OpenRouter 观察窗判定）。
+  const observing = rows.filter((r) => r.status === "observing" && !isForeignChannelModel(r.model_id)).sort((a, b) => Number(a.observe_until ?? 0) - Number(b.observe_until ?? 0));
   const targets = [...new Map([...driftTargets, ...observing].map((r) => [r.model_id, r])).values()].slice(0, PROBE_CAP);
   let verdicts = 0;
   for (const row of targets) {
@@ -328,7 +338,9 @@ export async function scanModelWatch(opts: ScanOptions = {}): Promise<ScanSummar
     for (const row of existing) {
       // ym436：智谱免费成员不在 OpenRouter 目录里——其免费与否由智谱价格页/发布记录盯
       // （ym438 联动卡），不随 OpenRouter 目录差分判 ended。
-      if (!row.model_id.startsWith("zhipu:") && !freeIds.has(row.model_id) && row.status !== "ended") {
+      // ym473：opencode 成员同款（第三路客户端中介通道，目录由 opencodewatch 盯守轴管理，
+      // 见 opencodewatch/scan.ts）——此前仅豁免 zhipu:，致每日 22:30 扫描全量误标 ended。
+      if (!isForeignChannelModel(row.model_id) && !freeIds.has(row.model_id) && row.status !== "ended") {
         await markEnded(row.model_id);
         await addEvent("free_end", row.model_id, { name: row.name, lastStatus: row.status });
         summary.ended++;

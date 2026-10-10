@@ -8,6 +8,7 @@ import { closeDb, sql } from "@aihot/backend/db";
 import { isFreePricing, parseFreeUntil, tierOfOpenRouter, verdictOfProbe, type OrModel, type ProbeResult } from "@aihot/backend/modelwatch/openrouter";
 import { pickRouting, scanModelWatch } from "@aihot/backend/modelwatch/monitor";
 import { getRoutingState, refreshFreeModel, type WatchRow } from "@aihot/backend/modelwatch/store";
+import { getOpencodePool, onboardOpencodeModel, removeFromOpencodePool } from "@aihot/backend/opencodewatch/pool";
 
 const T = tag();
 
@@ -24,8 +25,12 @@ test("free pricing: both zero prices count as free, near-zero does not", () => {
 
 test("free-until hints: ISO, English month, Chinese, absent", () => {
   assert.equal(parseFreeUntil("Great model, free until 2026-11-01 for everyone."), "2026-11-01");
-  assert.equal(parseFreeUntil("Free until October 10th!"), "2026-10-10");
-  assert.equal(parseFreeUntil("限时活动：免费至10月10日，抓紧。"), "2026-10-10");
+  // 无年份的截止按「最近的未来同名日」解析（过了就落到明年）。断言随运行日动态取年——
+  // 写死年份会在 10-10 当天转红（2026-10-10 实证：UTC 零点后 10-10 已被算过）。
+  const now = new Date();
+  const year = new Date(Date.UTC(now.getUTCFullYear(), 9, 10)) < now ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
+  assert.equal(parseFreeUntil("Free until October 10th!"), `${year}-10-10`);
+  assert.equal(parseFreeUntil("限时活动：免费至10月10日，抓紧。"), `${year}-10-10`);
   assert.equal(parseFreeUntil("A solid model with nothing time-related."), null);
 });
 
@@ -101,6 +106,9 @@ const C = or(`${T}-c/promo-c`, { contextLength: 2_000_000 });
 async function cleanWatch() {
   await sql`DELETE FROM model_watch_models WHERE model_id LIKE ${`${T}-%`}`;
   await sql`DELETE FROM model_watch_events WHERE model_id LIKE ${`${T}-%`}`;
+  // ym473：第三路（opencode）夹具行同清——前缀与 or/zhipu 行不同，单独一档。
+  await sql`DELETE FROM model_watch_models WHERE model_id LIKE ${`opencode:${T}%`}`;
+  await sql`DELETE FROM model_watch_events WHERE model_id LIKE ${`opencode:${T}%`}`;
   await sql`DELETE FROM settings WHERE key LIKE 'modelwatch.%'`;
 }
 
@@ -226,4 +234,93 @@ test("ym249 reopen resets the certificate chain; verdicts keep 24h-window semant
   // 状态仍是观察窗语义（时间到点不写证书）。
   const certs = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM model_free_capabilities WHERE model_id = ${A.id}`;
   assert.equal(certs[0]!.count, 0, "the 24h window never certifies a capability by itself");
+});
+
+// ---- ym473 第三路（opencode）成员不进 OpenRouter 目录差分/探针/槽位面 ----
+// 背景：cron.model-watch.scan 每日跑 OpenRouter 目录差分，原先只豁免 zhipu: 前缀，opencode:
+// 成员（第三路客户端中介通道，不在 OpenRouter 目录）会被全量误标 free_end（2026-10-09 22:30
+// UTC 实证 ×11）。修复=豁免与 zhipu 同款；本段锁定三面：差分循环、observing 探针面、
+// legacy 主力槽位面，加复活幂等（onboardOpencodeModel 既有路径）。
+
+/** 第三路成员行夹具：与 opencodewatch.pool.onboardOpencodeModel 的插入形态同形（observing，无观察窗）。 */
+async function insertOpencodeRow(modelId: string, name: string, status = "observing"): Promise<void> {
+  await sql`INSERT INTO model_watch_models
+      (model_id, name, vendor, tier, context_length, supports_vision, supports_json,
+       free_from, last_prompt_price, last_completion_price, status, verdict_note, provider_facts)
+    VALUES (${modelId}, ${name}, 'opencode', 'free_tier', 200000, false, true,
+      now(), '0', '0', ${status}, 'ym473 test fixture',
+      ${sql.json({ channel: "opencode" } as never)})`;
+}
+
+test("ym473: opencode members skip the OpenRouter catalog diff; OpenRouter members still end (control)", async () => {
+  await cleanWatch();
+  const ocId = `opencode:${T}-pickle`;
+  await insertOpencodeRow(ocId, "Big Pickle");
+  // 第一轮：目录含 A——第三路成员本就不在 OpenRouter 目录里，不得被差分循环碰。
+  await scanModelWatch({ fetchModels: () => Promise.resolve([A]), probe: false });
+  // 第二轮：目录换成 B——A 离场应 end（对照）；opencode 成员仍不得被碰。
+  const s2 = await scanModelWatch({ fetchModels: () => Promise.resolve([B]), probe: false });
+  const rows = await sql<{ model_id: string; status: string }[]>`
+    SELECT model_id, status FROM model_watch_models WHERE model_id IN (${A.id}, ${ocId})`;
+  const st = new Map(rows.map((r) => [r.model_id, r.status]));
+  assert.equal(st.get(ocId), "observing", "the third-channel member never ends on an OpenRouter diff");
+  assert.equal(st.get(A.id), "ended", "control: the OpenRouter member that left the catalog still ends");
+  assert.equal(s2.ended, 1, "only the OpenRouter member is counted as ended");
+  const ev = await sql<{ n: string }[]>`
+    SELECT count(*)::text AS n FROM model_watch_events WHERE kind = 'free_end' AND model_id = ${ocId}`;
+  assert.equal(ev[0]!.n, "0", "no free_end is ever recorded for the third channel");
+});
+
+test("ym473: opencode members are never probed on the OpenRouter probe face", async () => {
+  await cleanWatch();
+  const ocId = `opencode:${T}-probe-target`;
+  await insertOpencodeRow(ocId, "Probe Fixture");
+  const probed: string[] = [];
+  await scanModelWatch({
+    fetchModels: () => Promise.resolve([A]),
+    probeModel: async (model) => {
+      probed.push(model);
+      return goodProbe();
+    },
+  });
+  assert.ok(probed.includes(A.id), "control: the OpenRouter observing member is probed");
+  assert.ok(!probed.includes(ocId), "the third-channel member never goes through the OpenRouter probe");
+});
+
+test("ym473: pickRouting keeps third-channel members out of the OpenRouter legacy slots", () => {
+  const rows = [
+    row("opencode:big-pickle", { status: "vetted" }),
+    row("or/keep", { status: "vetted" }),
+    row("zhipu:glm-4.7-flash", { status: "vetted" }),
+  ];
+  const picked = pickRouting(rows, { autoSwitch: true, pinned: null }, null);
+  assert.equal(picked.primary?.model_id, "or/keep", "neither foreign channel may take the OpenRouter primary slot");
+  const pinned = pickRouting(rows, { autoSwitch: true, pinned: "opencode:big-pickle" }, null);
+  assert.notEqual(pinned.primary?.model_id, "opencode:big-pickle", "a pinned third-channel id cannot be routed through the OpenRouter preset either");
+});
+
+test("ym473: onboarding revives a wrongly-ended member idempotently; filtered stays retired", async () => {
+  await cleanWatch();
+  const member = `${T}-revive-free`;
+  const ocId = `opencode:${member}`;
+  await insertOpencodeRow(ocId, "Revive Fixture", "ended");
+  const r1 = await onboardOpencodeModel({ model: member, name: "Revive Fixture", contextTokens: 200000, sourceUrl: "test", note: "ym473 受控复活（目录在列确认）" });
+  assert.deepEqual({ created: r1.created, revived: r1.revived, retired: r1.retired }, { created: false, revived: true, retired: false });
+  const [after] = await sql<{ status: string }[]>`SELECT status FROM model_watch_models WHERE model_id = ${ocId}`;
+  assert.equal(after!.status, "observing", "the wrongly-ended member is observing again");
+  // 复跑：零动作、零新事件（幂等）。
+  const r2 = await onboardOpencodeModel({ model: member, name: "Revive Fixture", contextTokens: 200000, sourceUrl: "test", note: "ym473 幂等复跑" });
+  assert.deepEqual({ created: r2.created, revived: r2.revived, retired: r2.retired }, { created: false, revived: false, retired: false });
+  const ev = await sql<{ n: string }[]>`SELECT count(*)::text AS n FROM model_watch_events WHERE kind = 'opencode_onboard' AND model_id = ${ocId}`;
+  assert.equal(ev[0]!.n, "1", "the rerun adds no new event");
+  const pool = await getOpencodePool();
+  assert.equal(pool.models.filter((m) => m === member).length, 1, "the pool carries the member exactly once");
+  // filtered（连续失败摘池）不复活——机器/人工退休结论优先。
+  await sql`UPDATE model_watch_models SET status = 'filtered' WHERE model_id = ${ocId}`;
+  const r3 = await onboardOpencodeModel({ model: member, name: "Revive Fixture", contextTokens: 200000, sourceUrl: "test", note: "ym473 filtered 保护" });
+  assert.equal(r3.retired, true);
+  const [still] = await sql<{ status: string }[]>`SELECT status FROM model_watch_models WHERE model_id = ${ocId}`;
+  assert.equal(still!.status, "filtered");
+  // 清场：池中夹具成员移除（行/事件由 cleanWatch 收尾）。
+  await removeFromOpencodePool(member, "test: ym473 cleanup");
 });
