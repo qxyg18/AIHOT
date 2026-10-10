@@ -101,7 +101,7 @@ async function resetState() {
   await sql`DELETE FROM publications WHERE source_id LIKE 'test-backfill-scripts-%'`;
   await sql`DELETE FROM analyses WHERE article_id IN (SELECT id FROM articles WHERE source_id LIKE 'test-backfill-scripts-%')`;
   await sql`DELETE FROM article_deep_reads`;
-await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+  await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
       ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
 }
 
@@ -115,7 +115,7 @@ after(async () => {
   await sql`DELETE FROM publications WHERE source_id LIKE 'test-backfill-scripts-%'`;
   await sql`DELETE FROM analyses WHERE article_id IN (SELECT id FROM articles WHERE source_id = ${SOURCE})`;
   await sql`DELETE FROM article_deep_reads`;
-await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+  await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
       ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
   await stopBoss();
   await closeDb();

@@ -117,7 +117,7 @@ before(async () => {
 after(async () => {
   // Park this file's residue outside the sweep's filter (same note as insights-transaction.test.ts).
   await sql`UPDATE articles SET processing_state = 'skipped' WHERE source_id = ${SOURCE}`;
-await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+  await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
       ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
   await stopBoss();
   await closeDb();
