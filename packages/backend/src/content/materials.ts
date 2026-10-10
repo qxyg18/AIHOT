@@ -55,6 +55,10 @@ export interface MaterialResult {
   created: boolean;
   revised: boolean;
   backfill: boolean;
+  /** True when this upsert filled a previously-NULL published_at (metadata-only, no revision). */
+  metaDateFilled: boolean;
+  /** True when that fill turned the article historical (its heat evidence leaves the event graph). */
+  metaHistoricalFlip: boolean;
 }
 
 // Material first discovered more than this long after its source time is archived by source time,
@@ -152,14 +156,28 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
              VALUES (${newId}, 1, ${hash}, ${title}, ${m.bodyText ?? null})`;
     await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
              VALUES (${newId}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
-    return { articleId: newId, created: true, revised: false, backfill: t.backfill };
+    return { articleId: newId, created: true, revised: false, backfill: t.backfill, metaDateFilled: false, metaHistoricalFlip: false };
   }
 
-  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null }[]>`
-    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
+  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; published_at: Date | null; title: string; body_text: string | null; excerpt: string | null }[]>`
+    SELECT id, source_id, revision, content_hash, backfill, published_at, title, body_text, excerpt FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
   await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
            VALUES (${existing!.id}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
-  const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill };
+  // Metadata-only fill (ym253): the article's own source reporting a date for a dateless row takes
+  // it without a revision — no content changed, so no re-analysis; the timeline rule recasts
+  // timeline_at/backfill, and the flip flag tells the caller the report turned historical.
+  const metaDateFilled = existing!.source_id === m.sourceId && existing!.published_at === null && t.publishedAt !== null;
+  const metaHistoricalFlip = metaDateFilled &&
+    isHistorical({ backfill: t.backfill, published_at: t.publishedAt, discovered_at: discoveredAt }) &&
+    !isHistorical({ backfill: existing!.backfill, published_at: existing!.published_at, discovered_at: discoveredAt });
+  if (metaDateFilled) {
+    await db`UPDATE articles
+                SET published_at = ${t.publishedAt}, published_at_claim = ${m.publishedAt ?? null},
+                    timeline_at = ${t.timelineAt}, backfill = ${t.backfill}, backfill_reason = ${t.backfillReason},
+                    updated_at = now()
+              WHERE id = ${existing!.id}`;
+  }
+  const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill, metaDateFilled, metaHistoricalFlip };
   // Another source listing the same material (an aggregator, a translated mirror, a hot signal) is a
   // discovery only: its title and summary are its own rendering, and taking them made the article flip
   // between the two sources' versions on every fetch. Only the article's own source revises it.
@@ -201,5 +219,5 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
     RETURNING revision`;
   await db`INSERT INTO article_revisions (article_id, revision, content_hash, title, body_text)
            VALUES (${existing!.id}, ${row!.revision}, ${next}, ${title}, ${bodyText})`;
-  return { articleId: existing!.id, created: false, revised: true, backfill: existing!.backfill };
+  return { articleId: existing!.id, created: false, revised: true, backfill: existing!.backfill, metaDateFilled, metaHistoricalFlip };
 }

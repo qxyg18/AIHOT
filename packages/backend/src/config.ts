@@ -45,6 +45,10 @@ export const config = {
   allowPrivateNetworkFetch: bool("ALLOW_PRIVATE_NETWORK_FETCH", false),
   feishuContentPushEnabled: bool("FEISHU_CONTENT_PUSH_ENABLED", false),
   indexNowSubmitEnabled: bool("INDEXNOW_SUBMIT_ENABLED", false),
+  // Source admission engine valves (ym312/ym257): both default off — the BUILD-disabled state holds
+  // until the activation card turns them on; with a valve off the worker unregisters that schedule.
+  sourceDiscoveryEnabled: bool("SOURCE_DISCOVERY_ENABLED", false),
+  sourceProbeEnabled: bool("SOURCE_PROBE_ENABLED", false),
   /** IndexNow key (32 hex characters); without one nothing is submitted and no key file is served. */
   indexNowKey: /^[0-9a-f]{32}$/.test(env.INDEXNOW_KEY ?? "") ? env.INDEXNOW_KEY! : null,
   imgProxyRequireSig: bool("IMG_PROXY_REQUIRE_SIG", true),

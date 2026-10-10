@@ -102,7 +102,7 @@ test("R5 竞态拒绝：锁后重读见外部状态变更 → 拒绝且零半源
   // WHERE version+status is the second, narrower guard for the re-read→CAS window inside one
   // transaction). The await of `pending` stays OUTSIDE the lock transaction: awaiting it inside
   // would wait on the very lock that transaction holds — a self-deadlock.
-  let pending: Promise<ReturnType<typeof activateCandidate>> | null = null;
+  let pending: ReturnType<typeof activateCandidate> | null = null;
   await sql.begin(async (lockTx) => {
     await lockTx`SELECT pg_advisory_xact_lock(hashtext(${identity})::bigint)`;
     pending = activateCandidate(id);

@@ -1,7 +1,7 @@
 // Source administration (F18): list, detail, preview (fetch without storing), edit, create with
 // duplicate checks, pause/resume and manual collection. Every change is audited.
 import { z } from "zod";
-import { sql } from "../db.ts";
+import { sql, type Db } from "../db.ts";
 import { enqueue, QUEUES } from "../jobs/queue.ts";
 import { republishKey } from "../jobs/publication.ts";
 import { normalizeUrl } from "../lib/url.ts";
@@ -171,10 +171,12 @@ export function sourceIdentity(kind: string, config: Record<string, unknown>): s
   }
 }
 
-export async function findDuplicateSource(kind: string, config: Record<string, unknown>) {
+/** `exec` lets a caller (the admission activation leg) run the scan inside its own transaction,
+ *  under the address lock it already holds. */
+export async function findDuplicateSource(kind: string, config: Record<string, unknown>, exec: Db = sql) {
   const identity = sourceIdentity(kind, config);
   if (!identity) return null;
-  const rows = await sql<{ id: string; kind: string; config: Record<string, unknown>; name: string }[]>`SELECT id, kind, config, name FROM sources WHERE kind = ${kind}`;
+  const rows = await exec<{ id: string; kind: string; config: Record<string, unknown>; name: string }[]>`SELECT id, kind, config, name FROM sources WHERE kind = ${kind}`;
   return rows.find((r) => sourceIdentity(r.kind, r.config) === identity) ?? null;
 }
 
