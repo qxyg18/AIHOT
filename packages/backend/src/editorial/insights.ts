@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { sql, type Db } from "../db.ts";
 import { ensureQueue } from "../jobs/queue.ts";
 import { chatJson } from "../providers/llm.ts";
-import { ProviderRejectedError, ReceiptUnknownError } from "../providers/receipts.ts";
+import { completeReceipt, ProviderRejectedError, ReceiptUnknownError } from "../providers/receipts.ts";
 import { modelFor } from "./models.ts";
 import { promptText, promptVersion } from "./prompts.ts";
 import { ENTITIES } from "@aihot/industry/taxonomy";
@@ -137,17 +137,44 @@ export async function extractInsights(articleId: string, opts: { attemptTag?: st
     .filter((i) => i.entityId || (i.entityName && i.entityName !== ""));
 
   // Replace ALL prior rows for this article (any revision): a re-analysis supersedes the old
-  // reading's viewpoints wholesale. The queue's singletonKey serializes extractions per article,
-  // so no concurrent writer can interleave between this delete and the inserts below.
-  await db`
-    DELETE FROM report_insights WHERE article_id = ${articleId}`;
-  for (const i of rows) {
-    await db`
-      INSERT INTO report_insights (article_id, input_revision, entity_id, entity_name, kind, stance, statement, figures, quote, org, model, prompt_version, receipt_id)
-      VALUES (${articleId}, ${row.revision}, ${i.entityId}, ${i.entityName}, ${i.kind}, ${i.stance}, ${i.statement},
-              ${JSON.stringify(i.figures)}::jsonb, ${i.quote}, ${i.org}, ${res.model}, ${INSIGHT_PROMPT_VERSION}, ${res.receiptId})`;
+  // reading's viewpoints wholesale. T07 (ym240): the replace is one transaction under the article
+  // row lock with a revision CAS — a failure after the DELETE rolls back whole (the old viewpoints
+  // survive intact, never half-written), and a revision that moved while the model ran abandons
+  // this pass instead of overwriting the newer reading. The receipt joins the same transaction:
+  // its raw answer is only marked consumed when the business write commits, so a retry after a
+  // rolled-back pass reuses the raw without paying again.
+  const write = (tx: Db) => replaceInsights(tx, articleId, row.revision, rows, res.model, res.receiptId);
+  const replaced = await ("begin" in db ? (db as typeof sql).begin(write) : write(db));
+  if (replaced !== "written") {
+    return { ok: false, count: 0, model: res.model, receiptId: res.receiptId, error: replaced };
   }
   return { ok: true, count: rows.length, model: res.model, receiptId: res.receiptId, error: null };
+}
+
+/** One-transaction viewpoint replace under the article row lock (T07/ym240): the DELETE, the
+ *  batched INSERT and completeReceipt commit or roll back together, and only against the revision
+ *  the model actually read. Returns "written", or the outcome error ("stale revision" lets the
+ *  queue retry on the current article; "article missing" is terminal, as before). */
+async function replaceInsights(
+  tx: Db, articleId: string, revision: number,
+  rows: Array<{ entityId: string | null; entityName: string | null; kind: string; stance: string | null; statement: string; figures: Array<{ value: string; unit: string; caliber: string }>; quote: string | null; org: string | null }>,
+  model: string, receiptId: number,
+): Promise<"written" | "stale revision" | "article missing"> {
+  const [cur] = await tx<{ revision: number }[]>`
+    SELECT revision FROM articles WHERE id = ${articleId} FOR UPDATE`;
+  if (!cur) return "article missing";
+  if (cur.revision !== revision) return "stale revision";
+  await tx`DELETE FROM report_insights WHERE article_id = ${articleId}`;
+  if (rows.length > 0) {
+    await tx`INSERT INTO report_insights ${tx(rows.map((i) => ({
+      article_id: articleId, input_revision: revision, entity_id: i.entityId, entity_name: i.entityName,
+      kind: i.kind, stance: i.stance, statement: i.statement, figures: i.figures,
+      quote: i.quote, org: i.org, model, prompt_version: INSIGHT_PROMPT_VERSION, receipt_id: receiptId,
+    })), "article_id", "input_revision", "entity_id", "entity_name", "kind", "stance", "statement",
+       "figures", "quote", "org", "model", "prompt_version", "receipt_id")}`;
+  }
+  await completeReceipt(tx, receiptId);
+  return "written";
 }
 
 async function callModel(title: string, body: string, attemptTag?: string) {

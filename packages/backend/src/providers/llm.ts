@@ -8,7 +8,7 @@ import { buildLlmRequest, isAnthropicEndpoint, replyText, usageOf } from "./llmE
 import { sha256 } from "../lib/ids.ts";
 import { completeReceipt, paidRequest, ProviderRejectedError, rejectReceivedResponse, BudgetExceededError, ReceiptBusyError, ReceiptUnknownError } from "./receipts.ts";
 import { isMimoBalanceError, openMimoCircuit } from "./mimo.ts";
-import { isFreeAccountQuotaError } from "./api-router.ts";
+import { isFreeAccountQuotaError, PROVIDER_MODELS, routeForPurpose, routerReport, type ProviderKey } from "./api-router.ts";
 import { freeRoutingSnapshot, openOpenRouterCircuit, OPENROUTER_FREE_KEY } from "../modelwatch/routing.ts";
 import { openZhipuCircuit, ZHIPU_FREE_KEY } from "./zhipu.ts";
 import { callOpencode, isOpencodeChannelFailure, openOpencodeCircuit, OPENCODE_FREE_KEY } from "./opencode.ts";
@@ -207,10 +207,52 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET_BEFORE_SEND", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
+/** 供应商预设键 → 路由供应商位（非路由预设返回 null，不上报健康态）。 */
+const providerOf = (key: string): ProviderKey | null =>
+  key === PROVIDER_MODELS.free ? "free" : key === PROVIDER_MODELS.mimo ? "mimo" : key === PROVIDER_MODELS.glm ? "glm" : null;
+
+/** 供应商级失败分类（ym350 切换判据）：断链/账户级配额/非重试 4xx 立即切；429/5xx 记连续
+ *  异常（跨满 5 分钟才切，当日粘性）。 */
+function rejectKind(error: ProviderRejectedError): "connect" | "quota" | "hard" | "streak" {
+  if (error.status == null && error.retryable && error.message.startsWith("connect failed")) return "connect";
+  if (isFreeAccountQuotaError(error.status, error.message) || isMimoBalanceError(error.status, error.message)) return "quota";
+  if (error.status != null && error.status >= 400 && error.status < 500 && error.status !== 429 && !error.retryable) return "hard";
+  return "streak";
+}
+
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
-  const spec = MODELS[opts.model];
-  if (!spec) throw new Error(`Unknown model ${opts.model}`);
+  const first = MODELS[opts.model];
+  if (!first) throw new Error(`Unknown model ${opts.model}`);
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
+  // ym350 统一接口路由：purpose 反查能力位→供应商权重链——路由关/无能力位/显式指派/钉选
+  // 时链=单模型（与旧行为等价）；供应商级失败按判据切换下一供应商。ym249 双发护栏
+  // （unknown/busy/budget 停车不转移）原样保留；垃圾输出（ModelOutputError）换供应商
+  // 重答本次但不记接口异常。
+  const chain = await routeForPurpose(opts.purpose, opts.model, { pinned: !!opts.pinnedModel });
+  let lastError: unknown;
+  for (const key of chain) {
+    const spec = MODELS[key];
+    if (!spec) continue;
+    try {
+      const r = await chatJsonWithSpec(opts, spec);
+      const provider = providerOf(key);
+      if (provider) await routerReport(provider, { ok: true });
+      return r;
+    } catch (error) {
+      if (error instanceof ReceiptUnknownError || error instanceof ReceiptBusyError || error instanceof BudgetExceededError) throw error;
+      lastError = error;
+      if (error instanceof ProviderRejectedError) {
+        const provider = providerOf(key);
+        if (provider) await routerReport(provider, { ok: false, kind: rejectKind(error), status: error.status, message: error.message });
+      }
+    }
+  }
+  throw lastError;
+}
+
+/** One provider's attempt (ym350: the pre-routing chatJson body — one call per supplier in the
+ *  chain; free presets still expand into their own cross-channel candidate list inside). */
+async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, spec: ModelSpec): Promise<ChatJsonResult<z.infer<S>>> {
   // The default endpoint additionally takes the admin override (settings `llm.config`), which wins
   // over env/credentials-file; named presets keep their own keys.
   const override = spec.key === "default" ? await llmOverrides() : null;

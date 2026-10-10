@@ -11,6 +11,7 @@ import { OPENCODE_FREE_KEY } from "../providers/opencode.ts";
 import { mimoEarlyLive, mimoShiftActive, offpeakPlanLive } from "../lib/windows.ts";
 import { ensureFreeRouting, OPENROUTER_FREE_KEY } from "../modelwatch/routing.ts";
 import { registerPurposeMap, resolveFreeModel } from "../modelwatch/capability-routing.ts";
+import { apiRouteChain, PROVIDER_MODELS, registerRouterOverrideProbe } from "../providers/api-router.ts";
 
 /** ym467：免费路由命中成员按通道选预设（zhipu/opencode 各自独立预设，缺省 openrouter——
  *  智谱优先口径由合流序保证，不由本函数）。 */
@@ -86,6 +87,14 @@ registerPurposeMap(CAPABILITIES);
 
 let cache: { at: number; overrides: Record<string, string> } | null = null;
 
+// ym350：显式指派探针——后台切换/环境变量的能力位不进路由转移（routeForPurpose 反查）。
+// 环境变量即时可见；后台切换经 overrides 缓存可见（缓存未热+覆盖恰指路由预设键的理论
+// 窄窗沿 ym350 审计 P3-4 遗留口径）。
+registerRouterOverrideProbe((capability) => {
+  const c = CAPABILITIES[capability as CapabilityKey];
+  return !!c && (!!process.env[c.env] || !!cache?.overrides?.[capability]);
+});
+
 async function overrides(): Promise<Record<string, string>> {
   if (cache && Date.now() - cache.at < 60_000) return cache.overrides;
   const rows = await sql<{ key: string; value: { model?: string } }[]>`SELECT key, value FROM settings WHERE key LIKE 'models.%'`;
@@ -107,6 +116,14 @@ export async function modelFor(capability: CapabilityKey): Promise<string> {
   const o = await overrides();
   const overridden = !!(o[capability] ?? process.env[c.env]);
   if (!overridden) {
+    // ym350 统一接口路由：路由启用=链首接管（合并吸收免费证书桥+MIMO 白班窗两段旧逻辑，
+    // 免费位让位/日上限耗尽时 MIMO 全天候顶上，取代白班窗语义）；路由关/链空=旧路径逐字节
+    // 保留。复核类能力位走 excludeFree 链（绝不与被复核同源）。
+    const routerChain = await apiRouteChain(capability, {
+      vision: !!c.vision,
+      excludeFree: FREE_EXCLUDED_CAPABILITIES.includes(capability),
+    });
+    if (routerChain.length > 0) return routerChain[0]!;
     // ym196 shoumen P2 销项：复核类能力位代码级排除免费路由——复核与被复核同源=独立性
     // 破防，即使显式指派被误删也只回落付费（default），绝不静默走免费桥。
     if (!FREE_EXCLUDED_CAPABILITIES.includes(capability)) {
@@ -149,14 +166,19 @@ export async function modelFor(capability: CapabilityKey): Promise<string> {
 
 /** Where the current choice comes from, for the admin page.
  *  ym249：free 命中附 resolved 当前证据（哪只模型、何时认证、通过数）——后台按事实投影。 */
-export async function modelSources(): Promise<Record<string, { model: string; source: "admin" | "env" | "default" | "free"; evidence?: { freeModel: string; testedAt: string; passCount: number } }>> {
+export async function modelSources(): Promise<Record<string, { model: string; source: "admin" | "env" | "default" | "free" | "mimo"; evidence?: { freeModel: string; testedAt: string; passCount: number } }>> {
   const o = await overrides();
   const routing = await ensureFreeRouting();
-  const out: Record<string, { model: string; source: "admin" | "env" | "default" | "free"; evidence?: { freeModel: string; testedAt: string; passCount: number } }> = {};
+  const out: Record<string, { model: string; source: "admin" | "env" | "default" | "free" | "mimo"; evidence?: { freeModel: string; testedAt: string; passCount: number } }> = {};
   for (const [key, c] of Object.entries(CAPABILITIES) as Array<[string, Capability]>) {
     if (o[key]) out[key] = { model: o[key]!, source: "admin" };
     else if (process.env[c.env] && MODELS[process.env[c.env]!]) out[key] = { model: process.env[c.env]!, source: "env" };
     else {
+      // ym350：路由启用时投影与 modelFor 实走一致的链首——MIMO 链首=「接口路由·MIMO」
+      // （全天候接管，取代白班窗）；免费链首继续走下方 free 证据投影；GLM 链首=default
+      // 语义（现有分支兜底）。路由关=链空，全部旧投影。
+      const routerChain = await apiRouteChain(key, { vision: !!c.vision, excludeFree: FREE_EXCLUDED_CAPABILITIES.includes(key as CapabilityKey) });
+      if (routerChain[0] === PROVIDER_MODELS.mimo) { out[key] = { model: MIMO_SHIFT_MODEL, source: "mimo" }; continue; }
       // ym196 shoumen 复审 P3 销项：复核类能力位与 modelFor 同口径排除免费路由——故障
       // 场景（显式指派误删）下呈现与实走一致（付费），不误导 admin 页。
       // ym249：legacy 桥同 modelFor 收口（option A），且 free 命中附认证证据。
