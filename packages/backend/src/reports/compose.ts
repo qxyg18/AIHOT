@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { SITE } from "@aihot/industry/site";
 import { CATEGORIES } from "@aihot/industry/taxonomy";
+import { DAILY_REPORT } from "@aihot/industry/report";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import { modelFor } from "../editorial/models.ts";
 import { addDays, beijingDate, beijingMidnight, isoWeekLabel, isoWeekRange } from "@aihot/contracts/time";
@@ -11,8 +12,9 @@ import { sql } from "../db.ts";
 import { chatJson } from "../providers/llm.ts";
 import { completeReceipt } from "../providers/receipts.ts";
 import { shutdownSignal } from "../jobs/queue.ts";
+import { matchEntityIds } from "../editorial/writing.ts";
 
-export const REPORT_VERSION = promptVersion("report-daily-lead", "report-period");
+export const REPORT_VERSION = promptVersion("report-daily-lead", "report-period", "report-so-what");
 
 const SECTION_OF: Record<string, string> = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.section]));
 const SECTION_ORDER = [...new Set(CATEGORIES.map((c) => c.section))];
@@ -55,8 +57,9 @@ export async function candidates(start: Date, end: Date): Promise<Candidate[]> {
            s.kind AS source_kind, f.public_id AS fact_public_id, st.public_id::text AS story_public_id, p.timeline_at AS at, p.backfill
     FROM publications p JOIN sources s ON s.id = p.source_id
     LEFT JOIN facts f ON f.id = p.fact_id LEFT JOIN stories st ON st.id = f.story_id
-    WHERE p.visibility = 'public' AND p.selected AND NOT p.backfill AND p.timeline_at >= ${start} AND p.timeline_at < ${end}
-      AND p.visible_after <= ${end}`;
+    WHERE p.visibility = 'public' AND NOT p.backfill AND (NOT p.selected OR p.visible_after <= ${end})
+      AND p.timeline_at >= ${start} AND p.timeline_at < ${end}
+      AND (p.first_party OR (p.score IS NOT NULL AND p.score >= ${DAILY_REPORT.scoreFloor}))`;
   // One entry per fact: first-party first, then score.
   const byFact = new Map<string, Candidate>();
   for (const r of rows) {
@@ -108,6 +111,46 @@ async function writeLead(kind: string, key: string, entries: ReportEntry[], mode
   return { lead: { title: res.data.title, leadParagraph: res.data.leadParagraph }, highlights, receiptId: res.receiptId };
 }
 
+const SoWhatSchema = z.object({
+  // Item-level catch: one malformed entry costs itself, not the whole issue's comments.
+  items: z.array(z.object({ id: z.string(), soWhat: z.string().max(120) }).nullable().catch(null)).max(6).catch([]),
+});
+
+/** Overlong so-what collapsed to its first sentence; nothing left to keep means drop it. */
+export function firstSentence(text: string): string | null {
+  if (!text) return null;
+  if ([...text].length <= 100) return text;
+  const first = /^[^。！？!?]+[。！？!?]/u.exec(text)?.[0] ?? "";
+  return first && [...first].length <= 100 ? first : null;
+}
+
+/**
+ * 主编点评（ym44）：头条 1~3 条各一句「对渠道生意的含义」。身份词典校验沿用 ka4 的口径——点评句里
+ * 出现的主体必须是该条目自身材料（标题、摘要、来源名）里出现过的，越界即张冠李戴，整句丢弃（宁缺勿错；
+ * 机械面只及词典内主体，词典外主体不在校验面，见卡 7d3ffde1 扩容计划）。
+ */
+export async function writeSoWhat(subject: string, entries: ReportEntry[], model: string): Promise<{ comments: Array<{ itemId: string; soWhat: string }>; receiptId: number }> {
+  const list = entries.map((e, i) => `${i + 1}. [${e.itemId}] ${e.title}｜${e.summary.slice(0, 120)}`).join("\n");
+  const res = await chatJson({
+    model, purpose: "report_so_what", subject, promptVersion: REPORT_VERSION,
+    system: promptText("report-so-what"),
+    user: list, schema: SoWhatSchema, temperature: 0.3, maxTokens: 500,
+  });
+  const byId = new Map(entries.map((e) => [e.itemId, e]));
+  const comments: Array<{ itemId: string; soWhat: string }> = [];
+  for (const c of res.data.items) {
+    if (!c) continue;
+    const e = byId.get(c.id);
+    const soWhat = firstSentence(c.soWhat.trim());
+    if (!e || !soWhat) continue;
+    // 词内守卫：只拦词典内主体的张冠李戴（词典外主体不在校验面，宁缺勿错以词典为界）。
+    const allowed = new Set(matchEntityIds([e.title, e.summary, e.sourceName]));
+    if (matchEntityIds([soWhat]).some((id) => !allowed.has(id))) continue;
+    comments.push({ itemId: e.itemId, soWhat });
+  }
+  return { comments, receiptId: res.receiptId };
+}
+
 async function saveReport(kind: "daily" | "weekly" | "monthly", key: string, start: Date, end: Date, content: Record<string, unknown>, reason: string, model: string) {
   await sql.begin(async (tx) => {
     const [existing] = await tx<{ id: number; revision: number; content: unknown; generated_at: Date }[]>`
@@ -124,9 +167,9 @@ async function saveReport(kind: "daily" | "weekly" | "monthly", key: string, sta
   });
 }
 
-/** Daily report for Beijing date D covers [D-1 08:00, D 08:00) Beijing time. */
+/** Daily report for Beijing date D covers [D-1 07:00, D 07:00) Beijing time (owner ruling 2026-10-01). */
 export async function composeDaily(date: string, reason = "scheduled"): Promise<{ key: string; entries: number }> {
-  const end = new Date(beijingMidnight(date).getTime() + 8 * 3600 * 1000);
+  const end = new Date(beijingMidnight(date).getTime() + DAILY_REPORT.deadlineHour * 3600 * 1000);
   const start = new Date(end.getTime() - 86400000);
   const covered = await recentlyCovered("daily", date);
   const all = await candidates(start, end);
@@ -136,8 +179,9 @@ export async function composeDaily(date: string, reason = "scheduled"): Promise<
   for (const c of fresh) {
     const label = SECTION_OF[c.category ?? ""] ?? DEFAULT_SECTION;
     const list = perSection.get(label) ?? [];
-    if (list.length < 8) list.push(c);
-    else if (flashes.length < 12) flashes.push({ itemId: c.itemId, title: c.title, sourceName: c.sourceName, sourceUrl: c.sourceUrl, publishedAt: c.publishedAt });
+    const quota = DAILY_REPORT.sectionQuotas[label] ?? DAILY_REPORT.defaultSectionQuota;
+    if (list.length < quota) list.push(c);
+    else if (flashes.length < DAILY_REPORT.flashesMax) flashes.push({ itemId: c.itemId, title: c.title, sourceName: c.sourceName, sourceUrl: c.sourceUrl, publishedAt: c.publishedAt });
     perSection.set(label, list);
   }
   const sections = SECTION_ORDER.filter((l) => perSection.get(l)?.length).map((label) => ({
@@ -147,16 +191,32 @@ export async function composeDaily(date: string, reason = "scheduled"): Promise<
   const ordered = sections.flatMap((s) => s.items).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   const model = await modelFor("report");
   const lead = ordered.length ? await writeLead("daily", date, ordered, model) : null;
+  // 头条=编辑看点的前 3 条（无看点时退回评分前 3）。点评缺了不致命，出刊不能等：失败当期留空。
+  const highlightEntries = (lead?.highlights ?? [])
+    .map((id) => ordered.find((e) => e.itemId === id))
+    .filter((e): e is ReportEntry => !!e);
+  const soWhatTargets = (highlightEntries.length ? highlightEntries : ordered).slice(0, 3);
+  let soWhats: Array<{ itemId: string; soWhat: string }> = [];
+  let soWhatReceiptId: number | null = null;
+  if (soWhatTargets.length) {
+    try {
+      const soWhat = await writeSoWhat(`report:daily:${date}:so-what`, soWhatTargets, model);
+      soWhats = soWhat.comments;
+      soWhatReceiptId = soWhat.receiptId;
+    } catch (error) {
+      console.error(`[report] so-what failed for ${date}:`, error);
+    }
+  }
   const content = {
     date,
     lead: lead?.lead ?? null,
     highlights: lead?.highlights ?? [],
+    soWhats,
     sections,
     flashes,
     metrics: {
       totalEvents: ordered.length,
       sourcesCount: new Set(ordered.map((e) => e.sourceId)).size,
-      modelsReleased: perSection.get("模型发布/更新")?.length ?? 0,
       firstPartyEvents: ordered.filter((e) => e.firstParty).length,
     },
     windowStart: start.toISOString(),
@@ -165,6 +225,7 @@ export async function composeDaily(date: string, reason = "scheduled"): Promise<
   };
   await saveReport("daily", date, start, end, content, reason, model);
   if (lead) await completeReceipt(sql, lead.receiptId);
+  if (soWhatReceiptId !== null) await completeReceipt(sql, soWhatReceiptId);
   return { key: date, entries: ordered.length };
 }
 
@@ -254,7 +315,7 @@ export async function catchUpReports(now = new Date(), days = 7): Promise<{ gene
   const today = beijingDate(now);
   const bjHour = Number(new Date(now.getTime() + 8 * 3600000).toISOString().slice(11, 13));
   const [first] = await sql<{ key: string | null }[]>`SELECT min(key) AS key FROM reports WHERE kind = 'daily'`;
-  const latestDue = bjHour >= 8 ? today : addDays(today, -1);
+  const latestDue = bjHour >= DAILY_REPORT.deadlineHour ? today : addDays(today, -1);
   for (let i = days - 1; i >= 0; i--) {
     if (shutdownSignal.signal.aborted) return { generated }; // the next hourly run continues
     const d = addDays(latestDue, -i);
@@ -265,10 +326,11 @@ export async function catchUpReports(now = new Date(), days = 7): Promise<{ gene
       generated.push(`daily:${d}`);
     }
   }
-  // Last complete ISO week (Monday 10:00 onwards).
+  // Last complete ISO week (after the weekly cron, Monday 23:50 Beijing).
   const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
   const lastWeek = isoWeekLabel(addDays(today, -dow - 7));
-  const weekDue = dow > 0 || bjHour >= 10;
+  const bjMinute = Number(new Date(now.getTime() + 8 * 3600000).toISOString().slice(14, 16));
+  const weekDue = dow > 0 || (bjHour === 23 && bjMinute >= 50);
   if (weekDue) {
     const [w] = await sql`SELECT 1 FROM reports WHERE kind = 'weekly' AND key = ${lastWeek}`;
     if (!w) {
@@ -276,10 +338,10 @@ export async function catchUpReports(now = new Date(), days = 7): Promise<{ gene
       generated.push(`weekly:${lastWeek}`);
     }
   }
-  // Last complete month (1st 10:30 onwards).
+  // Last complete month (after the monthly cron, 1st 23:55 Beijing).
   const [y, mo, dd] = today.split("-").map(Number) as [number, number, number];
   const prevMonth = mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, "0")}`;
-  const monthDue = dd > 1 || bjHour > 10 || (bjHour === 10 && Number(new Date(now.getTime() + 8 * 3600000).toISOString().slice(14, 16)) >= 30);
+  const monthDue = dd > 1 || (bjHour === 23 && bjMinute >= 55);
   if (monthDue) {
     const [m] = await sql`SELECT 1 FROM reports WHERE kind = 'monthly' AND key = ${prevMonth}`;
     if (!m) {

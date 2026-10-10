@@ -9,6 +9,7 @@ import { modelFor } from "../editorial/models.ts";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import { SITE } from "@aihot/industry/site";
 import { shutdownSignal } from "../jobs/queue.ts";
+import { listApprovedSignals, SIGNAL_KIND_LABELS } from "../entitytags/signals.ts";
 import type { CollectedProfile } from "./collect.ts";
 
 export const BRAND_PROFILE_PROMPT_VERSION = promptVersion("brand-profile");
@@ -57,7 +58,14 @@ export interface SummaryOutcome {
 
 async function callModel(collected: CollectedProfile, attemptTag?: string) {
   const model = await modelFor("brandProfile");
-  const user = `品牌：${collected.name}\n\n档案材料：\n${collected.sourceText}`;
+  // ym132-④：已人工审核的站内文章信号并入档案材料（与档案冲突时以信号中的明确数字为准，
+  // 但它只是补充输入——答案仍须来自材料本身，不得凭空扩展）。无信号时提示词逐字沿用旧形。
+  const signals = await listApprovedSignals("brand", collected.slug);
+  const user = signals.length
+    ? `品牌：${collected.name}\n\n档案材料：\n${collected.sourceText}\n\n站内文章信号（已人工审核通过，作为档案材料的补充；数字与单位以信号为准）：\n${signals
+        .map((s) => `- ${SIGNAL_KIND_LABELS[s.kind]}：${s.value}${s.unit}${s.caliber ? `（${s.caliber}）` : ""}——${s.quote.slice(0, 100)}`)
+        .join("\n")}`
+    : `品牌：${collected.name}\n\n档案材料：\n${collected.sourceText}`;
   return chatJson({
     model,
     purpose: "brand_profile",

@@ -2,6 +2,7 @@
 // listed; a missing date is a 404, never another day. Withdrawn citations are marked, not shown.
 import type { ReportCitation, ReportDetail, ReportIndexEntry, ReportNavigationEntry, ReportKind } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
+import { entityTerms, matchEntities } from "../entitytags/matcher.ts";
 import { cached, type Cached } from "../lib/cache.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { dailyUrl, itemUrl, siteUrl } from "./links.ts";
@@ -109,7 +110,7 @@ export async function unavailableHeadlineIds(rows: Array<{ content: Record<strin
   }
 }
 
-function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>): ReportCitation {
+function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>, ents?: Map<string, CitationEntity[]>): ReportCitation {
   const id = raw.itemId ?? null;
   const a = id ? avail.get(id) : undefined;
   // Items absent from this database (older than the imported window) stay cited as they were published.
@@ -121,6 +122,7 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
       firstParty: false, role: raw.role ?? null, storyPublicId: null, publishedAt: null, available: false,
     };
   }
+  const entities = id ? ents?.get(id) : undefined;
   return {
     itemId: id,
     title: String(raw.title ?? ""),
@@ -135,7 +137,49 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
     storyPublicId: raw.storyPublicId ?? a?.storyPublicId ?? null,
     publishedAt: a?.publishedAt?.toISOString() ?? null,
     available,
+    ...(entities && entities.length > 0 ? { entities } : {}),
   };
+}
+
+export type CitationEntity = { type: "brand" | "channel" | "mall" | "mall-chain"; slug: string; name: string };
+
+const ENTITY_ORDER: Record<CitationEntity["type"], number> = { brand: 0, channel: 1, mall: 2, "mall-chain": 3 };
+
+/** ym132-②：日报条目的实体标签——article_entities 标注，与文章页同公开闸（ym95：撤文/隔离源的
+ *  标签不外泄）；排序镜像文章页（品牌→渠道→商场），每条约 3 个，防综述型条目 chip 淹没版面。
+ *  表优先、实时匹配兜底（与 articleEntities 同法）：日报引用的正是当天新文，等下周标注轮会把
+ *  「有报道无标签」拖成常态——实时命中让 freshness 与文章页一致。 */
+async function citationEntities(ids: string[]): Promise<Map<string, CitationEntity[]>> {
+  const out = new Map<string, CitationEntity[]>();
+  if (ids.length === 0) return out;
+  const rows = await sql<{ id: string; type: CitationEntity["type"]; slug: string; name: string }[]>`
+    SELECT e.article_id AS id, e.entity_type AS type, e.entity_slug AS slug, e.entity_name AS name
+    FROM article_entities e
+    JOIN publications p ON p.article_id = e.article_id
+    JOIN sources s ON s.id = p.source_id
+    WHERE e.article_id = ANY(${ids}::text[]) AND e.entity_slug <> '__none__'
+      AND p.visibility = 'public' AND s.participation_mode = 'editorial'
+    ORDER BY e.article_id, (CASE e.entity_type WHEN 'brand' THEN 0 WHEN 'channel' THEN 1 WHEN 'mall' THEN 2 ELSE 3 END), e.entity_slug`;
+  for (const r of rows) {
+    const list = out.get(r.id) ?? [];
+    if (list.length < 3) list.push({ type: r.type, slug: r.slug, name: r.name });
+    out.set(r.id, list);
+  }
+  const missing = ids.filter((id) => (out.get(id) ?? []).length === 0);
+  if (missing.length > 0) {
+    const texts = await sql<{ id: string; title: string; excerpt: string; body: string }[]>`
+      SELECT id, title, coalesce(excerpt, '') AS excerpt, left(coalesce(body_text, ''), 600) AS body
+      FROM articles WHERE id = ANY(${missing}::text[])`;
+    const terms = entityTerms();
+    for (const t of texts) {
+      const hits = matchEntities(`${t.title} ${t.excerpt} ${t.body}`, terms)
+        .map((h): CitationEntity => ({ type: h.type, slug: h.slug, name: h.name }))
+        .sort((a, b) => (ENTITY_ORDER[a.type] ?? 9) - (ENTITY_ORDER[b.type] ?? 9) || a.slug.localeCompare(b.slug))
+        .slice(0, 3);
+      if (hits.length > 0) out.set(t.id, hits);
+    }
+  }
+  return out;
 }
 
 const bigrams = (text: string) => {
@@ -205,7 +249,9 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
     ...(c.themes ?? []).flatMap((t: any) => t.storyRefs ?? []),
   ];
   const avail = await availability([...new Set(rawItems.map((i) => i.itemId).filter(Boolean))]);
-  const cite = (raw: Record<string, any>) => citationFrom(raw, avail);
+  // ym132-②：条目实体标签批取（与 availability 同批 id；下架条目在 citationFrom 里不附）。
+  const ents = await citationEntities([...new Set(rawItems.map((i) => i.itemId).filter((x): x is string => Boolean(x)))]);
+  const cite = (raw: Record<string, any>) => citationFrom(raw, avail, ents);
 
   const sections = kind === "daily"
     ? (c.sections ?? []).map((s: any) => ({ label: String(s.label), summary: null, items: (s.items ?? []).map(cite) }))
@@ -222,6 +268,11 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
   const highlights = highlightIds.length
     ? highlightIds.map((id) => all.find((x: ReportCitation) => x.itemId === id)).filter((x): x is ReportCitation => !!x)
     : all.slice(0, 3);
+  // 主编点评（ym44）：只透传仍然可读的条目，下架条目的点评随其引用一并消失。
+  const soWhats = (Array.isArray(c.soWhats) ? c.soWhats : [])
+    .filter((s: any) => s && typeof s.itemId === "string" && typeof s.soWhat === "string" && all.some((x) => x.itemId === s.itemId && x.available))
+    .slice(0, 3)
+    .map((s: any) => ({ itemId: String(s.itemId), soWhat: String(s.soWhat) }));
   const text = [c.lead?.leadParagraph ?? "", c.overview ?? "", ...all.map((i: ReportCitation) => `${i.title}${i.summary ?? ""}`)].join("");
   // A weekly or monthly's picture comes from its first highlight and is captioned with that story.
   const leadItem = kind === "daily" ? leadItemOf(c.lead?.title, highlights, all) : (highlights[0] ?? all[0]);
@@ -240,6 +291,7 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
     lead: c.lead ?? (headline ? { title: headline, leadParagraph: String(c.overview ?? "") } : null),
     overview: c.overview ?? null,
     highlights,
+    soWhats,
     sections,
     stories,
     flashes: (c.flashes ?? []).map(cite),

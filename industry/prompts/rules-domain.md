@@ -30,8 +30,10 @@
 
 3. 海外品牌与零售商**优先用通行中文名，无通行译名则保留英文**：
    - 保留英文：Carter's / Gymboree / OshKosh / The Children's Place / Next / Primark / Mothercare
-   - 用中文名：优衣库（Uniqlo）/ 沃尔玛（Walmart）/ 塔吉特（Target）/ 梅西百货（Macy's）/ 宜家（IKEA）
+   - 用中文名：优衣库（Uniqlo）/ 沃尔玛（Walmart）/ 塔吉特（Target）/ 梅西百货（Macy's）/ 宜家（IKEA）/ 名创优品（Miniso）
+   - 缩写商号照抄原文写法：M&S / H&M / Zara / SHEIN——原文写缩写就保留缩写；原文写全称（如 Marks & Spencer）才出现全称
    **规则**：同一篇文章内保持一致，不混用中英文两种写法
+   **专名保形规则（严格遵守）**：标题与摘要里的公司、品牌、机构专名只能用原文出现过的写法，禁止自创变体——不得把缩写展开或拼错（M&S 不能写成 Marks & Marks），大小写跟随原文或官方写法（Primark 不写成 PRIMARK，Miniso 不写成 MINISO）；拿不准时照抄原文写法
 
 4. 数字、金额与单位**一字不改**保留：
    - 金额：¥1,200 万 / 3.2 亿元 / $45M / 营收 8,975 万元

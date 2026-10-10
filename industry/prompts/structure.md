@@ -5,6 +5,8 @@
 一、类别 category（{{categoryCount}}选一）
 {{categoryGuide}}
 
+海外隔离（强制，优先于上方 categoryGuide 的一切条款）：事件主体的注册地或核心经营市场在中国大陆以外——含中资出海品牌与平台（希音SHEIN、Temu、名创优品海外业务等）的海外业务与整体财报、境外零售商与商业地产商、海外市场数据——category 一律选 overseas，即使事件类型是财报、电商或渠道；国内类别（brand-moves/channel/industry/statistics/product）只放发生在中国大陆市场的事件。判据=事件本身发生在哪个市场：境外主体在境外的动作、出海平台的全球业务与整体财报都算海外；同一主体发生在中国大陆市场的动作（如国际品牌在华开首店）放国内类别。
+
 二、标签 tags：输出 1–6 个字符串。第一个必须从以下分类标签中选一个：{{categoryTags}}。其后可选 0–5 个适用标签，只能来自以下两个白名单：
 - 主题：{{topicTags}}
 - 实体：{{entityTags}}

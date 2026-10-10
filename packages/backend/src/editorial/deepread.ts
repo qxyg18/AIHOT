@@ -5,11 +5,18 @@
 //   2. the model reads history + article into 大白话;
 //   3. without history it may borrow a comparable brand (labelled as analogy) or read the article
 //      as it stands;
-//   4. no brand/mall match at all → no reading, the AI 导读 stays the only copy;
-//   5. market-wide pieces (policy, macro data, industry statistics) always get a reading.
+//   4. no brand/mall match at all → no reading, the AI 导读 stays the only copy (older articles
+//      only — see rule 7);
+//   5. market-wide pieces (policy, macro data, industry statistics) always get a reading;
+//   7. (2026-10-05) the reading is standard for everything published on/after 2026-10-01
+//      (Beijing): a no-signal article earns a plain direct reading instead of the rule-4 skip.
 // The sweep runs off-peak with the other model-heavy jobs (deepread.sweep); rows are keyed by
 // article, so a rerun only pays for articles that have no row yet. Vocab = the two leaderboard
 // seed files (SSOT) plus the structure step's own entity tags.
+// HOTFIX (2026-10-05, owner rule 7): container baseline (image 2026-10-02T17:44Z, pre-ym245)
+// + the rule-7 hunks only — the tree version additionally carries the ym245 input-identity
+// system whose 0053 migration is not applied to production, so the tree file must NOT be
+// hot-copied. The next full image build supersedes this file.
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { sql } from "../db.ts";
@@ -110,11 +117,25 @@ export interface MatchedEntity {
 }
 
 export interface DeepReadClassification {
-  kind: "brand" | "mall" | "mixed" | "macro";
+  kind: "brand" | "mall" | "mixed" | "macro" | "plain";
   brands: MatchedEntity[];
   malls: MatchedEntity[];
   macro: string[];
 }
+
+/** Digest titles and the overseas category always earn a plain reading (owner rule 6, 2026-10-01):
+ *  早报/周报合集 and foreign-subject pieces (Landsec 等) previously fell through owner rule 4's
+ *  "no match → no reading" gap, leaving the article with a bare translation and no interpretation. */
+const PLAIN_READ_TITLE_RE = /(早报|日报|周报|晚报|月报|速递|合集|盘点)/;
+const plainRead = (input: { title: string; category: string | null }): boolean =>
+  input.category === "overseas" || PLAIN_READ_TITLE_RE.test(input.title);
+
+/** Owner rule 7 (2026-10-05): the deep read is standard for everything published on/after
+ *  2026-10-01 00:00 Beijing — a no-signal article still earns a plain direct reading, and only
+ *  older pieces keep rule 4's skip. An article with no date at all stays on the signal rules.
+ *  The "at" convention is the pool's own: coalesce(published_at, discovered_at). */
+const DEFAULT_READ_FROM_MS = Date.parse("2026-09-30T16:00:00.000Z");
+const defaultRead = (at: Date | null): boolean => at != null && at.getTime() >= DEFAULT_READ_FROM_MS;
 
 /** The lowercase haystack entity matching runs on (card fields + a head of the body). */
 function matchTextOf(input: { title: string; originalTitle: string | null; summary: string | null; tags: string[]; body: string | null }): string {
@@ -124,7 +145,8 @@ function matchTextOf(input: { title: string; originalTitle: string | null; summa
     .toLowerCase();
 }
 
-/** Null = nothing to read on (owner rule 4): the article keeps its AI 导读 only. */
+/** Null = nothing to read on (owner rule 4): the article keeps its AI 导读 only — this now only
+ *  happens to no-signal articles published before the rule-7 cutoff (or with no date). */
 export function classifyArticle(input: {
   title: string;
   originalTitle: string | null;
@@ -132,6 +154,7 @@ export function classifyArticle(input: {
   category: string | null;
   tags: string[];
   body: string | null;
+  publishedAt: Date | null;
 }): DeepReadClassification | null {
   const { brands, malls } = vocab();
   const text = matchTextOf(input);
@@ -166,7 +189,12 @@ export function classifyArticle(input: {
     if (m.keywords.some((k) => text.includes(k.toLowerCase()))) hitMalls.set(m.slug, { type: "mall", slug: m.slug, name: m.name, keywords: m.keywords });
   }
 
-  if (hitBrands.size === 0 && hitMalls.size === 0 && macro.length === 0) return null;
+  if (hitBrands.size === 0 && hitMalls.size === 0 && macro.length === 0) {
+    // Owner rule 6: 海外类目与打包稿保底出直接解读；rule 7: 10月起发布的文章无信号也保底直读，
+    // 不落「无匹配即无解读」的空档。
+    if (plainRead(input) || defaultRead(input.publishedAt)) return { kind: "plain", brands: [], malls: [], macro: [] };
+    return null;
+  }
   const brandList = [...hitBrands.values()].slice(0, MAX_BRANDS);
   const mallList = [...hitMalls.values()].slice(0, MAX_MALLS);
   const kind = brandList.length > 0 && mallList.length > 0 ? "mixed" : brandList.length > 0 ? "brand" : mallList.length > 0 ? "mall" : "macro";
@@ -275,13 +303,15 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
     category: string | null;
     tags: string[] | null;
     body_text: string | null;
+    at: Date | null;
   }[]>`
-    SELECT p.title, p.original_title, p.summary, p.category, p.tags, a.body_text
+    SELECT p.title, p.original_title, p.summary, p.category, p.tags, a.body_text,
+           coalesce(p.published_at, p.discovered_at) AS at
     FROM publications p JOIN articles a ON a.id = p.article_id
     WHERE p.article_id = ${articleId} AND p.visibility = 'public' AND p.eligible`;
   if (!row) return { ok: false, status: "pending", error: "not published" };
 
-  const input = { title: row.title, originalTitle: row.original_title, summary: row.summary, category: row.category, tags: row.tags ?? [], body: row.body_text };
+  const input = { title: row.title, originalTitle: row.original_title, summary: row.summary, category: row.category, tags: row.tags ?? [], body: row.body_text, publishedAt: row.at };
   const cls = classifyArticle(input);
   if (!cls) {
     await storeRow(articleId, "skipped", "no_entity_no_macro");
@@ -296,11 +326,11 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
   cls.brands = verified(cls.brands);
   cls.malls = verified(cls.malls);
   if (cls.brands.length === 0 && cls.malls.length === 0) {
-    if (cls.macro.length === 0) {
+    if (cls.macro.length === 0 && !plainRead(input) && !defaultRead(input.publishedAt)) {
       await storeRow(articleId, "skipped", "no_entity_no_macro");
       return { ok: true, status: "skipped" };
     }
-    cls.kind = "macro";
+    cls.kind = cls.macro.length > 0 ? "macro" : "plain";
   } else {
     cls.kind = cls.brands.length > 0 && cls.malls.length > 0 ? "mixed" : cls.brands.length > 0 ? "brand" : cls.malls.length > 0 ? "mall" : "macro";
   }
@@ -397,7 +427,7 @@ export async function sweepDeepReads(limit = 12): Promise<{ scanned: number; rea
 // ---------------------------------------------------------------------------
 
 export interface SiteDeepReadRow {
-  kind: "brand" | "mall" | "mixed" | "macro";
+  kind: "brand" | "mall" | "mixed" | "macro" | "plain";
   angle: "history" | "analogy" | "direct" | "macro";
   interpretation: string;
   entities: Array<{ type: "brand" | "mall"; name: string }>;

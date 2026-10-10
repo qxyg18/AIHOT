@@ -6,13 +6,16 @@
 // the leaderboard entity page (read functions below, served by apps/api routes/insights.ts).
 import { z } from "zod";
 import type { PgBoss } from "pg-boss";
+import { readFileSync } from "node:fs";
 import { sql, type Db } from "../db.ts";
+import { ensureQueue } from "../jobs/queue.ts";
 import { chatJson } from "../providers/llm.ts";
 import { ProviderRejectedError, ReceiptUnknownError } from "../providers/receipts.ts";
 import { modelFor } from "./models.ts";
 import { promptText, promptVersion } from "./prompts.ts";
 import { ENTITIES } from "@aihot/industry/taxonomy";
 import { SITE } from "@aihot/industry/site";
+import { MALLS_FILE } from "../leaderboard/directory.ts";
 
 export const INSIGHT_PROMPT_VERSION = promptVersion("report-insights");
 
@@ -20,6 +23,49 @@ const SYSTEM = promptText("report-insights", {
   siteName: SITE.name,
   entities: Object.entries(ENTITIES).map(([id, e]) => `${id}（${e.aliases.slice(0, 3).join("/")}）`).join("，"),
 });
+
+// zw15 (2026-10-01): mall facts from city retail reports feed the mall 档案. The model writes mall
+// names as entity_name (no id list is injected — 419 venues would drown the prompt); the code below
+// resolves names to the mall board's own slug space, so the entity page query needs no mapping.
+let mallSlugCache: Map<string, string> | null = null;
+
+function mallSlugMap(): Map<string, string> {
+  if (mallSlugCache) return mallSlugCache;
+  let file: { malls?: Array<{ slug: string; name: string; keywords?: string[] }> };
+  try {
+    file = JSON.parse(readFileSync(MALLS_FILE, "utf8")) as {
+      malls?: Array<{ slug: string; name: string; keywords?: string[] }>;
+    };
+  } catch (err) {
+    // ym160：种子缺失不入缓存负态（对齐 read.ts tenancyByMall）——下次读再试，空映射=商场实体解析降级为 null；warn 可观测。
+    console.warn(`[editorial] mall seed unreadable (${MALLS_FILE}):`, err instanceof Error ? err.message : err);
+    return new Map();
+  }
+  const malls = (file.malls ?? []).map((m) => ({
+    slug: m.slug,
+    // Seed names may carry a qualifier ("杭州新天地(购物中心+街区)") — match the bare name.
+    names: [...new Set([m.name, m.name.replace(/[（(].*$/, "").trim()].filter((n) => n.length >= 2))],
+    keywords: m.keywords ?? [],
+  }));
+  // A name/keyword claimed by 2+ venues ("万象城", "SKP") cannot pin a mall down: skip it.
+  const users = new Map<string, number>();
+  for (const m of malls) for (const k of new Set([...m.names, ...m.keywords])) users.set(k, (users.get(k) ?? 0) + 1);
+  const map = new Map<string, string>();
+  for (const m of malls) {
+    for (const k of new Set([...m.names, ...m.keywords])) {
+      if (users.get(k) === 1 && !map.has(k)) map.set(k, m.slug);
+    }
+  }
+  mallSlugCache = map;
+  return map;
+}
+
+/** Mall board slug for a model-written entity_name, or null when ambiguous/unknown. */
+export function mallSlugFor(name: string): string | null {
+  const key = name.trim().replace(/[（(].*$/, "").trim();
+  if (key.length < 2) return null;
+  return mallSlugMap().get(name.trim()) ?? mallSlugMap().get(key) ?? null;
+}
 
 const Figure = z.object({
   value: z.string(),
@@ -75,8 +121,8 @@ export async function extractInsights(articleId: string, opts: { attemptTag?: st
   const entities = new Set(Object.keys(ENTITIES));
   const rows = res.data.insights
     .map((i) => {
-      const entityId = entities.has(i.entity_id) ? i.entity_id : null;
-      const entityName = (i.entity_name || (entityId ? ENTITIES[entityId]!.name : "")).slice(0, 60) || null;
+      const entityId = entities.has(i.entity_id) ? i.entity_id : mallSlugFor(i.entity_name || "");
+      const entityName = (i.entity_name || (entities.has(i.entity_id) ? ENTITIES[i.entity_id]!.name : "")).slice(0, 60) || null;
       return {
         entityId,
         entityName,
@@ -116,7 +162,9 @@ async function callModel(title: string, body: string, attemptTag?: string) {
     user,
     schema: InsightsOut,
     temperature: 0.2,
-    maxTokens: 4000,
+    // zw15: mall-fact extraction (⑦补) yields longer JSON than the old brand-only cap could carry —
+    // a 12-insight report with figures truncated at 4000 and failed the schema parse.
+    maxTokens: 6000,
     attemptTag,
   });
 }
@@ -125,6 +173,7 @@ async function callModel(title: string, body: string, attemptTag?: string) {
 export const INSIGHT_QUEUE = "content.insight";
 
 export async function registerInsightJobs(boss: PgBoss, concurrency = Number(process.env.INSIGHT_CONCURRENCY || 2)) {
+  await ensureQueue(INSIGHT_QUEUE);
   await boss.work<{ articleId: string; attemptTag?: string }>(INSIGHT_QUEUE, { localConcurrency: concurrency, pollingIntervalSeconds: 5 }, async ([job]) => {
     if (!job) return;
     const { articleId, attemptTag } = job.data;
@@ -171,22 +220,28 @@ const toSite = (r: InsightRow): SiteInsight => ({
   articleTitle: r.title,
 });
 
-/** Insights of one article, newest first. */
+/** Insights of one article, newest first. Insights ride on the article's public page (hasItemPage):
+ *  a withdrawn/isolated article answers nothing here, exactly as its page 404s (ym95). */
 export async function listArticleInsights(articleId: string): Promise<SiteInsight[]> {
   const rows = await sql<InsightRow[]>`
     SELECT i.entity_id, i.entity_name, i.kind, i.stance, i.statement, i.figures, i.quote, i.org, a.published_at, a.url, a.title
     FROM report_insights i JOIN articles a ON a.id = i.article_id
-    WHERE i.article_id = ${articleId}
+    JOIN publications p ON p.article_id = i.article_id
+    JOIN sources s ON s.id = p.source_id
+    WHERE i.article_id = ${articleId} AND p.visibility = 'public' AND s.participation_mode = 'editorial'
     ORDER BY i.id`;
   return rows.map(toSite);
 }
 
-/** Insights about one leaderboard entity (slug = taxonomy ENTITIES key), newest first. */
+/** Insights about one leaderboard entity (slug = taxonomy ENTITIES key), newest first. Same page
+ *  gate as listArticleInsights (ym95): only articles with a public page may quote their insights. */
 export async function listEntityInsights(slug: string, limit = 30): Promise<SiteInsight[]> {
   const rows = await sql<InsightRow[]>`
     SELECT i.entity_id, i.entity_name, i.kind, i.stance, i.statement, i.figures, i.quote, i.org, a.published_at, a.url, a.title
     FROM report_insights i JOIN articles a ON a.id = i.article_id
-    WHERE i.entity_id = ${slug}
+    JOIN publications p ON p.article_id = i.article_id
+    JOIN sources s ON s.id = p.source_id
+    WHERE i.entity_id = ${slug} AND p.visibility = 'public' AND s.participation_mode = 'editorial'
     ORDER BY a.published_at DESC NULLS LAST, i.id DESC
     LIMIT ${limit}`;
   return rows.map(toSite);

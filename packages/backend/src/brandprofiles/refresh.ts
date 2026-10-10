@@ -8,6 +8,7 @@ import { shutdownSignal } from "../jobs/queue.ts";
 import { collectBrand, readBrandSeeds, type CollectedProfile } from "./collect.ts";
 import { summarizeBrand } from "./summarize.ts";
 import { annotateArticleEntities } from "../entitytags/matcher.ts";
+import { extractEntitySignals } from "../entitytags/signals.ts";
 
 export interface BrandProfileRow {
   slug: string;
@@ -37,7 +38,9 @@ interface ProfileRecord {
   status: string;
 }
 
-async function upsertCollected(c: CollectedProfile): Promise<boolean> {
+/** Returns whether the row needs (re)summarising. Exported for the ym132-④ trigger dry-run script
+ *  (a ready row whose source is unchanged re-summarises only when newer approved signals exist). */
+export async function upsertCollected(c: CollectedProfile): Promise<boolean> {
   const [row] = await sql<{ needs_summary: boolean }[]>`
     INSERT INTO brand_profiles (id, slug, name, wiki_url, baike_url, evidence, source_text, source_hash,
                                 status, collected_at, updated_at)
@@ -46,7 +49,14 @@ async function upsertCollected(c: CollectedProfile): Promise<boolean> {
     ON CONFLICT (slug) DO UPDATE SET
       name = EXCLUDED.name, wiki_url = EXCLUDED.wiki_url, baike_url = EXCLUDED.baike_url,
       evidence = EXCLUDED.evidence, source_text = EXCLUDED.source_text, source_hash = EXCLUDED.source_hash,
+      -- ym132-④：除「源文本变更」外，晚于上次摘要的已审核文章信号也触发重摘要（让八问吸收信号；
+      -- 审核位是人工闸，信号增量为低频有界事件，周批节奏消化）。
       status = CASE WHEN brand_profiles.source_hash = EXCLUDED.source_hash AND brand_profiles.status = 'ready'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM entity_signal_drafts d
+                      WHERE d.entity_type = 'brand' AND d.entity_slug = EXCLUDED.slug AND d.status = 'approved'
+                        AND coalesce(d.reviewed_at, d.created_at) > coalesce(brand_profiles.summarized_at, 'epoch'::timestamptz)
+                    )
                     THEN 'ready' ELSE 'pending' END,
       collected_at = now(), updated_at = now(), error = NULL
     RETURNING (status = 'pending') AS needs_summary`;
@@ -75,9 +85,9 @@ async function summarizeRow(c: CollectedProfile): Promise<"ready" | "failed"> {
 }
 
 /** One full round: collect all seed brands, summarise what is new. Interruption-safe per brand. */
-export async function refreshBrandProfiles(): Promise<{ brands: number; collected: number; summarised: number; unchanged: number; failed: number; entityTags?: { scanned: number; tagged: number; entities: number } }> {
+export async function refreshBrandProfiles(): Promise<{ brands: number; collected: number; summarised: number; unchanged: number; failed: number; entityTags?: { scanned: number; tagged: number; entities: number }; entitySignals?: { scanned: number; extracted: number; inserted: number } }> {
   const seeds = readBrandSeeds();
-  const stats: { brands: number; collected: number; summarised: number; unchanged: number; failed: number; entityTags?: { scanned: number; tagged: number; entities: number } } = { brands: seeds.length, collected: 0, summarised: 0, unchanged: 0, failed: 0 };
+  const stats: { brands: number; collected: number; summarised: number; unchanged: number; failed: number; entityTags?: { scanned: number; tagged: number; entities: number }; entitySignals?: { scanned: number; extracted: number; inserted: number } } = { brands: seeds.length, collected: 0, summarised: 0, unchanged: 0, failed: 0 };
   const pending: CollectedProfile[] = [];
   for (const seed of seeds) {
     if (shutdownSignal.signal.aborted) break;
@@ -101,6 +111,15 @@ export async function refreshBrandProfiles(): Promise<{ brands: number; collecte
     stats.entityTags = await annotateArticleEntities();
   } catch {
     // A cold table only costs the live-matching fallback, never the profile refresh.
+  }
+  // ym82: article→profile signal backfill shares the weekly pass. Drafts await human review
+  // before anything reaches a profile; ENTITY_SIGNALS_ENABLED=off stops this channel alone.
+  if (process.env.ENTITY_SIGNALS_ENABLED !== "off") {
+    try {
+      stats.entitySignals = await extractEntitySignals();
+    } catch {
+      // Best-effort: the signal channel must never fail the profile refresh itself.
+    }
   }
   return stats;
 }

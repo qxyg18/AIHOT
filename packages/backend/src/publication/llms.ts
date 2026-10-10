@@ -33,7 +33,7 @@ export function llmsTxt(opts: { hasDailies: boolean; hasWeekly: boolean; hasMont
   lines.push(`- [精选摘要 RSS](${u("/feed.xml")}): 最新 50 条精选摘要，保留标题、站内阅读与原文入口`);
   lines.push(`- [精选全文 RSS](${u("/feed/full.xml")}): 与精选摘要相同的最新 50 条；只对明确允许再分发的来源内联正文`);
   lines.push(`- [全部动态 RSS](${u("/feed/all.xml")}): 最近 7 天公开动态，按真实发布时间倒序`);
-  if (opts.hasDailies) lines.push(`- [${daily} RSS](${u("/feed/daily.xml")}): 每天 08:00 北京时间发布的${daily}，保留最近 30 期`);
+  if (opts.hasDailies) lines.push(`- [${daily} RSS](${u("/feed/daily.xml")}): 每天 07:10 北京时间发布的${daily}，保留最近 30 期`);
   lines.push(`- [分类 RSS](${u(`/feed/category/${CATEGORY_KEYS[0]}.xml`)}): 按分类订阅精选，slug 支持 ${CATEGORY_KEYS.join(" / ")}`);
   lines.push(`- [公开 API v1 · 最近资讯](${u("/api/v1/items")}): JSON，支持 mode=selected/all、window=24h/7d、by=timeline/published、category、q、limit 与 cursor`);
   lines.push(`- [公开 API v1 · 当前热点](${u("/api/v1/hot-topics")}): 热点榜 Top 10；每条含从 1 开始的 rank，links.story 指向事件页`);
@@ -64,8 +64,8 @@ export function llmsTxt(opts: { hasDailies: boolean; hasWeekly: boolean; hasMont
   if (opts.hasMonthly) lines.push(`- [${withSubject("月报")}](${u("/monthly")}): 每月盘点`);
   lines.push(`- [主题](${u("/topics")}): 按公司、方向、内容形态聚合的主题页`);
   if (FEATURES.leaderboard && opts.hasLeaderboard) {
-    lines.push(`- [模型榜](${u("/leaderboard")}): 汇总多家公开模型评测榜单的共识排名`);
-    lines.push(`- [模型榜算法规则](${u("/leaderboard/rules")}): 模型身份统一、共同参评比较、缺失评测处理和共识指数计算方式`);
+    lines.push(`- [童装品牌榜+全国商业体榜](${u("/leaderboard")}): 童装品牌（业绩/规模/媒体声量）与全国商业体（业绩/客流/媒体声量/童装业态亲和）两榜加权排名，每轮计算结果带数据置信级与覆盖度披露`);
+    lines.push(`- [两榜排名规则](${u("/leaderboard/rules")}): 维度权重、归一方法、分层锚点计分、防扭曲机制与数据置信级披露；本轮有效维度与计分分母随每轮计算公示`);
   }
   lines.push("", "## 使用说明", "");
   lines.push("- 内容为第三方原文的聚合摘要与编辑策展，原文版权归各来源所有；重要事实请回原文核对。");
