@@ -1,13 +1,15 @@
 // Admin "API 接口配置": the deployment's default model endpoint (base URL, API key, model name)
 // configured from the admin UI instead of the credentials file. Values here win over the
 // environment / models.env, which stays as the fallback — clearing a field returns to it.
-// The test button makes one minimal live call with the effective values and reports the provider's
-// own error text (a 1113 "余额不足" answers directly on the page), bypassing receipts: it is a
-// connectivity probe, not a business call, and must stay out of the cost statistics.
+// ym249: the test button makes one minimal call through the same valve/budget/receipts as
+// business calls (a connectivity probe is still a send, so it is counted and capped like one);
+// the provider's own error text (a 1113 "余额不足" answers directly on the page) is passed
+// through and the stored key is never echoed — not even to the admin page.
 import { sql } from "../db.ts";
 import { config, credential } from "../config.ts";
 import { audit } from "./auth.ts";
 import { buildLlmRequest, replyText } from "../providers/llmEndpoint.ts";
+import { paidRequest, ProviderRejectedError } from "../providers/receipts.ts";
 
 const SETTINGS_KEY = "llm.config";
 
@@ -122,36 +124,56 @@ export interface TestResult {
   reply: string | null;
   error: string | null;
   ms: number;
+  receiptId: number | null;
 }
 
-/** One minimal live chat call with the effective values; the provider's error text is passed through. */
+/** One minimal live chat call with the effective values; the provider's error text is passed through.
+ *  ym249: the probe goes through the same valve, budget and receipts as business calls (no more
+ *  bare fetch bypassing the cost statistics); a received answer is reused without a second send.
+ *  The stored key is never echoed — not here, not on the page. */
 export async function testLlmConnection(): Promise<TestResult> {
   const effective = await effectiveLlm();
   const started = Date.now();
+  const base: Omit<TestResult, "ok" | "httpStatus" | "reply" | "error" | "receiptId"> = {
+    model: effective.model || "(未配置)", baseUrl: effective.baseUrl ?? "(未配置)", ms: 0,
+  };
   if (!effective.baseUrl || !effective.apiKey || !effective.model) {
-    return { ok: false, httpStatus: null, model: effective.model || "(未配置)", baseUrl: effective.baseUrl ?? "(未配置)",
-             reply: null, error: "接口地址、API Key、模型名三项都非空才能测试（当前有用环境文件值兜底）", ms: 0 };
+    return { ...base, ok: false, httpStatus: null, reply: null, error: "接口地址、API Key、模型名三项都非空才能测试（当前有用环境文件值兜底）", ms: 0, receiptId: null };
+  }
+  if (!config.modelCallsEnabled) {
+    return { ...base, ok: false, httpStatus: null, reply: null, error: "Model calls are disabled (MODEL_CALLS_ENABLED=false)", ms: 0, receiptId: null };
   }
   try {
     const wire = buildLlmRequest({ baseUrl: effective.baseUrl, apiKey: effective.apiKey, model: effective.model,
       user: "请只回复两个字：成功", temperature: 0.2, maxTokens: 256, jsonMode: false });
-    const res = await fetch(wire.url, {
-      method: "POST",
-      signal: AbortSignal.timeout(20_000),
-      headers: wire.headers,
-      body: wire.body,
-    });
-    const text = await res.text();
-    const ms = Date.now() - started;
-    if (!res.ok) {
-      return { ok: false, httpStatus: res.status, model: effective.model, baseUrl: effective.baseUrl,
-               reply: null, error: text.slice(0, 400), ms };
-    }
-    const json = JSON.parse(text) as Record<string, unknown>;
-    return { ok: true, httpStatus: res.status, model: effective.model, baseUrl: effective.baseUrl,
-             reply: replyText(json).trim().slice(0, 100) || null, error: null, ms };
+    const receipt = await paidRequest(
+      {
+        service: "llm",
+        model: effective.model,
+        purpose: "admin.test_connection",
+        subject: "llm.config",
+        identity: { probe: "test_connection", baseUrl: effective.baseUrl, model: effective.model, user: "请只回复两个字：成功" },
+        requestSummary: { probe: true },
+      },
+      async () => {
+        const res = await fetch(wire.url, {
+          method: "POST",
+          signal: AbortSignal.timeout(20_000),
+          headers: wire.headers,
+          body: wire.body,
+        });
+        const text = await res.text();
+        if (!res.ok) throw new ProviderRejectedError(`HTTP ${res.status}: ${text.slice(0, 400)}`, res.status, res.status === 429 || res.status >= 500);
+        return { response: JSON.parse(text) as Record<string, unknown>, cost: null };
+      },
+    );
+    const response = receipt.response as Record<string, unknown>;
+    return { ...base, ok: true, httpStatus: 200, model: effective.model, baseUrl: effective.baseUrl,
+             reply: replyText(response).trim().slice(0, 100) || null, error: null, ms: Date.now() - started, receiptId: receipt.receiptId };
   } catch (error) {
-    return { ok: false, httpStatus: null, model: effective.model, baseUrl: effective.baseUrl,
-             reply: null, error: String(error).slice(0, 400), ms: Date.now() - started };
+    const status = error instanceof ProviderRejectedError ? error.status : null;
+    return { ...base, ok: false, httpStatus: status, model: effective.model, baseUrl: effective.baseUrl,
+             reply: null, error: String(error instanceof ProviderRejectedError ? error.message : error).slice(0, 400),
+             ms: Date.now() - started, receiptId: null };
   }
 }
