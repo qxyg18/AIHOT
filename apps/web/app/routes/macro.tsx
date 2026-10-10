@@ -4,6 +4,7 @@
 import { useLoaderData } from "react-router";
 import type { Route } from "./+types/macro";
 import { CATEGORY_LABELS, type CategoryKey } from "@aihot/contracts/taxonomy";
+import type { MacroIndicator, MacroOverview, MacroRow } from "@aihot/contracts/macro";
 import { beijingDate } from "@aihot/contracts/time";
 import { apiGet, loadOr404, queryString } from "../lib/api.server";
 import { breadcrumbLd, pageMeta, titled } from "../lib/seo";
@@ -11,17 +12,9 @@ import { SITE } from "@aihot/industry/site";
 import { AgeBandsChart, AgeSingleChart, AnnualChart, PopulationChart, TrendChart, type TrendSeries } from "../features/macro/MacroCharts";
 import { MacroRail, type MacroRailItem } from "../features/macro/MacroRail";
 
-/** Mirrors @aihot/backend/macro/read (kept local: the web package never imports the backend). */
-interface MacroRow { period: string; seq: number; year: number; value: number; quality: "published" | "derived" | "estimate"; yoy: number | null; note: string | null }
-interface MacroIndicator {
-  key: string; name: string; unit: string; granularity: "month" | "quarter" | "year" | "band";
-  caliber: string; sourceName: string; sourceUrls: string[];
-  ytd: { value: number; yoy: number; label: string } | null;
-  rows: MacroRow[];
-}
-interface MacroOverviewData { indicators: Record<string, MacroIndicator>; generatedAt: string }
-
-const MACRO_CATEGORIES = ["statistics", "market", "research", "policy"] as const;
+// T14: the row/indicator shapes come from the T01/ym239 frozen shared DTO
+// (packages/contracts/src/macro.ts) — no local mirror, web and API consume one contract.
+const MACRO_CATEGORIES = ["statistics"] as const;
 
 interface PoolData { items: Array<{ id: string; title: string; timelineAt: string; publishedAt: string | null; category: CategoryKey; source: { name: string } }> }
 
@@ -30,7 +23,7 @@ export function headers() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const overview = await loadOr404<MacroOverviewData>("/api/site/macro/overview", { signal: request.signal });
+  const overview = await loadOr404<MacroOverview>("/api/site/macro/overview", { signal: request.signal });
   const pools = await Promise.allSettled(
     MACRO_CATEGORIES.map((c) => apiGet<PoolData>(`/api/site/pool${queryString({ category: c })}`, { signal: request.signal })),
   );
@@ -117,6 +110,41 @@ function toAnnual(ind: MacroIndicator | undefined) {
   return { years: rows.map((r) => r.period), values: rows.map((r) => r.value), yoy: rows.map((r) => r.yoy), latest: rows.at(-1)!, unit: ind.unit };
 }
 
+// ── derived time facts (T14): years, sample-month counts and unpublished runs all come from the
+// rows; the page carries no fixed-calendar prose (no hardcoded "2026年/2025年/9–12月/下半年"). ──
+/** Latest year present in an indicator's rows. */
+function latestYearOf(ind: MacroIndicator | undefined): number | null {
+  if (!ind || ind.rows.length === 0) return null;
+  return Math.max(...ind.rows.map((r) => r.year));
+}
+
+/** Label of the unpublished tail after the latest published point, e.g. "9月–12月"; null when complete. */
+function pendingTail(t: TrendView | null): string | null {
+  if (!t || t.series.cutoffIndex == null || t.series.cutoffIndex >= t.series.axis.length - 1) return null;
+  return `${t.series.axis[t.series.cutoffIndex + 1]}–${t.series.axis.at(-1)}`;
+}
+
+/** Labels of unpublished holes before the latest published point, e.g. ["3月–5月"]; the tail is not a hole. */
+function interiorGaps(t: TrendView | null): string[] {
+  if (!t || t.series.cutoffIndex == null) return [];
+  const gaps: string[] = [];
+  let start = -1;
+  for (let i = 0; i <= t.series.cutoffIndex; i++) {
+    const hole = t.series.cur[i] == null;
+    if (hole && start < 0) start = i;
+    if (!hole && start >= 0) {
+      gaps.push(start === i - 1 ? t.series.axis[start] : `${t.series.axis[start]}–${t.series.axis[i - 1]}`);
+      start = -1;
+    }
+  }
+  return gaps;
+}
+
+/** How many points of the prior year are actually drawn. */
+function priorDrawnCount(t: TrendView | null): number {
+  return t ? t.series.prior.filter((v) => v != null).length : 0;
+}
+
 // ── page ───────────────────────────────────────────────────────────────────────────────────
 export default function MacroPage() {
   const { overview, rail, today } = useLoaderData<typeof loader>();
@@ -132,12 +160,23 @@ export default function MacroPage() {
   const netByYear = new Map((net?.rows ?? []).map((r) => [r.year, r.value]));
   const ageSingle = [...(ind["age-single"]?.rows ?? [])].sort((a, b) => a.seq - b.seq);
   const ageBands = [...(ind["age-bands"]?.rows ?? [])].sort((a, b) => a.seq - b.seq);
-  const ageSummary = new Map((ind["age-summary"]?.rows ?? []).map((r) => [r.period, r.value]));
+  const ageSummaryRows = ind["age-summary"]?.rows ?? [];
+  const ageSummary = new Map(ageSummaryRows.map((r) => [r.period, r.value]));
+  const ageSummaryYear = ageSummaryRows.find((r) => r.period === "0–15岁")?.year ?? null;
   const lastBirth = popYears.at(-1);
   const prevBirth = popYears.at(-2);
   const lastNet = lastBirth ? netByYear.get(lastBirth.year) : undefined;
   const birthYoy = lastBirth && prevBirth ? (lastBirth.value / prevBirth.value - 1) * 100 : null;
   const kidsLatest = kidsAnnual?.latest ?? null;
+  // Calendar facts derived from the rows themselves (T14): which year the data runs to, which
+  // months are still unpublished, how many prior-year points are drawn.
+  const retailYear = latestYearOf(ind.retail);
+  const apparelYear = latestYearOf(ind.apparel);
+  const apparelPriorYear = apparelYear != null ? apparelYear - 1 : null;
+  const retailTail = pendingTail(retail);
+  const apparelTail = pendingTail(apparel);
+  const apparelGaps = interiorGaps(apparel);
+  const retailPublishedMonths = retail ? retail.series.cur.filter((v) => v != null).length : 0;
   // How many consecutive years the birth-death balance has been negative, counted from the latest year.
   let netNegStreak = 0;
   for (let i = popYears.length - 1; i >= 0; i--) {
@@ -181,7 +220,7 @@ export default function MacroPage() {
         <p className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-[12px] text-ink-4">
           <span>{SITE.name} · 宏观编辑部</span>
           <span>更新 {today}</span>
-          <span>数据截至 {retail?.latest ? `2026年${retail.latest.label}` : "见各图"}（人口为{lastBirth?.period ?? "最新"}年度）</span>
+          <span>数据截至 {retail?.latest && retailYear != null ? `${retailYear}年${retail.latest.label}` : "见各图"}（人口为{lastBirth?.period ?? "最新"}年度）</span>
           <span>本期导读 {rail.length} 篇</span>
         </p>
       </header>
@@ -208,15 +247,15 @@ export default function MacroPage() {
               <>
                 <TrendChart series={retail.series} />
                 <ChartNote
-                  left={`9–12月未发布，青色虚线为去年同期走势参考${retail.series.prior.some((v) => v != null) ? "" : "（同期值整理中）"}`}
+                  left={`${retailTail ? `${retailTail}未发布，` : ""}青色虚线为去年同期走势参考${retail.series.prior.some((v) => v != null) ? "" : "（同期值整理中）"}`}
                   right="来源：国家统计局月度发布"
                 />
               </>
             ) : <Pending />}
             read={<ReadCard bullets={retail?.latest ? [
               <>「{retail.latest.label}」社零 <b>{fmtInt(retail.latest.value)} 亿元</b>，同比 {pct(retail.latest.yoy)}{retail.prevYoy != null && retail.latest.yoy != null ? `，较上月${retail.latest.yoy >= retail.prevYoy ? "回升" : "回落"} ${Math.abs(retail.latest.yoy - retail.prevYoy).toFixed(1)}pct` : ""}。</>,
-              retail.ytd ? <>{retail.ytd.label} <b>{fmtYi(retail.ytd.value)} · YTD {pct(retail.ytd.yoy)}</b>，全年走势进入下半年低基数段。</> : null,
-              <>9–12月走势看青色虚线（去年同期参考），统计局逐月发布后自动替换为实线。</>,
+              retail.ytd ? <>{retail.ytd.label} <b>{fmtYi(retail.ytd.value)} · YTD {pct(retail.ytd.yoy)}</b>，年内已发布 {retailPublishedMonths} 个月。</> : null,
+              retailTail ? <>{retailTail}走势看青色虚线（去年同期参考），统计局逐月发布后自动替换为实线。</> : null,
             ] : ["数据调研中"]} />}
           />
 
@@ -224,12 +263,17 @@ export default function MacroPage() {
             chart={apparel ? (
               <>
                 <TrendChart series={apparel.series} />
-                <ChartNote left="3–5月当月值待回填（1–5月累计 6,425亿/+7.2% 已核）；未发布月画去年同期作参考，2025年9–12月整理中" right="来源：国家统计局月度发布" />
+                {apparelGaps.length > 0 && (
+                  <p className="mb-1 mt-0.5 rounded-control bg-bg-sunk px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-4">
+                    ⓘ {apparelGaps.join("、")}官方未单独披露当月值（只发增速），曲线如实留洞；合计值以官方累计发布口径为准，本页不另补数
+                  </p>
+                )}
+                <ChartNote left={`${apparelTail ? `${apparelTail}青色虚线为` : "青色虚线为"}${apparelPriorYear != null ? apparelPriorYear : "上年"}年原发布值同期参考（存在统计局常规基数修订台阶）`} right="来源：国家统计局月度发布" />
               </>
             ) : <Pending />}
             read={<ReadCard bullets={apparel?.ytd && retail?.ytd ? [
               <>服装类{apparel.ytd.label}累计 <b>{fmtInt(apparel.ytd.value)} 亿元 · YTD {pct(apparel.ytd.yoy)}</b>，{apparel.ytd.yoy >= retail.ytd.yoy ? <>跑赢社零大盘 <b>{(apparel.ytd.yoy - retail.ytd.yoy).toFixed(1)}pct</b></> : <>落后大盘 {(retail.ytd.yoy - apparel.ytd.yoy).toFixed(1)}pct</>}。</>,
-              apparel.latest ? <>最新发布月（{apparel.latest.label}）当月 {fmtInt(apparel.latest.value)} 亿元，同比 {pct(apparel.latest.yoy)}。</> : null,
+              apparel.latest ? <>最新发布月（{apparel.latest.label}）当月 {fmtInt(apparel.latest.value)} 亿元，同比 {pct(apparel.latest.yoy)}；{apparelPriorYear != null ? `${apparelPriorYear}年` : "上年"}同期已画 {priorDrawnCount(apparel)} 个月{apparelTail ? `，其中 ${apparelTail} 为原发布值` : ""}。</> : null,
               <>该口径只统计达到限额标准的单位，增速比绝对值更可信。</>,
             ] : ["数据调研中"]} />}
           />
@@ -276,7 +320,7 @@ export default function MacroPage() {
             ) : <Pending />}
             read={<ReadCard bullets={[
               ageSummary.get("0–15岁") != null
-                ? <>0–15 岁 <b>{fmtWan(ageSummary.get("0–15岁")!)}</b>（2025 年统计公报表1），童装核心客群基本盘。</>
+                ? <>0–15 岁 <b>{fmtWan(ageSummary.get("0–15岁")!)}</b>{ageSummaryYear != null ? `（${ageSummaryYear} 年统计公报表1）` : "（统计公报表1）"}，童装核心客群基本盘。</>
                 : ageSingle.length > 0 ? <>0–16 岁合计约 <b>{fmtWan(ageSingle.reduce((s, r) => s + r.value, 0))}</b>（{ind["age-single"]?.caliber ?? "推算口径"}）。</> : null,
               (() => {
                 if (ageSingle.length === 0) return null;
@@ -292,7 +336,7 @@ export default function MacroPage() {
           />
 
           <p className="mt-5 px-0.5 py-1 text-[11px] leading-[1.8] text-ink-4">
-            <b className="text-ink-3">数据说明</b> · 社零/服装类来自国家统计局月度发布（次月中旬更新），1–2月为合并口径；部分 2025 年同期值为「官方当月值 ÷（1+官方同比）」反推（图表口径注记已标）；人口为年度统计公报；年龄结构口径见图内说明；童装市场规模为机构估算。宏观导读文章来自{SITE.name}童装动态信源（统计数据/市场数据/行业研报/政策合规四类）自动归组。
+            <b className="text-ink-3">数据说明</b> · 社零/服装类来自国家统计局月度发布（次月中旬更新），1–2月为合并口径；部分同期值为「官方当月值 ÷（1+官方同比）」反推（图表口径注记已标）；人口为年度统计公报；年龄结构口径见图内说明；童装市场规模为机构估算。宏观导读文章来自{SITE.name}童装动态信源的「{CATEGORY_LABELS[MACRO_CATEGORIES[0]]}」（{MACRO_CATEGORIES.join("/")}）类自动归组。
           </p>
         </div>
 

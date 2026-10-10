@@ -1,18 +1,22 @@
-import { FEATURES } from "@aihot/industry/features";
 import { SITE } from "@aihot/industry/site";
 import { motion } from "motion/react";
 import { NavLink, Outlet, useLocation, useNavigation, type ShouldRevalidateFunction } from "react-router";
 import type { Route } from "./+types/layout";
 import { RingMark } from "../../components/Logo";
 import { NavigationProgress } from "../../components/shell/Chrome";
-import type { AdminMe } from "../../features/admin/action";
+import { meCan, type AdminMe } from "../../features/admin/action";
+import { navGroupsFor, type NavCountKey } from "../../features/admin/nav";
 import { Toaster } from "../../features/admin/toast";
 import { adminGet } from "../../lib/admin.server";
 
-type Counts = Partial<Record<"feedback" | "sources" | "runs" | "monitor", number>>;
+type Counts = Partial<Record<NavCountKey, number>>;
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const [me, counts] = await Promise.all([adminGet<AdminMe>(request, "/api/admin/me"), adminGet<Counts>(request, "/api/admin/nav-counts").catch(() => ({}) as Counts)]);
+  const me = await adminGet<AdminMe>(request, "/api/admin/me");
+  // Channel viewers never fire the operate-only count call; direct visits are still denied server-side.
+  const counts = meCan(me, "admin:operate")
+    ? await adminGet<Counts>(request, "/api/admin/nav-counts").catch(() => ({}) as Counts)
+    : {};
   return { me, counts };
 }
 
@@ -23,28 +27,10 @@ export const meta: Route.MetaFunction = () => [{ title: `${SITE.name} 后台` },
 
 export const headers: Route.HeadersFunction = () => ({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
 
-const NAV: Array<{ group: string; items: Array<{ to: string; label: string; count?: keyof Counts; tone?: "bad" | "accent" }> }> = [
-  {
-    group: "内容",
-    items: [
-      { to: "/admin/content", label: "内容诊断" },
-      { to: "/admin/sources", label: "信源", count: "sources", tone: "bad" },
-      ...(FEATURES.codexResetMonitor ? [{ to: "/admin/monitor", label: "Codex 重置", count: "monitor" as const, tone: "accent" as const }] : []),
-      { to: "/admin/feedback", label: "反馈", count: "feedback", tone: "accent" },
-    ],
-  },
-  {
-    group: "系统",
-    items: [
-      { to: "/admin/runs", label: "运行", count: "runs", tone: "bad" },
-      { to: "/admin/models", label: "模型与评测" },
-      { to: "/admin/llm-config", label: "API 接口" },
-      { to: "/admin/selectbench", label: "SelectBench" },
-      { to: "/admin/settings", label: "设置" },
-      { to: "/admin/audit", label: "审计记录" },
-    ],
-  },
-];
+// NAV 清单与显隐判定在 features/admin/nav.ts（ym326）：默认 admin:operate 单值门，
+// channel 入口自带 cap，anyOf=并集显示（入驻机会=channel:read ∪ admin:operate，与
+// /api/admin/opportunities 路由层并集门同语义）。未授权入口不渲染——隐藏仅为表现层，
+// 服务端仍拒绝直访。
 
 function NavItem({ to, label, count, tone }: { to: string; label: string; count?: number; tone?: "bad" | "accent" }) {
   return (
@@ -66,7 +52,8 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
   const { me, counts } = loaderData;
   const navigation = useNavigation();
   const location = useLocation();
-  const flat = NAV.flatMap((g) => g.items);
+  const groups = navGroupsFor(me);
+  const flat = groups.flatMap((g) => g.items);
   return (
     <div className="flex min-h-dvh bg-bg">
       <NavigationProgress active={navigation.state === "loading"} />
@@ -76,7 +63,7 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
           <span className="text-[15px] font-semibold tracking-tight text-ink">{SITE.name} 后台</span>
         </a>
         <nav className="flex-1 space-y-4 overflow-y-auto">
-          {NAV.map((g) => (
+          {groups.map((g) => (
             <div key={g.group}>
               <div className="mb-1 px-3 text-[11.5px] font-medium tracking-wide text-ink-4">{g.group}</div>
               <div className="space-y-0.5">
@@ -86,6 +73,7 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
               </div>
             </div>
           ))}
+          {groups.length === 0 && <div className="px-3 py-2 text-[12.5px] text-ink-4">当前账号暂无可用后台入口</div>}
         </nav>
         <div className="mt-3 border-t border-line px-2 pt-3 text-[12.5px] text-ink-3">
           <div className="flex items-center justify-between gap-2">

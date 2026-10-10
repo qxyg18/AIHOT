@@ -6,9 +6,10 @@
 // and the neighbours; line parts stories, columns and list rows. Nothing is set in solid ink. Stories
 // sit in rows of two whose rules run across the page, each story as tall as its neighbour.
 import { SITE, withSubject } from "@aihot/industry/site";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ReportCitation, ReportDetail, ReportNavigationEntry } from "@aihot/contracts/site";
+import { LB_SOURCE_TIER_LABELS, type LbSourceTier } from "@aihot/contracts/leaderboard";
 import { shortSourceName } from "../../lib/format";
 import { Badge } from "../../components/ui/Badge";
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight } from "../../components/icons";
@@ -96,12 +97,76 @@ function Original({ c, className = "" }: { c: ReportCitation; className?: string
   );
 }
 
+// 置信级角标（ym44）：复用商场榜口径（机器源＞研报提取＞人工种子＞推断填充）。日报条目的信息只有两档成色：
+// 官方一手直发=机器源档，媒体与公众号转述整理=研报提取档；人工种子/推断填充档日报不产生，留作口径对齐。
+const CONFIDENCE_DOT: Record<LbSourceTier, string> = { machine: "bg-ok", report: "bg-accent", seed: "bg-amber", infer: "bg-ink-4" };
+
+function confidenceTier(c: ReportCitation): LbSourceTier {
+  return c.firstParty ? "machine" : "report";
+}
+
+function ConfidenceChip({ tier }: { tier: LbSourceTier }) {
+  return (
+    <small className="inline-flex items-center gap-1 text-[10.5px] leading-[16px] text-ink-4">
+      <span className={`size-[5px] shrink-0 rounded-full ${CONFIDENCE_DOT[tier]}`} aria-hidden="true" />
+      {LB_SOURCE_TIER_LABELS[tier]}
+    </small>
+  );
+}
+
+/** 主编点评（ym44）：头条的一句「对渠道生意的含义」，版面上跟在故事正文之后。 */
+function EditorNote({ text }: { text: string }) {
+  return (
+    <p className="mt-3 border-l-2 border-accent/40 pl-3 text-[14px] leading-[1.8] text-ink-2">
+      <span className="mr-1.5 font-semibold text-accent">编辑点评</span>
+      {text}
+    </p>
+  );
+}
+
+/** 有用/没用（ym44）：每条一次，记住选择；落库走 /api/site/report-feedback，攒两周后回顾配额。 */
+function FeedbackButtons({ itemId, kind, reportKey }: { itemId: string; kind: ReportDetail["kind"]; reportKey: string }) {
+  const [choice, setChoice] = useState<boolean | null>(null);
+  useEffect(() => {
+    const saved = window.localStorage.getItem(`report-fb:${itemId}`);
+    if (saved !== null) setChoice(saved === "1");
+  }, [itemId]);
+  const send = async (useful: boolean) => {
+    if (choice !== null) return;
+    setChoice(useful);
+    try {
+      const res = await fetch("/api/site/report-feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ itemId, useful, kind, key: reportKey }),
+      });
+      if (!res.ok && res.status !== 204) throw new Error(String(res.status));
+      window.localStorage.setItem(`report-fb:${itemId}`, useful ? "1" : "0");
+    } catch {
+      setChoice(null); // 没存上就还原，让读者还能再点。
+    }
+  };
+  if (choice !== null) return <span className="text-[12px] text-ink-4">已反馈，谢谢</span>;
+  return (
+    <span className="inline-flex items-center gap-2.5 text-[12px] text-ink-4">
+      这条对你
+      <button type="button" onClick={() => send(true)} className="font-medium text-ink-3 transition-colors hover:text-accent">
+        有用
+      </button>
+      <button type="button" onClick={() => send(false)} className="font-medium text-ink-3 transition-colors hover:text-accent">
+        没用
+      </button>
+    </span>
+  );
+}
+
 /** One story: source, headline, at most four lines of summary, and the original at the foot. */
-function Story({ c, dated, className = "" }: { c: ReportCitation; dated: boolean; className?: string }) {
+function Story({ c, dated, kind, reportKey, soWhat, className = "" }: { c: ReportCitation; dated: boolean; kind: ReportDetail["kind"]; reportKey: string; soWhat?: string; className: string }) {
   return (
     <article id={anchorOf(c) ?? undefined} className={`flex min-w-0 scroll-mt-6 flex-col py-6 ${className}`}>
       <div className="flex items-center gap-2 text-[12px] text-ink-3">
         <Source c={c} />
+        {c.available && <ConfidenceChip tier={confidenceTier(c)} />}
         {dated && c.publishedAt && <span className="num ml-auto shrink-0 text-ink-4">{shortDay(c.publishedAt)}</span>}
       </div>
       {c.available ? (
@@ -116,8 +181,26 @@ function Story({ c, dated, className = "" }: { c: ReportCitation; dated: boolean
             )}
           </h3>
           {c.summary && <p className="mt-2 line-clamp-4 text-[15px] leading-[1.85] text-ink-2 [overflow-wrap:anywhere] @[560px]:text-justify">{c.summary}</p>}
-          <div className="mt-auto pt-3">
+          {/* ym132-②：条目实体标签——article_entities 标注（品牌→渠道→商场序，≤3），点击到实体页。 */}
+          {c.entities && c.entities.length > 0 && (
+            <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-[1.6] text-ink-4">
+              <span>相关实体</span>
+              {c.entities.map((e) => (
+                <Link
+                  key={`${e.type}-${e.slug}`}
+                  to={`/entity/${e.type}/${e.slug}`}
+                  prefetch="intent"
+                  className="rounded-full border border-line px-2 py-0.5 text-[11.5px] text-ink-3 transition-colors hover:border-ink-4 hover:text-accent"
+                >
+                  {e.name}
+                </Link>
+              ))}
+            </p>
+          )}
+          {soWhat && <EditorNote text={soWhat} />}
+          <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3">
             <Original c={c} />
+            {c.itemId && <FeedbackButtons itemId={c.itemId} kind={kind} reportKey={reportKey} />}
           </div>
         </>
       ) : (
@@ -205,6 +288,7 @@ function LeadPicture({ cover, onError, priority = false, className = "" }: { cov
 /** The front page: the lead beside a column of today's highlights and the index of pages. */
 function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; pages: Page[]; leadStory: ReportCitation | null; count: number }) {
   const daily = report.kind === "daily";
+  const soWhatOf = new Map(report.soWhats.map((s) => [s.itemId, s.soWhat]));
   // A picture that fails to load is dropped, and the lead is set as if it had none.
   const [broken, setBroken] = useState<string | null>(null);
   const cover = report.cover && report.cover.url !== broken ? report.cover : null;
@@ -237,10 +321,13 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
             {cover && !wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} />}
           </div>
         )}
+        {leadStory?.itemId && soWhatOf.get(leadStory.itemId) && <EditorNote text={soWhatOf.get(leadStory.itemId)!} />}
         {leadStory && (
           <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-3">
             <Source c={leadStory} size={18} />
+            {leadStory.available && <ConfidenceChip tier={confidenceTier(leadStory)} />}
             <Original c={leadStory} />
+            {leadStory.itemId && <FeedbackButtons itemId={leadStory.itemId} kind={report.kind} reportKey={report.key} />}
           </div>
         )}
       </div>
@@ -260,6 +347,12 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
                       <span className="min-w-0">
                         <span className="block text-[15px] font-bold leading-[1.55] text-ink transition-colors group-hover:text-accent">{h.title}</span>
                         <span className="mt-1.5 block truncate text-[12px] text-ink-4">{shortSourceName(h.sourceName)}</span>
+                        {h.itemId && soWhatOf.get(h.itemId) && (
+                          <span className="mt-1 block border-l-2 border-accent/40 pl-2.5 text-[12px] leading-[1.6] text-ink-3">
+                            <span className="mr-1 font-semibold text-accent">点评</span>
+                            {soWhatOf.get(h.itemId)}
+                          </span>
+                        )}
                       </span>
                     </Link>
                   </li>
@@ -362,6 +455,7 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
   const leadStory = leadStoryOf(report);
   const pages = pagesOf(report, leadStory);
   const count = pages.reduce((sum, p) => sum + p.items.length, 0) + (leadStory ? 1 : 0);
+  const soWhatOf = new Map(report.soWhats.map((s) => [s.itemId, s.soWhat]));
   return (
     <article className="@container">
       <Masthead report={report} index={index} />
@@ -379,7 +473,7 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
               {p.summary}
             </p>
           )}
-          <Rows items={p.items}>{(c, cell) => <Story key={`${p.id}-${keyOf(c)}`} c={c} dated={!daily} className={cell} />}</Rows>
+          <Rows items={p.items}>{(c, cell) => <Story key={`${p.id}-${keyOf(c)}`} c={c} dated={!daily} kind={report.kind} reportKey={report.key} soWhat={c.itemId ? soWhatOf.get(c.itemId) : undefined} className={cell} />}</Rows>
         </SectionPage>
       ))}
 
@@ -398,6 +492,12 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
                     <span className="text-ink">{f.title}</span>
                   )}
                   <span className="ml-2 text-[12px] text-ink-4">{shortSourceName(f.sourceName)}</span>
+                  {f.available && <span className="ml-2 align-middle"><ConfidenceChip tier={confidenceTier(f)} /></span>}
+                  {f.itemId && f.available && (
+                    <span className="mt-1.5 block">
+                      <FeedbackButtons itemId={f.itemId} kind={report.kind} reportKey={report.key} />
+                    </span>
+                  )}
                 </span>
               </li>
             ))}

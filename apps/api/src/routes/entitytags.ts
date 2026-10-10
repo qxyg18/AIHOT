@@ -3,6 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import { articleEntities, entityProfile } from "@aihot/backend/entitytags/read";
 import type { EntityType } from "@aihot/backend/entitytags/matcher";
+import { mallInternalSignals, type MallInternalSignal } from "@aihot/backend/leaderboard/read";
 import { siteHandler } from "./site.ts";
 import { sendJsonWithEtag, sendProblem } from "../http/respond.ts";
 
@@ -24,6 +25,17 @@ export function registerEntityTags(app: FastifyInstance) {
     }
     const profile = await entityProfile(type as EntityType, slug);
     if (!profile) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "not found", cacheControl: "public, max-age=60" });
-    return sendJsonWithEtag(req, reply, profile, { etagPrefix: `entity-${type}-${slug}`, cacheControl: CACHE });
+    // ym132-③：商场档案对称通道——商场站内信号（mall-media/affinity/firststore 最新 run 原始计数）。
+    // 榜单 run 不可用（冷启动/发布间隙）时该区静默降级为空，不影响档案本体。
+    let mallSignals: MallInternalSignal[] = [];
+    if (profile.type === "mall") {
+      try {
+        mallSignals = await mallInternalSignals(slug);
+      } catch {
+        mallSignals = [];
+      }
+    }
+    const body = profile.type === "mall" ? { ...profile, mallSignals } : profile;
+    return sendJsonWithEtag(req, reply, body, { etagPrefix: `entity-${type}-${slug}`, cacheControl: CACHE });
   }));
 }

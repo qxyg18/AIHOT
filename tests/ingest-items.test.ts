@@ -41,3 +41,25 @@ test("an enabled source ingests, and disabling it stops the next push at the gat
   const rows = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM articles WHERE source_id = 'ym357-enabled'`;
   assert.equal(rows[0]!.n, 1, "only the pre-disable article exists");
 });
+
+test("ym371: a disabled-source rejection leaves an ingest_events refused-disabled audit row", async () => {
+  // ym371 (shoumen P3-4 follow-up): the 409 gate now also writes an audit row so channel-reopen
+  // observation periods can reconcile refused push attempts from the db, not just HTTP logs.
+  await sql`INSERT INTO sources (id, name, kind, config, tier, participation_mode, interval_minutes, enabled, health, tags)
+            VALUES ('ym371-disabled', 'YM371 Disabled', 'external', '{}'::jsonb, 'T2', 'isolated', 1440, false, 'ok', ARRAY['ym371-test'])
+            ON CONFLICT (id) DO UPDATE SET enabled = false`;
+  await sql`DELETE FROM ingest_events WHERE summary::text LIKE '%ym371-disabled%'`;
+  await assert.rejects(
+    ingestItems({ sourceId: "ym371-disabled", items: [{ title: "停用期推送", url: "https://example.org/ym371/a" }] }),
+    is409,
+  );
+  const [row] = await sql<{ summary: unknown }[]>`
+    SELECT summary FROM ingest_events
+    WHERE client = 'ingest-items' AND status = 'refused-disabled'
+      AND summary->>'sourceId' = 'ym371-disabled'
+    ORDER BY created_at DESC LIMIT 1`;
+  assert.ok(row, "refused-disabled audit row must exist");
+  const summary = row!.summary as { sourceId?: string; received?: number };
+  assert.equal(summary.sourceId, "ym371-disabled");
+  assert.equal(summary.received, 1);
+});

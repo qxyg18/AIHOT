@@ -1,0 +1,362 @@
+{
+  "schema": "tzr-impact/1",
+  "version": 1,
+  "installed_at": "2026-10-04",
+  "installed_by": "TZR-20261003 T14 (HUB task 570ea736-db65-423b-b784-7827770dac16, ym247)",
+  "source_of_truth": "docs/editing-manual.md §3 (editing-manual v1.0, TZR-20261003 diagnosis); roots follow its matrix rows",
+  "policy": {
+    "path_ownership": "longest-prefix match against owned_paths (repo-root-relative, forward slashes); a path owned by no node is unknown",
+    "unknown_path_risk": "high",
+    "unknown_path_rule": "fail-closed: an unknown path in the change set rejects the manifest until the graph is updated by a separate governed task",
+    "self_approval": "a change manifest whose diff touches this file or scripts/check-change-impact.ts fails (executor may not edit the policy it is checked against); policy upgrades run as kind=policy_install and must carry an independent_audit {path, sha256} that matches a file on disk",
+    "risk_floor_rule": "declared risk must not be below the highest risk_floor of any hit or closed-over node; any unknown path forces high",
+    "closure_rule": "from every root node hit by the change, the transitive closure over consumer_edges must be dispositioned in the manifest (changed | checked | n_a), each with non-empty evidence; 'checked'/'n_a' evidence must point at an existing local path"
+  },
+  "nodes": [
+    {
+      "id": "leaderboard",
+      "business_root": "榜单规则、权重、断点、缺数、成色（含只改说明纠错：闭包照走，排名/分数/methodology hash 前后必须全同）",
+      "owned_paths": [
+        "packages/backend/src/leaderboard/",
+        "packages/contracts/src/leaderboard.ts",
+        "apps/api/src/routes/leaderboard.ts",
+        "apps/web/app/routes/leaderboard.tsx",
+        "apps/web/app/routes/leaderboard-boards.tsx",
+        "apps/web/app/routes/leaderboard-sub.tsx",
+        "apps/web/app/routes/leaderboard-model.tsx",
+        "apps/web/app/routes/leaderboard-rules.tsx",
+        "apps/web/app/routes/leaderboard-sources.tsx",
+        "apps/web/app/routes/leaderboard-source.tsx",
+        "apps/web/app/features/leaderboard/",
+        "docs/leaderboard.md",
+        "scripts/lb-round.ts",
+        "scripts/lb-fetch-check.ts"
+      ],
+      "consumer_edges": [
+        "publication.read",
+        "web.routes"
+      ],
+      "required_checks": [
+        "node --test tests/leaderboard-weighted.test.ts",
+        "node --test tests/leaderboard-brand-board.test.ts",
+        "node --test tests/leaderboard-subboards.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "familyKey 串源/退役维/无 run/同分/低覆盖为专项反例；说明性修改前后排名与 hash 全同"
+    },
+    {
+      "id": "entity.directory",
+      "business_root": "实体名录、别名、主体关系（品牌/商业体/集团）",
+      "owned_paths": [
+        "packages/backend/src/entitytags/",
+        "packages/backend/src/brandprofiles/",
+        "apps/api/src/routes/entitytags.ts",
+        "apps/api/src/routes/brandprofiles.ts",
+        "apps/web/app/routes/entity.tsx",
+        "apps/web/app/features/item/BrandCards.tsx",
+        "industry/brand/",
+        "scripts/sync-brand-stores.ts",
+        "scripts/entity-signals.ts",
+        "tests/entity-signals.test.ts",
+        "tests/brand-cards.test.ts"
+      ],
+      "consumer_edges": [
+        "leaderboard",
+        "web.routes",
+        "publication.read"
+      ],
+      "required_checks": [
+        "node --test tests/entity-signals.test.ts",
+        "node --test tests/brand-cards.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "同名品牌/同名商业体/集团与单体/共现不是入驻；入驻五状态不入公开出口"
+    },
+    {
+      "id": "article.content",
+      "business_root": "日期、标题、摘要、正文、译文（采集→素材→发布时间线）",
+      "owned_paths": [
+        "packages/backend/src/content/",
+        "packages/backend/src/ingest/",
+        "apps/api/src/routes/ingest.ts",
+        "scripts/collect.ts",
+        "scripts/collectors/"
+      ],
+      "consumer_edges": [
+        "publication.read",
+        "model.insights"
+      ],
+      "required_checks": [
+        "node --test tests/materials.test.ts",
+        "node --test tests/collection.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "旧 URL 缺日期/未来日期/同日无时刻/旧热度撤除/人工修改冲突为专项反例"
+    },
+    {
+      "id": "taxonomy.selection",
+      "business_root": "分类、选择门槛、评分",
+      "owned_paths": [
+        "industry/taxonomy.ts",
+        "industry/selection.ts",
+        "industry/topics.json",
+        "packages/contracts/src/taxonomy.ts",
+        "docs/selection.md"
+      ],
+      "consumer_edges": [
+        "publication.read",
+        "web.routes",
+        "reports.daily",
+        "article.content"
+      ],
+      "required_checks": [
+        "node --test tests/analyze.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "blocked 拒绝与失败不混淆；未知类别不发布；六类名称全站一致；门槛改动须样本重校准"
+    },
+    {
+      "id": "sources.registry",
+      "business_root": "信源新建、权利、过滤、启停",
+      "owned_paths": [
+        "packages/backend/src/sources/",
+        "apps/api/src/routes/admin.ts",
+        "industry/sources.json",
+        "industry/source-policy.ts",
+        "scripts/mcp-check.ts"
+      ],
+      "consumer_edges": [
+        "article.content",
+        "leaderboard"
+      ],
+      "required_checks": [
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "同 endpoint 并发/跨 kind 同源/robots 失败/手动退役不可自动复活/304 低频无新增为专项反例；源政策缺参数自动关闭（T01）"
+    },
+    {
+      "id": "model.insights",
+      "business_root": "观点/深读提示词与模型调用（receipts/预算/CAS 写入）",
+      "owned_paths": [
+        "packages/backend/src/editorial/",
+        "packages/backend/src/providers/",
+        "apps/api/src/routes/insights.ts",
+        "industry/prompts/"
+      ],
+      "consumer_edges": [
+        "publication.read"
+      ],
+      "required_checks": [
+        "node --test tests/insights-transaction.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "第二条 INSERT 失败旧结果不丢/模型期间 revision 变更不覆盖/unknown 不换模型重试（T07 事务+CAS 语义）"
+    },
+    {
+      "id": "model.watch",
+      "business_root": "模型免费窗口、路由、额度、能力认证",
+      "owned_paths": [
+        "packages/backend/src/modelwatch/",
+        "packages/contracts/src/monitor.ts",
+        "apps/web/app/routes/admin/model-watch.tsx",
+        "apps/web/app/routes/admin/models.tsx",
+        "apps/web/app/routes/admin/llm-config.tsx"
+      ],
+      "consumer_edges": [
+        "model.insights"
+      ],
+      "required_checks": [
+        "node --test tests/model-watch.test.ts",
+        "node --test tests/capability-routing.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "价格变正/目录过期/缺预算/配额耗尽/unknown/Busy 停车；免费路径不得落付费模型"
+    },
+    {
+      "id": "reports.daily",
+      "business_root": "日报规则与文章审核（头条/看点/正文同源事实）",
+      "owned_paths": [
+        "packages/backend/src/reports/",
+        "packages/backend/src/operations/reports.ts",
+        "industry/report.ts",
+        "apps/web/app/routes/report-latest.tsx",
+        "apps/web/app/routes/report-detail.tsx",
+        "apps/web/app/routes/report-archive.tsx",
+        "apps/web/app/routes/daily-archive.tsx",
+        "apps/web/app/features/report/"
+      ],
+      "consumer_edges": [
+        "web.routes"
+      ],
+      "required_checks": [
+        "npm run typecheck",
+        "npm run build -w @aihot/web"
+      ],
+      "risk_floor": "high",
+      "note": "货币/周期/同比基准不一致不得平均造结论；撤回传播到日报/搜索/导出"
+    },
+    {
+      "id": "web.uishell",
+      "business_root": "UI组件、样式、布局（共享壳=root/components/features）",
+      "owned_paths": [
+        "apps/web/app/root.tsx",
+        "apps/web/app/components/",
+        "apps/web/app/features/"
+      ],
+      "consumer_edges": [
+        "web.routes"
+      ],
+      "required_checks": [
+        "npm run typecheck -w @aihot/web",
+        "npm run build -w @aihot/web",
+        "node --test apps/web/tests/item-original.test.ts"
+      ],
+      "risk_floor": "high",
+      "note": "共享壳变更是整站变更：从 routes.ts 重生成路由集合并逐叶给覆盖层级（editing-manual §3 UI 行；root.tsx 注释锚 T14）。原列 cache.test.ts 为 spawn server.ts 型——server.ts:38 Windows 裸路径动态导入缺陷挡本机执行（缺陷另行披露），壳层 SSR 由 item-original.test.ts 真渲染覆盖"
+    },
+    {
+      "id": "web.routes",
+      "business_root": "路由、loader、API 类型（routes.ts→route loader→复用组件 props→内链/404/鉴权）",
+      "owned_paths": [
+        "apps/web/app/routes.ts",
+        "apps/web/app/routes/",
+        "apps/web/app/lib/",
+        "apps/web/tests/"
+      ],
+      "consumer_edges": [],
+      "required_checks": [
+        "npm run typecheck -w @aihot/web",
+        "node --test apps/web/tests/item-original.test.ts"
+      ],
+      "risk_floor": "high",
+      "note": "item-original 复用 ItemPage 缺 entities=500 是本行反例（T14 修复）；无管理员会话不得判后台操作通过"
+    },
+    {
+      "id": "publication.read",
+      "business_root": "文章公开状态与公开读取层（所有公开出口单源）",
+      "owned_paths": [
+        "packages/backend/src/publication/",
+        "apps/api/src/routes/site.ts",
+        "apps/api/src/routes/v1.ts",
+        "apps/api/src/routes/feeds.ts",
+        "apps/api/src/routes/og.ts",
+        "apps/api/src/routes/mcp.ts",
+        "packages/contracts/src/site.ts"
+      ],
+      "consumer_edges": [
+        "web.routes"
+      ],
+      "required_checks": [
+        "node --test tests/publication.test.ts",
+        "node --test tests/listings.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "公开出口必须从 publication 读取层读；公开内容匿名；撤稿全出口同步"
+    },
+    {
+      "id": "macro.series",
+      "business_root": "宏观指标序列（种子事实→共享 DTO→API→页面）",
+      "owned_paths": [
+        "packages/contracts/src/macro.ts",
+        "packages/backend/src/macro/",
+        "scripts/seed-macro.ts",
+        "apps/api/src/routes/macro.ts",
+        "apps/web/app/routes/macro.tsx",
+        "apps/web/app/features/macro/"
+      ],
+      "consumer_edges": [
+        "web.routes"
+      ],
+      "required_checks": [
+        "npm run typecheck -w @aihot/web",
+        "tsc -p apps/api",
+        "npm run build -w @aihot/web"
+      ],
+      "risk_floor": "high",
+      "note": "读层只分组排序绝不计算新数字；页面派生值全部来自 rows 不写固定时间性叙述（T14）；web/api 共消费 T01 冻结 DTO"
+    },
+    {
+      "id": "worker.jobs",
+      "business_root": "队列、cron、资源配置",
+      "owned_paths": [
+        "apps/worker/src/",
+        "packages/backend/src/jobs/",
+        "packages/backend/src/operations/",
+        "scripts/run-invariant-tests.ts",
+        "scripts/test-db-cleanup.ts"
+      ],
+      "consumer_edges": [
+        "article.content",
+        "reports.daily",
+        "sources.registry"
+      ],
+      "required_checks": [
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "调度暂停≠在途暂停；COLLECT=false 不排无人消费任务；超时/重启/容量有界停车"
+    },
+    {
+      "id": "contracts.shared",
+      "business_root": "跨端共享契约（packages/contracts 正本，T01/ym239 冻结纪律）",
+      "owned_paths": [
+        "packages/contracts/",
+        "database/migrations/",
+        "tests/contract-dto.test.ts",
+        "tests/contract-db-constraints.test.ts",
+        "tests/migrations-order.test.ts"
+      ],
+      "consumer_edges": [
+        "web.routes",
+        "publication.read",
+        "leaderboard",
+        "model.insights",
+        "macro.series",
+        "model.watch",
+        "entity.directory"
+      ],
+      "required_checks": [
+        "node --test tests/contract-dto.test.ts",
+        "node --test tests/contract-db-constraints.test.ts",
+        "node --test tests/migrations-order.test.ts",
+        "npm run typecheck"
+      ],
+      "risk_floor": "high",
+      "note": "迁移只做向后兼容增量、按编号加在末尾；共享 DTO 变更=全消费端闭包（T01 先例 S/I1）"
+    },
+    {
+      "id": "governance.autonomy",
+      "business_root": "自治政策、审计和发布（本说明书+影响图+检查器+根 AGENTS 指向）",
+      "owned_paths": [
+        "AGENTS.md",
+        "docs/editing-manual.md",
+        "docs/change-impact.json",
+        "scripts/check-change-impact.ts",
+        "tests/check-change-impact.test.ts"
+      ],
+      "consumer_edges": [],
+      "required_checks": [
+        "node --test tests/check-change-impact.test.ts"
+      ],
+      "risk_floor": "high",
+      "note": "实施者不能审计自己；影响图政策升级单列高风险任务独立审计（self_approval 禁令）；根 AGENTS 既有指令逐字保留"
+    },
+    {
+      "id": "private.profile",
+      "business_root": "用户工作画像与私有底账（HUB/本地侧，不在本仓库）",
+      "owned_paths": [],
+      "consumer_edges": [],
+      "required_checks": [],
+      "risk_floor": "high",
+      "note": "owned_paths 为空=本仓库无该根的文件面；私有名单/经营数据不进公开页面或外部模型，属 HUB 治理域，涉及时按 editing-manual §3 末行处理"
+    }
+  ]
+}

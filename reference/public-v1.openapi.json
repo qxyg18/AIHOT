@@ -916,7 +916,7 @@
       "get": {
         "operationId": "dailies",
         "summary": "List daily-report archive entries",
-        "description": "Date index of past daily reports, newest first. Reports are published once a day at 08:00 Asia/Shanghai, so checking this more than a few times a day is wasted work.",
+        "description": "Date index of past daily reports, newest first. Reports are published once a day at 07:10 Asia/Shanghai, so checking this more than a few times a day is wasted work.",
         "parameters": [
           {
             "$ref": "#/components/parameters/ActorUserAgent"
@@ -1084,7 +1084,7 @@
       "get": {
         "operationId": "latestDaily",
         "summary": "Get the latest daily report",
-        "description": "The most recent daily report, published once a day at 08:00 Asia/Shanghai. A client that only wants the daily digest should wake up shortly after 08:00 rather than poll around the clock. Agent or tool runtimes that cache a stable URL beyond HTTP cache headers should first request /api/v1/dailies?limit=1 and then fetch /api/v1/dailies/{returned-date}; never guess a date.",
+        "description": "The most recent daily report, published once a day at 07:10 Asia/Shanghai. A client that only wants the daily digest should wake up shortly after 07:10 rather than poll around the clock. Agent or tool runtimes that cache a stable URL beyond HTTP cache headers should first request /api/v1/dailies?limit=1 and then fetch /api/v1/dailies/{returned-date}; never guess a date.",
         "responses": {
           "200": {
             "description": "OK",

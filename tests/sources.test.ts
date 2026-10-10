@@ -12,7 +12,7 @@ import { sanitizeBody, trimTrailingChrome } from "@aihot/backend/content/sanitiz
 import { fetchDetail, fetchWebList, fromHtml, fromMarkdown } from "@aihot/backend/sources/web-list";
 import { fetchRss } from "@aihot/backend/sources/rss";
 import { fetchJsonList } from "@aihot/backend/sources/json-list";
-import { noiseFiltered } from "@aihot/backend/sources/collect";
+import { includeFiltered, noiseFiltered, previewFilterStats } from "@aihot/backend/sources/collect";
 import { unsupportedConfig } from "@aihot/backend/sources/config-keys";
 
 const source = (config: Record<string, unknown>) => ({ id: "test-list", config }) as never;
@@ -202,6 +202,46 @@ test("noise words match whatever their case", () => {
   assert.equal(noiseFiltered(c("Manus：正组建团队开发面向国内市场的产品", "与笔记本厂商合作的 Agent 产品"), source), false);
   assert.equal(noiseFiltered(c("新款笔记本开售", "首发价 4999 元"), source), true);
   assert.equal(noiseFiltered(c("iPhone 18 开售", ""), source), true);
+});
+
+test("an include gate stores only items whose frozen fields carry one of the words", () => {
+  // The include gate (ingestIncludeFilter) runs before the noise filter; without it, or with an
+  // empty word list, every item keeps flowing as before.
+  const s = (config: Record<string, unknown>) => ({ config }) as never;
+  const c = (title: string, excerpt: string) => ({ url: "https://example.org/a", title, excerpt }) as never;
+  const words = ["巴拉巴拉", "balabala"];
+  assert.equal(includeFiltered(c("巴拉巴拉开出首店", ""), s({ ingestIncludeFilter: { any: words } })), false, "a word in the title passes");
+  assert.equal(includeFiltered(c("行业周报", "balabala 进入童装赛道"), s({ ingestIncludeFilter: { any: words } })), false, "a word in the excerpt passes");
+  assert.equal(includeFiltered(c("BALABALA 上新", ""), s({ ingestIncludeFilter: { any: words } })), false, "case-insensitive like the noise filter");
+  assert.equal(includeFiltered(c("行业周报", "整体平稳"), s({ ingestIncludeFilter: { any: words } })), true, "no word, no store");
+  assert.equal(includeFiltered(c("行业周报", "整体平稳"), s({})), false, "no filter keeps the old behavior");
+  assert.equal(includeFiltered(c("行业周报", "整体平稳"), s({ ingestIncludeFilter: { any: [] } })), false, "an empty word list keeps the old behavior");
+  assert.equal(includeFiltered(c("行业周报", "balabala 进入赛道"), s({ ingestIncludeFilter: { any: words, fields: ["title"] } })), true, "fields limits the search to the named fields");
+});
+
+test("keepIfMatches stays a noise exemption, never an inclusion", () => {
+  // With both filters set, the agent exemption lifts noise only: it must not be re-read as a word
+  // that satisfies the include gate, and an item the include gate keeps can still be dropped as noise.
+  const source = { config: { ingestNoiseFilter: { dropMarkers: ["笔记本"], keepIfMatches: ["agent"] }, ingestIncludeFilter: { any: ["开店"] } } } as never;
+  const c = (title: string, excerpt: string) => ({ url: "https://example.org/a", title, excerpt }) as never;
+  assert.equal(includeFiltered(c("Agent 产品发布", "与笔记本厂商合作"), source), true, "the exemption word does not pass inclusion");
+  assert.equal(noiseFiltered(c("Agent 发布会", "笔记本渠道"), source), false, "keepIfMatches still exempts noise, unchanged");
+  assert.equal(noiseFiltered(c("开店扩容", "笔记本厂商代理"), source), true, "an included item is still noise-dropped without the exemption");
+  assert.deepEqual(
+    previewFilterStats([c("巴拉巴拉 开店", ""), c("开店 笔记本评测", ""), c("Agent 发布会", "笔记本渠道"), c("行业周报", "平淡")], source),
+    { found: 4, included: 2, noiseDropped: 1 },
+    "inclusion first, noise second — the preview counts the same order the pipeline applies",
+  );
+});
+
+test("the include filter config accepts only its nested keys and the frozen fields", () => {
+  assert.deepEqual(unsupportedConfig("web_list", { url: "https://example.org/", ingestIncludeFilter: { any: ["开店"], fields: ["title", "excerpt"] } }), []);
+  assert.deepEqual(unsupportedConfig("rss", { feedUrl: "https://example.org/feed", ingestIncludeFilter: { any: ["开店"] } }), []);
+  assert.deepEqual(unsupportedConfig("web_list", { url: "https://example.org/", ingestIncludeFilter: { any: ["开店"], fields: ["body"] } }), ["ingestIncludeFilter.fields=body"], "a field the gate never reads is named");
+  assert.deepEqual(unsupportedConfig("web_list", { url: "https://example.org/", ingestIncludeFilter: { any: ["开店"], fields: "title" } }), ["ingestIncludeFilter.fields=title"], "a non-array fields value is named, not left to crash at collect time");
+  assert.deepEqual(unsupportedConfig("web_list", { url: "https://example.org/", ingestIncludeFilter: { any: "开店", fields: ["title"] } }), ["ingestIncludeFilter.any=开店"], "a non-array word list is named too");
+  assert.deepEqual(unsupportedConfig("web_list", { url: "https://example.org/", ingestIncludeFilter: { any: ["开店"], keepIfMatches: ["x"] } }), ["ingestIncludeFilter.keepIfMatches"], "noise keys stay noise keys");
+  assert.deepEqual(unsupportedConfig("x_search", { query: "from:a", ingestIncludeFilter: { any: ["开店"] } }), ["ingestIncludeFilter"], "X shards keep their own filter set");
 });
 
 test("dates in yyyymmdd and in JSON-LD are read", async () => {

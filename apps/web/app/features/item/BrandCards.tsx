@@ -9,7 +9,7 @@ function profileLine(b: SiteBrandCard): string | null {
   if (b.profile?.category) parts.push(b.profile.category);
   const year = b.profile?.listed?.match(/(?:19|20)\d{2}/)?.[0];
   if (year) parts.push(`${year} 上市`);
-  if (b.profile?.revenueYi != null) parts.push(`年业绩约 ${b.profile.revenueYi} 亿`);
+  if (b.profile?.revenueYi != null) parts.push(`年业绩约 ${b.profile.revenueYi} 亿${b.profile.revenueBasis ? `（${b.profile.revenueBasis}）` : ""}`);
   if (b.profile?.stores != null) parts.push(`门店约 ${b.profile.stores} 家`);
   return parts.length > 0 ? parts.join(" · ") : null;
 }

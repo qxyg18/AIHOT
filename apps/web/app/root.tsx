@@ -38,6 +38,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export const shouldRevalidate: ShouldRevalidateFunction = () => false;
 
+// Shared shell (Layout/SiteShell/ErrorBoundary) is the root every route renders through.
+// Per docs/editing-manual.md §3 "UI组件" row: a change here is a whole-site change — regenerate
+// the route set from routes.ts, give every consumer a coverage level, and only a proven defect
+// earns an authorized hunk. No restyling on a whim.
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang={SITE.locale} suppressHydrationWarning>

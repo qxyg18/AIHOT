@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { FeedbackRejected, submitFeedback, type FeedbackInput } from "@aihot/backend/operations/feedback";
+import { FeedbackRejected, submitFeedback, submitItemFeedback, type FeedbackInput } from "@aihot/backend/operations/feedback";
 import { sendProblem } from "../http/respond.ts";
 
 type FeedbackBody = Pick<FeedbackInput, "content" | "email" | "pageUrl" | "screenshot">;
@@ -44,6 +44,23 @@ export function registerFeedback(app: FastifyInstance) {
     } catch (error) {
       if (error instanceof FeedbackRejected) return sendProblem(req, reply, { status: error.status, code: error.code, detail: error.message, retryAfter: error.retryAfter });
       req.log.error({ err: error }, "feedback failed");
+      return sendProblem(req, reply, { status: 503, code: "temporarily_unavailable", detail: "暂时无法提交，请稍后再试。", retryAfter: 30 });
+    }
+  });
+
+  // 有用/没用 on one report entry (ym44): no text, no screenshot, stored quietly for the quota review.
+  app.post("/api/site/report-feedback", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as { itemId?: unknown; useful?: unknown; kind?: unknown; key?: unknown };
+      if (typeof body.itemId !== "string" || typeof body.useful !== "boolean" || typeof body.kind !== "string" || typeof body.key !== "string") {
+        throw new FeedbackRejected(400, "invalid_request", "反馈参数不完整。");
+      }
+      const ip = String(req.headers["x-real-ip"] ?? req.ip ?? "");
+      await submitItemFeedback({ itemId: body.itemId, useful: body.useful, kind: body.kind, key: body.key, ip, userAgent: String(req.headers["user-agent"] ?? "") });
+      return reply.header("Cache-Control", "no-store").code(204).send();
+    } catch (error) {
+      if (error instanceof FeedbackRejected) return sendProblem(req, reply, { status: error.status, code: error.code, detail: error.message, retryAfter: error.retryAfter });
+      req.log.error({ err: error }, "report feedback failed");
       return sendProblem(req, reply, { status: 503, code: "temporarily_unavailable", detail: "暂时无法提交，请稍后再试。", retryAfter: 30 });
     }
   });

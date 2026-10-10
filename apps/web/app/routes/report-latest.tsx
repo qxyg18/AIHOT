@@ -20,7 +20,7 @@ export function meta({ loaderData, location }: Route.MetaArgs) {
   const kind = loaderData?.kind ?? "daily";
   return pageMeta({
     title: withSubject(KIND_LABEL[kind]),
-    description: kind === "daily" ? `${SITE.name} 每天 08:00（北京时间）发布的${withSubject("日报")}。` : kind === "weekly" ? "每周综合回顾。" : "每月盘点。",
+    description: kind === "daily" ? `${SITE.name} 每天 07:10（北京时间）发布的${withSubject("日报")}。` : kind === "weekly" ? "每周综合回顾。" : "每月盘点。",
     path: location.pathname,
     image: `/og/pages/${kind}.png`,
   });

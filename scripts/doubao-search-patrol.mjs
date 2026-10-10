@@ -169,9 +169,13 @@ function guardRows(rows, overlay, { freshness }) {
   const byTitle = new Map();
   const kept = [];
   const blocked = [];
-  const stats = { l4: 0, junk: 0, junkPair: 0, stale: 0, dupTitle: 0, seen: 0 };
+  // ym367：malformed 单列——url/title 缺失原混入 stale，时效窗关时「旧:0」恒零易误读
+  const stats = { l4: 0, junk: 0, junkPair: 0, stale: 0, malformed: 0, dupTitle: 0, seen: 0 };
   for (const r of rows) {
     if (r.AuthInfoLevel === 4) { stats.l4++; continue; }
+    const url = String(r.Url || "");
+    // ym367：malformed 前置判定（在 junkReasonOf 之前），缺 url/title 不再混入 stale
+    if (!url || !r.Title) { stats.malformed++; continue; }
     const junk = junkReasonOf(r);
     if (junk) {
       stats.junk++;
@@ -181,8 +185,6 @@ function guardRows(rows, overlay, { freshness }) {
     }
     const ts = r.PublishTime ? Date.parse(r.PublishTime) : NaN;
     if (freshness && (!Number.isFinite(ts) || Date.now() - ts > FRESH_MS)) { stats.stale++; continue; }
-    const url = String(r.Url || "");
-    if (!url || !r.Title) { stats.stale++; continue; }
     const key = normTitle(r.Title);
     if (key && byTitle.has(key)) { stats.dupTitle++; continue; }
     if (overlay.ids.has(r.Id) || overlay.urls.has(url)) { stats.seen++; continue; }
@@ -232,7 +234,8 @@ async function main() {
       if (r.attempts > 1) bumpQuota(quota, "retry", r.attempts - 1);
       if (!r.rows) { log(`WORD-FAIL ${w} ${r.error || ""}`); continue; }
       const g = guardRows(r.rows, overlay, { freshness: purpose === "daily" });
-      log(`WORD ${w} 扫描=${r.rows.length} 护栏后=${g.kept.length}（L4:${g.stats.l4} 形态:${g.stats.junk} 对:${g.stats.junkPair} 旧:${g.stats.stale} 通稿:${g.stats.dupTitle} seen:${g.stats.seen}）`);
+      // ym367：fresh:on/off 标记时效窗状态（关窗时「旧:0」不再误读为无噪声），畸:=malformed 桶
+      log(`WORD ${w} 扫描=${r.rows.length} 护栏后=${g.kept.length}（L4:${g.stats.l4} 形态:${g.stats.junk} 对:${g.stats.junkPair} 旧:${g.stats.stale} 畸:${g.stats.malformed} 通稿:${g.stats.dupTitle} seen:${g.stats.seen} fresh:${purpose === "daily" ? "on" : "off"}）`);
       if (dryRun) for (const b of g.blocked.slice(0, 5)) log(`  BLOCKED[${b.reason}] ${b.title}`);
       keptAll.push(...g.kept.map((row) => ({ row, q: w })));
       await sleep(2000);

@@ -104,9 +104,9 @@ export function TrendChart({ series }: { series: TrendSeries }) {
             data: [{ xAxis: series.cutoffIndex }],
             label: { show: true, formatter: `数据截至 ${series.cutoffLabel}`, position: "insideEndTop", fontSize: 10, color: p.ink4 } },
         }) },
-      { name: "同期参考（未发布月）", type: "line", smooth: 0.35, symbol: "none", data: series.ref,
+      { name: "同期参考（未发布月）", type: "line", smooth: 0.35, symbol: "circle", symbolSize: 4, data: series.ref,
         lineStyle: { width: 2.2, color: p.accent, type: [6, 4], opacity: 0.7 }, itemStyle: { color: p.accent } },
-      { name: "去年同期", type: "line", smooth: 0.35, symbol: "none", data: series.prior,
+      { name: "去年同期", type: "line", smooth: 0.35, symbol: "circle", symbolSize: 4, data: series.prior,
         lineStyle: { width: 1.8, color: "#8fa9ac", type: [5, 4] }, itemStyle: { color: "#8fa9ac" } },
     ],
   })} />;

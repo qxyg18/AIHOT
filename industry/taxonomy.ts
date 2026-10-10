@@ -10,16 +10,11 @@
  * 没归上类的资料在日报里放进第一个 key 为 industry 的类别所在的节（没有就放最后一节）。
  */
 export const CATEGORIES = [
-  { key: "brand-moves", label: "品牌动作", section: "品牌与竞品", guide: "竞品与本品牌的经营动作：新品系列、联名与 IP 合作、代言人、订货会、旗舰店/新店型、品牌升级、渠道政策调整" },
-  { key: "channel", label: "渠道加盟", section: "渠道与加盟", guide: "渠道结构与加盟体系：开店关店与门店数量、加盟政策与招商、经销商网络、商场与购物中心渠道、电商平台与直播、私域会员运营" },
-  { key: "mall", label: "商场动态", section: "渠道与加盟", guide: "商场与购物中心场端动态：开业与调改、首店与快闪落地、人气与客流榜单、商场招商与业态变化、商场端营销活动" },
-  { key: "ecommerce", label: "电商动态", section: "渠道与加盟", guide: "童装电商与平台动作：平台政策与规则、大促节奏、童装电商数据与榜单、直播电商与达人带货、品牌电商举措" },
-  { key: "industry", label: "行业动态", section: "行业动态", guide: "行业整体与公司经营：财报业绩、融资并购、人事变动、股权与回购、合作与诉讼、展会活动、行业榜单" },
-  { key: "statistics", label: "统计数据", section: "市场与数据", guide: "官方与权威机构的统计发布：社零总额与服装类零售、GDP 与 CPI/PPI、人口出生率与年龄结构、纺织服装行业运行数据、棉花等原材料成本数据" },
-  { key: "market", label: "市场数据", section: "市场与数据", guide: "市场规模与趋势调研：行业规模与增速、消费趋势调研、价格与折扣指数、市场份额与竞争格局" },
-  { key: "research", label: "行业研报", section: "市场与数据", guide: "券商与机构研究报告：行业研报观点、公司研报评级、咨询机构白皮书要点、研报中的数据与预测" },
-  { key: "product", label: "产品趋势", section: "产品与趋势", guide: "产品与设计层面：品类结构变化、面料与工艺、流行色与版型、爆款品类、可持续与功能性材料、质量与安全标准的技术面" },
-  { key: "policy", label: "政策合规", section: "政策与合规", guide: "政策与合规：童装国家标准与抽检结果、质量通报与召回、广告与促销合规、知识产权与商标、消费者权益与投诉" },
+  { key: "brand-moves", label: "竞品动态", section: "品牌与竞品", guide: "竞品与本品牌的经营动作：新品系列、联名与 IP 合作、代言人、订货会、旗舰店/新店型、品牌升级、渠道政策调整" },
+  { key: "channel", label: "渠道与商场", section: "渠道与商场", guide: "渠道、商场与电商的一切动作：开店关店与门店数量、加盟政策与招商、经销商网络、商场开业调改与首店快闪、客流榜单、电商平台与直播、私域会员运营" },
+  { key: "industry", label: "行业与公司", section: "行业与公司", guide: "行业整体与公司经营：财报业绩、融资并购、人事变动、股权与回购、合作与诉讼、展会活动、行业榜单" },
+  { key: "statistics", label: "宏观与数据", section: "宏观与数据", guide: "官方统计、市场研究与研报的数据面：社零总额与服装类零售、GDP 与 CPI/PPI、人口出生率、纺织行业运行数据、原材料成本、行业规模与增速、消费趋势调研、券商研报与白皮书要点" },
+  { key: "product", label: "产品与政策", section: "产品与政策", guide: "产品与合规层面：品类结构变化、面料与工艺、流行色与版型、爆款品类、功能性材料、童装国家标准与抽检、质量通报与召回、广告与知识产权合规" },
   { key: "overseas", label: "海外标杆", section: "海外与标杆", guide: "海外童装与国际零售：海外童装品牌动作、国际零售商财报与策略、可比市场的消费与渠道变化" },
 ] as const;
 
@@ -33,14 +28,16 @@ export const ITEM_TYPES = ["product_launch", "store_channel", "company_action", 
 
 /** 每篇资料的第一个标签必须是这些“分类标签”之一。 */
 export const CATEGORY_TAGS = [
-  "品牌动作", "渠道/加盟", "商场动态", "电商动态", "公司经营", "统计/数据", "市场/数据", "行业研报", "产品/趋势", "政策/合规", "海外/标杆", "其他",
+  "品牌动作", "渠道与商场", "公司经营", "宏观与数据", "产品与政策", "海外/标杆", "其他",
 ] as const;
 
-/** 可选的主题标签。 */
+/** 可选的主题标签。2026-10-01 起 11 类收拢 6 类：原分类标签降级为主题标签（历史文章的主题页锚，继续合法）。 */
 export const TOPIC_TAGS = [
   "加盟", "直营", "门店", "商场渠道", "首店", "快闪", "电商", "直播/内容", "私域/会员", "大促", "库存", "定价/折扣", "联名/IP", "供应链", "出海",
   "新品", "品宣", "人口/出生率", "原材料成本",
   "婴幼", "大童", "童鞋", "运动童装",
+  // ── 降级标签（原 11 类时代的分类标签，保历史文章与主题页锚）──
+  "商场动态", "电商动态", "统计/数据", "市场/数据", "行业研报", "产品/趋势", "政策/合规", "渠道/加盟",
 ] as const;
 
 /** 可选的实体标签（公司、机构、平台）。必须与下方 ENTITIES 的显示名一致。 */
@@ -67,8 +64,8 @@ export const TAG_SYNONYMS: Readonly<Record<string, string>> = {
 
 /** 模型漏了分类标签时，按内容类型补一个。 */
 export const CATEGORY_BY_ITEM_TYPE: Readonly<Record<string, string>> = {
-  product_launch: "品牌动作", store_channel: "渠道/加盟", company_action: "公司经营", market_data: "市场/数据",
-  policy_regulation: "政策/合规", opinion_analysis: "产品/趋势", industry_event: "公司经营",
+  product_launch: "品牌动作", store_channel: "渠道与商场", company_action: "公司经营", market_data: "宏观与数据",
+  policy_regulation: "产品与政策", opinion_analysis: "产品与政策", industry_event: "公司经营",
 };
 
 // ── 公司与主体 ──────────────────────────────────────────────────────────────────────────
@@ -120,24 +117,33 @@ export const ENTITIES: Record<string, { name: string; displayTag: string | null;
  */
 export const IDENTITY_LEXICON: ReadonlyArray<{ id: string; name: string; patterns: RegExp[] }> = [
   { id: "balabala", name: "巴拉巴拉", patterns: [/巴拉巴拉|balabala/i] },
-  { id: "senma", name: "森马服饰", patterns: [/森马|semir|002563/] },
+  { id: "senma", name: "森马服饰", patterns: [/森马|semir|(?<!\d)002563(?!\d)/] },
   { id: "anta-kids", name: "安踏儿童", patterns: [/安踏儿童|安踏\s?kids|anta\s?kids/i] },
-  { id: "anta", name: "安踏体育", patterns: [/安踏体育|安踏集团|\bANTA\b|02020/] },
+  { id: "anta", name: "安踏体育", patterns: [/安踏体育|安踏集团|\bANTA\b|(?<!\d)02020(?!\d)/] },
   { id: "mini-peace", name: "Mini Peace", patterns: [/mini\s?peace|太平鸟童装/i] },
-  { id: "taipingniao", name: "太平鸟", patterns: [/太平鸟|peacebird|603877/i] },
-  { id: "annaier", name: "安奈儿", patterns: [/安奈儿|annil|002875/i] },
-  { id: "qibu", name: "起步股份", patterns: [/起步股份|abc\s?kids|603557/i] },
-  { id: "jinfa-lababi", name: "金发拉比", patterns: [/金发拉比|拉比|labi\s?baby|002762/i] },
+  { id: "taipingniao", name: "太平鸟", patterns: [/太平鸟|peacebird|(?<!\d)603877(?!\d)/i] },
+  { id: "annaier", name: "安奈儿", patterns: [/安奈儿|annil|(?<!\d)002875(?!\d)/i] },
+  { id: "qibu", name: "起步股份", patterns: [/起步股份|abc\s?kids|(?<!\d)603557(?!\d)/i] },
+  { id: "jinfa-lababi", name: "金发拉比", patterns: [/金发拉比|拉比|labi\s?baby|(?<!\d)002762(?!\d)/i] },
   { id: "yingshi", name: "英氏", patterns: [/英氏|yeehoo/i] },
   { id: "moodytiger", name: "moodytiger", patterns: [/moody\s?tiger/i] },
   { id: "davidbella", name: "戴维贝拉", patterns: [/戴维贝拉|david\s?bella|davidbella/i] },
-  { id: "haiziwang", name: "孩子王", patterns: [/孩子王|301078/] },
-  { id: "aiyingshi", name: "爱婴室", patterns: [/爱婴室|603214/] },
-  { id: "biyinlefen", name: "比音勒芬", patterns: [/比音勒芬|biemlfdlkk|002832/i] },
-  { id: "disu", name: "地素时尚", patterns: [/地素|dazzle|603587/i] },
-  { id: "lining", name: "李宁", patterns: [/李宁|li-?ning|02331/i] },
-  { id: "nike", name: "耐克", patterns: [/耐克|\bnike\b/i] },
+  { id: "haiziwang", name: "孩子王", patterns: [/孩子王|(?<!\d)301078(?!\d)/] },
+  { id: "aiyingshi", name: "爱婴室", patterns: [/爱婴室|(?<!\d)603214(?!\d)/] },
+  { id: "biyinlefen", name: "比音勒芬", patterns: [/比音勒芬|biemlfdlkk|(?<!\d)002832(?!\d)/i] },
+  { id: "disu", name: "地素时尚", patterns: [/地素|dazzle|(?<!\d)603587(?!\d)/i] },
+  { id: "lining", name: "李宁", patterns: [/李宁|li-?ning|(?<!\d)02331(?!\d)/i] },
+  { id: "nike", name: "耐克", patterns: [/耐克|\bnike\w*/i] },
   { id: "adidas", name: "阿迪达斯", patterns: [/阿迪达斯|\badidas\b/i] },
+  // ── 日报高频主体（ym54 扩容，2026-10-01；判定依据见 agent-hub artifacts/2026-10-01/ym54-identity-lexicon/）──
+  { id: "shein", name: "SHEIN希音", patterns: [/希音|shein|(?<!\d)00625(?!\d)/i] },
+  { id: "uniqlo", name: "优衣库", patterns: [/优衣库|uniqlo/i] },
+  { id: "hm", name: "H&M", patterns: [/h&m/i] },
+  { id: "zara", name: "Zara", patterns: [/\bzara\b/i] },
+  { id: "primark", name: "Primark", patterns: [/primark/i] },
+  { id: "miniso", name: "名创优品", patterns: [/名创优品|miniso/i] },
+  { id: "marks-spencer", name: "M&S", patterns: [/\bM&S\b/i, /marks\s*&\s*spencer/i] },
+  { id: "babudou", name: "巴布豆", patterns: [/巴布豆/] },
   { id: "in77", name: "湖滨银泰in77", patterns: [/湖滨银泰|in\s?77/i] },
   { id: "hangzhou-tower", name: "杭州大厦", patterns: [/杭州大厦/] },
   { id: "intime", name: "银泰商业", patterns: [/银泰(?!证券|黄金)/] },
@@ -148,11 +154,15 @@ export const IDENTITY_LEXICON: ReadonlyArray<{ id: string; name: string; pattern
   { id: "joy-city", name: "大悦城", patterns: [/大悦城/] },
   { id: "taikoo-li", name: "太古里", patterns: [/太古(里|地产)/] },
   { id: "skp", name: "SKP", patterns: [/\bskp\b/i] },
+  { id: "henglong", name: "恒隆", patterns: [/恒隆/] },
   { id: "stats-bureau", name: "国家统计局", patterns: [/国家统计局/] },
   { id: "cntac", name: "中国纺织工业联合会", patterns: [/纺织工业联合会|纺联/] },
   { id: "ccfa", name: "中国连锁经营协会", patterns: [/连锁经营协会/] },
   { id: "tmall", name: "天猫", patterns: [/天猫/] },
   { id: "douyin-ecom", name: "抖音电商", patterns: [/抖音(电商|商城)/] },
+  { id: "taobao", name: "淘宝", patterns: [/淘宝/] },
+  { id: "jd", name: "京东", patterns: [/京东/] },
+  { id: "xiaohongshu", name: "小红书", patterns: [/小红书/] },
 ];
 
 /** 这些域名上的文章，发布方就是对应的公司（托管平台不算）。只列已确认的品牌官网。 */

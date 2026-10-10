@@ -2,12 +2,20 @@
 // stable Idempotency-Key per submitted command, and a revalidation of the page's loaders on success.
 import { useCallback, useRef, useState } from "react";
 import { useRevalidator, useRouteLoaderData } from "react-router";
+import type { AdminCapability } from "@aihot/contracts/site";
 import { toast } from "./toast";
 
 export interface AdminMe {
   name: string;
   csrf: string;
   dev: boolean;
+  /** Server-decided (T01 AdminMeView); absent on pre-rollout responses — treated as no capability. */
+  capabilities?: AdminCapability[];
+}
+
+/** Client mirror of the server guard: a session without capability data is never assumed operator. */
+export function meCan(me: AdminMe, cap: AdminCapability): boolean {
+  return me.capabilities?.includes(cap) ?? false;
 }
 
 export class AdminError extends Error {
@@ -37,9 +45,15 @@ export function useAdminAction() {
       method: "POST" | "PATCH" | "PUT" | "DELETE",
       path: string,
       body?: unknown,
-      opts: { success?: string; label?: string; revalidate?: boolean } = {},
+      opts: { success?: string; label?: string; revalidate?: boolean; cap?: AdminCapability } = {},
     ): Promise<T | null> => {
       const label = opts.label ?? `${method} ${path}`;
+      // Client-side refusal only: the server stays the authority; a missing list also refuses.
+      const needed = opts.cap ?? "admin:operate";
+      if (me.capabilities && !me.capabilities.includes(needed)) {
+        toast("当前账号没有这个操作的权限", "error");
+        return null;
+      }
       // The same command retried after a failure keeps its key, so paid work is not repeated.
       const key = keys.current.get(label) ?? newKey();
       keys.current.set(label, key);

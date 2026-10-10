@@ -52,13 +52,14 @@ const retail: Indicator = {
 
 // ── 服装、鞋帽、针纺织品类（亿元，限额以上当月值）──────────────────────────────────────
 // 2026 已发布月锚点：1-2月/6月为统计局发布页原表值；7月=官方累计差(9,615−8,602)；8月原表。
-// 3–5月当月值未取得绝对数（Q1/1-4月仅公布增速），留空待回填，图表披露。
-// 2025 同期 = 官方当月值÷(1+官方当月同比) 反推；9–12月未取得，参考线只画到 8月。
-const APPAREL_NOTE_2026 = "统计局2026年月度发布原表";
+// 3–5月当月值统计局未单独披露（Q1/1-4月仅公布增速；3-5月合计=官方累计差 6,425−2,831=3,594亿）。
+// 2025 同期：1-2/6/7/8月 = 2026官方对反推（修订基数口径）；9–12月 = 2025年原发布值（原基数，
+// 与修订基数存在约2%台阶，统计局常规基数调整，图表口径注记已标）。3–5月 2025 未取得不拆分。
+const STATS_2025_12 = "https://www.stats.gov.cn/sj/zxfb/202601/t20260119_1962323.html";
 const apparel: Indicator = {
   key: "apparel", name: "服装类零售额", unit: "亿元", granularity: "month",
-  caliber: "限额以上单位商品零售·服装鞋帽针纺织品类·当月值；3–5月待回填、2025年9–12月待整理",
-  sourceName: "国家统计局月度发布", sourceUrls: [STATS_2026_08, "https://www.stats.gov.cn/sj/zxfb/202607/t20260715_1964127.html"], sortOrder: 2,
+  caliber: "限额以上单位商品零售·服装鞋帽针纺织品类·当月值；3–5月两年未单独披露；2025年9–12月为原发布值（与2026年修订基数约2%台阶）",
+  sourceName: "国家统计局月度发布", sourceUrls: [STATS_2026_08, "https://www.stats.gov.cn/sj/zxfb/202607/t20260715_1964127.html", STATS_2025_09, STATS_2025_10, STATS_2025_12], sortOrder: 2,
   ytdValue: 9615, ytdYoy: 5.1, ytdLabel: "1–8月累计",
   rows: [
     // 2026（官方锚点）
@@ -66,11 +67,16 @@ const apparel: Indicator = {
     { seq: 6, period: "6月", year: 2026, value: 1285, yoy: 3.9, quality: "published", note: "统计局上半年发布页原表 t20260715_1964127" },
     { seq: 7, period: "7月", year: 2026, value: 893, yoy: -1.0, quality: "derived", note: "官方累计差：1-8月9615−8月1013=1-7月8602，再减1-6月7709；同比为官方-1.0%" },
     { seq: 8, period: "8月", year: 2026, value: 1013, yoy: -0.5, quality: "published", note: STATS_2026_08 },
-    // 2025（同期，官方对反推）
+    // 2025（同期）：1-2/6/7/8月=官方对反推（修订基数口径）
     { seq: 1, period: "1–2月", year: 2025, value: 2564, yoy: null, quality: "derived", note: "2831÷(1+10.4%)" },
     { seq: 6, period: "6月", year: 2025, value: 1237, yoy: null, quality: "derived", note: "1285÷(1+3.9%)" },
     { seq: 7, period: "7月", year: 2025, value: 902, yoy: null, quality: "derived", note: "893÷(1−1.0%)" },
     { seq: 8, period: "8月", year: 2025, value: 1018, yoy: null, quality: "derived", note: "1013÷(1−0.5%)" },
+    // 2025（同期）：9–12月=2025年原发布值（原基数口径）
+    { seq: 9, period: "9月", year: 2025, value: 1231, yoy: 4.7, quality: "published", note: STATS_2025_09 + "（1-9月累计10613/+3.1%）" },
+    { seq: 10, period: "10月", year: 2025, value: 1471, yoy: 6.3, quality: "published", note: STATS_2025_10 + "（原文1470.8；1-10月累计12053/+3.5%）" },
+    { seq: 11, period: "11月", year: 2025, value: 1542, yoy: 3.5, quality: "published", note: "统计局2025-12-15发布（网易转载原表；1-11月累计13597/+3.5%）" },
+    { seq: 12, period: "12月", year: 2025, value: 1661, yoy: 0.6, quality: "published", note: STATS_2025_12 + "（全年累计15215/+3.2%）" },
   ],
 };
 

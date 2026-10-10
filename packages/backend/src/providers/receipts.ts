@@ -45,6 +45,11 @@ export interface CallOutcome {
   requestId?: string | null;
   usage?: Record<string, unknown> | null;
   cost?: { amount: number; currency: string; basis: "actual" | "estimated" } | null;
+  /**
+   * ym249: fee evidence (price snapshot, server-side price cap…) stored on receipts.cost_evidence.
+   * A missing cost stays NULL — an unknown price is never recorded as zero.
+   */
+  costEvidence?: Record<string, unknown> | null;
 }
 
 export interface ReceiptRequest {
@@ -58,6 +63,19 @@ export interface ReceiptRequest {
   requestSummary?: Record<string, unknown>;
   /** Distinguishes an explicit re-run (e.g. admin "re-evaluate") from recovery of the same request. */
   attemptTag?: string;
+  /**
+   * ym249 free-only/autonomous scope: the operation key WITHOUT the model. One operation reaching for
+   * a different model shares it, so an unknown outcome blocks every other candidate for that
+   * operation (no automatic model switch while the first attempt may have gone through).
+   */
+  operationKey?: string;
+  /** Resource reservation evidence (persisted for budget diagnosis); free-only calls reserve before sending. */
+  reservedTokens?: { input: number; output: number };
+  /**
+   * ym249: free-only/autonomous services must have an explicit budgets row — a missing row rejects
+   * instead of counting as unlimited. Legacy paid services keep the unlimited default.
+   */
+  requireBudget?: boolean;
 }
 
 export interface ReceiptResult {
@@ -81,10 +99,14 @@ interface ReceiptRow {
   updated_at: Date;
 }
 
-async function checkBudget(tx: Db, service: string): Promise<void> {
+async function checkBudget(tx: Db, service: string, required = false): Promise<void> {
   const [budget] = await tx<{ per_minute: number; per_hour: number; per_day: number }[]>`
     SELECT per_minute, per_hour, per_day FROM budgets WHERE service = ${service}`;
-  if (!budget) return; // default rows come with the migrations; a service an operator removed is unlimited
+  if (!budget) {
+    // ym249: free-only/autonomous scopes are fail-closed — no budgets row means no sends at all.
+    if (required) throw new BudgetExceededError(service, "no-budget-row", 3600);
+    return; // default rows come with the migrations; a service an operator removed is unlimited
+  }
   // Every request sent counts, retries of the same logical request included.
   const [counts] = await tx<{ minute: number; hour: number; day: number }[]>`
     SELECT
@@ -112,6 +134,15 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
   const claimed = await sql.begin(async (tx) => {
     // Serialise budget checks per service so concurrent workers cannot overshoot.
     await tx`SELECT pg_advisory_xact_lock(hashtext(${"budget:" + req.service}))`;
+    // ym249: an unknown outcome for this operation blocks every other candidate model — while the
+    // first attempt may have gone through and been billed, switching models would send it twice.
+    if (req.operationKey) {
+      const [unknownSibling] = await tx<{ id: number }[]>`
+        SELECT id FROM receipts WHERE operation_key = ${req.operationKey} AND status = 'unknown' ORDER BY id LIMIT 1`;
+      if (unknownSibling) {
+        return { kind: "unknown" as const, row: { id: unknownSibling.id, status: "unknown", response: null, created_at: new Date(), updated_at: new Date() } };
+      }
+    }
     const [existing] = await tx<ReceiptRow[]>`
       SELECT id, status, response, created_at, updated_at FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
     if (existing) {
@@ -123,17 +154,19 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
       }
       if (existing.status === "unknown") return { kind: "unknown" as const, row: existing };
       // failed: the provider did not take the request, or its answer was unusable; a new attempt is allowed.
-      await checkBudget(tx, req.service);
+      await checkBudget(tx, req.service, req.requireBudget ?? false);
       const [r] = await tx<{ attempts: number }[]>`
         UPDATE receipts SET status = 'pending', attempts = attempts + 1, error = NULL, updated_at = now() WHERE id = ${existing.id} RETURNING attempts`;
       const attemptId = await startAttempt(tx, existing.id, r!.attempts, req);
       return { kind: "call" as const, id: existing.id, attemptId };
     }
-    await checkBudget(tx, req.service);
+    await checkBudget(tx, req.service, req.requireBudget ?? false);
     const [row] = await tx<{ id: number }[]>`
-      INSERT INTO receipts (logical_key, service, model, purpose, subject, status, request, attempts)
+      INSERT INTO receipts (logical_key, service, model, purpose, subject, status, request, attempts,
+        operation_key, reserved_input_tokens, reserved_output_tokens)
       VALUES (${logicalKey}, ${req.service}, ${req.model ?? null}, ${req.purpose}, ${req.subject ?? null}, 'pending',
-              ${tx.json((req.requestSummary ?? {}) as never)}, 1)
+              ${tx.json((req.requestSummary ?? {}) as never)}, 1,
+              ${req.operationKey ?? null}, ${req.reservedTokens?.input ?? null}, ${req.reservedTokens?.output ?? null})
       RETURNING id`;
     const attemptId = await startAttempt(tx, row!.id, 1, req);
     return { kind: "call" as const, id: row!.id, attemptId };
@@ -171,6 +204,7 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
         cost = ${outcome.cost?.amount ?? null},
         currency = ${outcome.cost?.currency ?? null},
         cost_basis = ${outcome.cost?.basis ?? null},
+        cost_evidence = ${outcome.costEvidence ? tx.json(outcome.costEvidence as never) : '{}'},
         received_at = now(),
         updated_at = now()
       WHERE id = ${receiptId}`;

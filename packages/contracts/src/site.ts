@@ -315,6 +315,8 @@ export interface ReportCitation {
   publishedAt: string | null;
   /** False once the item was withdrawn; the citation then shows as removed. */
   available: boolean;
+  /** ym132-②：该条目的实体标签（article_entities 标注，同文章页公开闸；≤3 个，品牌→渠道→商场序）。 */
+  entities?: Array<{ type: "brand" | "channel" | "mall" | "mall-chain"; slug: string; name: string }>;
 }
 
 export interface ReportDetail {
@@ -328,6 +330,8 @@ export interface ReportDetail {
   lead: { title: string; leadParagraph: string } | null;
   overview: string | null;
   highlights: ReportCitation[];
+  /** 主编点评（ym44）：头条条目的「对渠道生意的含义」单句。旧期没有此字段，为空数组。 */
+  soWhats: Array<{ itemId: string; soWhat: string }>;
   /** As edited: daily categories, weekly and monthly themes. */
   sections: Array<{ label: string; summary: string | null; items: ReportCitation[] }>;
   /** Reading order: every section item once, labelled with its section. */
@@ -382,9 +386,9 @@ export interface SiteItemDetail extends Omit<ItemDetail, "x"> {
   deepRead: SiteDeepRead | null;
 }
 
-/** 深解读（ka4）：站内历史+档案支撑的大白话解读，angle 标明依据的是哪类材料。 */
+/** 深解读（ka4）：站内历史+档案支撑的大白话解读，angle 标明依据的是哪类材料；plain=保底直接解读（海外类目/打包稿；2026-10-05 起 10 月后发布的无信号文章也走此兜底，命主规则7=深解读标配）。 */
 export interface SiteDeepRead {
-  kind: "brand" | "mall" | "mixed" | "macro";
+  kind: "brand" | "mall" | "mixed" | "macro" | "plain";
   angle: "history" | "analogy" | "direct" | "macro";
   interpretation: string;
   entities: Array<{ type: "brand" | "mall"; name: string }>;
@@ -426,3 +430,104 @@ export interface StoryFollowupsResponse { items: StoryFollowup[]; more: boolean 
 
 /** All issue keys keep numbering and calendars stable; closed daily months omit their titles. */
 export interface ReportNavigationEntry { key: string; title?: string | null; count?: number }
+// ---------------------------------------------------------------------------
+// 后台契约（TZR-20261003 T01/ym239 冻结；plan §6/§13/§16）：
+// 只服务已鉴权后台（/api/admin/*），由 T20（身份 capability）、T19/T06B（机会与审核）、
+// T06（质量/候选接线）消费。公开读取层不得引用本段类型；公开 DTO 不得包含内部入驻资料
+// （机械反例见 tests/contract-dto.test.ts）。
+// ---------------------------------------------------------------------------
+
+/** 身份能力（T20 消费；服务端权威判定）：缺 grant/未知身份=空数组（fail-closed，不默认升级）。 */
+export type AdminCapability = "admin:operate" | "channel:read" | "channel:feedback" | "channel:confirm";
+export const ADMIN_CAPABILITIES: readonly AdminCapability[] = ["admin:operate", "channel:read", "channel:feedback", "channel:confirm"];
+
+/** /api/admin/me 视图（T20 在既有 {name,csrf,dev} 上增 capabilities；csrf 仍为会话级原值）。 */
+export interface AdminMeView {
+  name: string;
+  csrf: string;
+  dev: boolean;
+  /** 服务端判定的能力集；未知 principal 或未授权=空数组（客户端伪造不升级）。 */
+  capabilities: AdminCapability[];
+}
+
+/** 入驻/机会五状态（plan §13；与 DB store_archive_bridge / opportunity_reviews 的 CHECK 单一词汇）。 */
+export type AdminOccupancyState = "confirmed_open" | "historical" | "planned" | "pending_review" | "not_found";
+/** 五状态值域单源（ym326 审计 P2-2）：路由层 confirm 校验与 opportunities/read/review 模块
+ *  一律导入本常量，不再各自维护词汇副本；tests/contract-dto.test.ts 断言其与 LABELS 键一致。 */
+export const ADMIN_OCCUPANCY_STATES: readonly AdminOccupancyState[] = ["confirmed_open", "historical", "planned", "pending_review", "not_found"];
+export const ADMIN_OCCUPANCY_STATE_LABELS: Record<AdminOccupancyState, string> = {
+  confirmed_open: "当前已确认在营",
+  historical: "历史曾入驻",
+  planned: "计划开业",
+  pending_review: "待核",
+  not_found: "未检出档案",
+};
+
+/** 证据成色（editing-manual §6 词汇：已核事实/报道/估算/推断/待核线索）。 */
+export type AdminEvidenceGrade = "fact" | "report" | "estimate" | "inference" | "lead";
+
+/** 后台机会行的公开事实证据（只允许既有 published 公开事实；私有桥资料不进本结构）。 */
+export interface AdminOpportunityEvidence {
+  grade: AdminEvidenceGrade;
+  sourceName: string;
+  url: string;
+  at: string | null;
+}
+
+export interface AdminOpportunityEvent {
+  kind: "opening" | "closing" | "cooperation" | "other";
+  at: string | null;
+  title: string;
+  sourceName: string | null;
+}
+
+/** 后台机会行（T19 消费；内部资料，禁止进公开 API/RSS/sitemap/llms/外部模型）。 */
+export interface AdminOpportunityRow {
+  entity: { type: "brand" | "mall"; slug: string; name: string };
+  city: string | null;
+  /** 五状态；"未检出档案"≠"未入驻"（plan §13）。 */
+  occupancy: AdminOccupancyState;
+  events: AdminOpportunityEvent[];
+  evidence: AdminOpportunityEvidence[];
+  /** 缺项（人话短语；来自人工核验/桥字段缺失，不猜补）。 */
+  missing: string[];
+  /** 建议下一步核验（线索表述，不是行动指令，不宣称作签约结论）。 */
+  nextChecks: string[];
+  /** HUB 承接引用（审阅记录回链）。 */
+  hubRef: string | null;
+}
+
+export interface AdminOpportunitiesResponse {
+  rows: AdminOpportunityRow[];
+  generatedAt: string;
+}
+
+/** 机会审阅记录视图（T19 review.ts；对应 DB opportunity_reviews 行）。 */
+export interface AdminOpportunityReview {
+  entity: { type: "brand" | "mall"; slug: string };
+  state: AdminOccupancyState;
+  missing: string[];
+  feedback: string | null;
+  hubRef: string | null;
+  reviewedBy: string | null;
+  updatedAt: string;
+}
+
+/** 后台信源质量与生命周期面（plan §6；T06 接线）：官方覆盖/待核理由/日期完整度/最近有效样本/政策与证据版本。 */
+export interface AdminSourceQualityView {
+  sourceId: string;
+  /** 官方根准入；null=该源未接入候选生命周期。 */
+  official: {
+    rootUrl: string;
+    origins: string[];
+    status: "eligible" | "activated" | "parked" | "rejected" | "suspended";
+  } | null;
+  /** 待核/未达标理由（人话短语，来自 checks 证据）。 */
+  pendingReasons: string[];
+  /** 日期完整度（实际计数，不估值）。 */
+  dateCompleteness: { total: number; dated: number };
+  /** 最近有效试抓样本；null=暂无样本（不伪报可靠性）。 */
+  latestSample: { at: string; url: string; ok: boolean } | null;
+  policyVersion: string | null;
+  evidenceVersion: string | null;
+}

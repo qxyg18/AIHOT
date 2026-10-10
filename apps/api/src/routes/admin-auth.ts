@@ -1,5 +1,6 @@
 // Admin sign-in and the /api/admin guard. Public routes never read the session.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { AdminCapability } from "@aihot/contracts/site";
 import { config } from "@aihot/backend/config";
 import {
   completeLogin,
@@ -44,14 +45,24 @@ const loginPage = (returnTo: string, error?: string) => `/admin/login?${new URLS
 
 export type AdminHandler = (req: FastifyRequest, reply: FastifyReply, admin: AdminPrincipal) => Promise<unknown>;
 
-/** Guard for /api/admin/*: a live session (or the development stand-in); writes need the CSRF token. */
-export function adminHandler(fn: AdminHandler) {
+/**
+ * Guard for /api/admin/*: a live session (or the development stand-in), a server-side capability
+ * check, and writes need the CSRF token. The default required capability is admin:operate, so every
+ * existing route keeps its meaning and new unclassified routes deny channel viewers; pass
+ * { cap: "channel:*" } for a channel route and { cap: null } for the session's own view (/me).
+ * Capabilities come only from the session principal — forged headers or bodies never widen them.
+ */
+export function adminHandler(fn: AdminHandler, opts: { cap?: AdminCapability | null } = {}) {
+  const cap = opts.cap === undefined ? "admin:operate" : opts.cap;
   return async (req: FastifyRequest, reply: FastifyReply) => {
     reply.header("Cache-Control", "no-store");
     const admin = await sessionPrincipal(req.headers.cookie);
     if (!admin) return sendProblem(req, reply, { status: 401, code: "unauthorized", detail: "Sign in to the admin first." });
     if (req.method !== "GET" && req.method !== "HEAD" && req.headers["x-csrf-token"] !== admin.csrf) {
       return sendProblem(req, reply, { status: 403, code: "forbidden", detail: "Missing or stale CSRF token." });
+    }
+    if (cap && !admin.capabilities.includes(cap)) {
+      return sendProblem(req, reply, { status: 403, code: "forbidden", detail: "This admin session lacks the required capability." });
     }
     try {
       return await fn(req, reply, admin);
@@ -133,5 +144,7 @@ export function registerAdminAuth(app: FastifyInstance) {
     return reply.redirect("/", 303);
   });
 
-  app.get("/api/admin/me", adminHandler(async (_req, _reply, admin) => ({ name: admin.name, csrf: admin.csrf, dev: admin.dev })));
+  // Any signed-in principal may read its own view (name/CSRF stay session-level); the capability
+  // list is server-decided, so a channel viewer sees exactly what it was granted and nothing more.
+  app.get("/api/admin/me", adminHandler(async (_req, _reply, admin) => ({ name: admin.name, csrf: admin.csrf, dev: admin.dev, capabilities: admin.capabilities }), { cap: null }));
 }

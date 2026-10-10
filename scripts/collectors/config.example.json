@@ -1,0 +1,9 @@
+{
+  "_note": "示例配置。真实凭据只放 D:/secrets/radar-collect/config.json（仓库外，见 README）。amap_key=高德开放平台 Web服务 类型 key；dianping_cookie=浏览器登录 www.dianping.com 后复制的整串 Cookie。",
+  "amap_key": "",
+  "dianping_cookie": "",
+  "request_interval_sec": 3,
+  "dianping_interval_sec": 10,
+  "monthly_due_day": 1,
+  "monthly_due_window_days": 3
+}

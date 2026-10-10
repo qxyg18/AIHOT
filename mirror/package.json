@@ -1,0 +1,10 @@
+{
+  "name": "tongzhuang-radar-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "童装雷达只读镜像站：单端口 HTTP 服务，读 SQLite 快照，零 npm 依赖。",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -2,8 +2,9 @@ import { SITE, withSubject } from "@aihot/industry/site";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 import type { Route } from "./+types/item";
-import type { SiteInsightsResponse, SiteItemDetail } from "@aihot/contracts/site";
+import type { SiteItemDetail } from "@aihot/contracts/site";
 import { loadOr404 } from "../lib/api.server";
+import { loadItemRailData } from "../lib/item-rail.server";
 import { breadcrumbLd, pageMeta, siteUrl, titled } from "../lib/seo";
 import { fullDateTime, relativeTime } from "../lib/format";
 import { markRead } from "../lib/local-state";
@@ -26,15 +27,7 @@ const PosterSheet = lazy(() => import("../features/item/PosterSheet"));
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const item = await loadOr404<SiteItemDetail>(`/api/site/items/${encodeURIComponent(params.id)}`, { signal: request.signal });
-  // ka2: research reports carry their extracted viewpoints; a miss (not extracted yet) renders nothing.
-  const insights = item.category === "research"
-    ? await loadOr404<SiteInsightsResponse>(`/api/site/insights/article/${encodeURIComponent(item.id)}`, { signal: request.signal }).catch(() => ({ insights: [] }))
-    : { insights: [] };
-  // zx18: deterministic entity tags (brands, malls, chains, channels) for the rail cards.
-  const entityRes = await loadOr404<{ entities: Array<{ type: "brand" | "mall" | "mall-chain" | "channel"; slug: string; name: string }> }>(
-    `/api/site/articles/${encodeURIComponent(item.id)}/entities`, { signal: request.signal },
-  ).catch(() => ({ entities: [] as Array<{ type: "brand" | "mall" | "mall-chain" | "channel"; slug: string; name: string }> }));
-  return { item, insights: insights.insights, entities: entityRes.entities };
+  return loadItemRailData(item, request.signal);
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

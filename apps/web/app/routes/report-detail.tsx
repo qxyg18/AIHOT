@@ -47,6 +47,11 @@ export default function ReportDetailPage() {
   return (
     <ReportLayout kind={report.kind} index={index} current={report.key} today={today}>
       <ReportPaper report={report} index={index} />
+      {/* T15/ym248：内容成色披露——事实/报道/估算/推断分层与单位口径声明（前台不加机会栏目，
+          无依据行动建议已在生成侧转待核/丢弃）。 */}
+      <p className="mt-6 border-t border-line pt-4 text-[11.5px] leading-relaxed text-ink-4">
+        内容成色说明：本报告条目经事实引用审核——数值、币种（£/$/￥）、期间与基准（名义/固定汇率、同比/财年等）以各来源原文为准，不同基准并列呈现不折算平均；带「推断」「估算」字样的内容为编辑部推断而非来源事实，宏观推断不构成对具体品牌/商业体的经营指令；无依据的行动建议一律转待核不发布。
+      </p>
     </ReportLayout>
   );
 }

@@ -22,6 +22,22 @@ interface Runs {
   errors: Row[];
   retrying: { count: number; next: string | null };
   ingest: Row[];
+  resources: {
+    at: string;
+    spend: Array<{ service: string; purpose: string; calls: number; unknown: number; attempts: number; tokens: number | null; cost: number | null }>;
+    supply: Array<{ service: string; perMinute: number; perHour: number; perDay: number; note: string | null }>;
+    unbounded: string[];
+    queues: Array<{ name: string; state: string; n: number; oldestMinutes: number | null }>;
+    pending: { articles: number; oldestMinutes: number | null };
+    rewrites: {
+      rewrittenArticles: number;
+      maxReAnalyses: number;
+      driftedReadings: number;
+      maxDrift: number;
+      top: Array<{ articleId: string; reAnalyses: number; drift: number }>;
+    };
+    process: { rssMb: number; heapUsedMb: number; heapTotalMb: number; eventLoopDelayMsP95: number | null; uptimeMinutes: number };
+  };
   leaderboard: { at: string; sources: Array<{ key: string; ok: boolean; at: string; lastOkAt: string | null; changed?: boolean; rows?: number; error?: string }> } | null;
 }
 
@@ -257,6 +273,62 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
           )}
         </Card>
       </div>
+
+      {r.resources && (
+        <Card
+          className="mt-5"
+          title="资源观测"
+          right={<span>采样 {bj(r.resources.at)} · 只观测，无自动动作</span>}
+          pad={false}
+        >
+          <div className="grid gap-0 xl:grid-cols-2">
+            <DataTable
+              dense
+              rows={r.resources.spend}
+              rowKey={(s) => `${s.service}-${s.purpose}`}
+              empty="24 小时内没有模型调用"
+              columns={[
+                { key: "s", label: "消耗（24h，探针与业务合并计）", render: (s) => <span className="font-mono text-[12px]">{s.service}</span> },
+                { key: "p", label: "用途", render: (s) => s.purpose },
+                { key: "c", label: "次数", align: "right", render: (s) => num(s.calls) },
+                { key: "t", label: "tokens", align: "right", render: (s) => (s.tokens == null ? "—" : num(s.tokens)) },
+                { key: "$", label: "成本", align: "right", render: (s) => (s.cost == null ? "—" : String(Number(s.cost).toFixed(4))) },
+                { key: "u", label: "结果未知", align: "right", render: (s) => (s.unknown > 0 ? <span className="text-hot">{num(s.unknown)}</span> : <span className="text-ink-4">0</span>) },
+              ]}
+            />
+            <div className="border-t xl:border-t-0 xl:border-l">
+              <DataTable
+                dense
+                rows={r.resources.supply}
+                rowKey={(s) => s.service}
+                empty="没有预算行"
+                columns={[
+                  { key: "s", label: "供给（速率上限）", render: (s) => <span className="font-mono text-[12px]">{s.service}</span> },
+                  { key: "m", label: "每分", align: "right", render: (s) => num(s.perMinute) },
+                  { key: "h", label: "每小时", align: "right", render: (s) => num(s.perHour) },
+                  { key: "d", label: "每天", align: "right", render: (s) => num(s.perDay) },
+                ]}
+              />
+              {r.resources.unbounded.length > 0 && (
+                <p className="px-3 pb-2 text-[12px] text-hot">
+                  无预算行待核：{r.resources.unbounded.join("、")} —— 只命名，不默认无限额
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="border-t px-3 py-2 text-[12px] text-ink-3">
+            待处理 {num(r.resources.pending.articles)} 篇（最早 {r.resources.pending.oldestMinutes == null ? "—" : `${num(r.resources.pending.oldestMinutes)} 分钟`}） · API 进程 RSS {num(r.resources.process.rssMb)}MB / 堆 {num(r.resources.process.heapUsedMb)}/{num(r.resources.process.heapTotalMb)}MB · 事件循环 p95 {r.resources.process.eventLoopDelayMsP95 == null ? "—" : `${num(r.resources.process.eventLoopDelayMsP95)}ms`} · 运行 {num(r.resources.process.uptimeMinutes)} 分钟。
+            阈值区间已冻结（ym291），本页不做任何自动调整；停机线只停新派发，未知归属的进程与容器（旧 api-run、15432 桥）只观测待核，不杀不删。
+          </p>
+          <p className="border-t px-3 py-2 text-[12px] text-ink-3">
+            改写观测：24 小时内同一内容版本被重复分析 {num(r.resources.rewrites.rewrittenArticles)} 篇（单篇一版最高 {num(r.resources.rewrites.maxReAnalyses)} 次，正常为 1 次） · 摘要或标签已改写、AI 导读还没重读的 {num(r.resources.rewrites.driftedReadings)} 篇（单篇积压最高 {num(r.resources.rewrites.maxDrift)} 次）。
+            {r.resources.rewrites.top.length > 0 && (
+              <> 高频文章：{r.resources.rewrites.top.map((t) => `${t.articleId.slice(0, 8)}（重复分析 ${t.reAnalyses} 次 · 待重读 ${t.drift} 次）`).join("、")}。</>
+            )}
+            只观测（T08A 提示级隐患，d-ym317 拍板 observe-only），不改写、不重试、不处置。
+          </p>
+        </Card>
+      )}
 
       {r.processes.length > 0 && (
         <Card className="mt-5" title="进程">

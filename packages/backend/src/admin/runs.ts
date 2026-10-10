@@ -116,11 +116,15 @@ const AUTO_RELEASE_NOTE = "自动放行：结果未知超过 30 分钟，未核�
  * Every 10 minutes (ops.recover): unknown receipts older than half an hour are released
  * without checking the provider's bill. A lost answer costs at most one repeat: a request released this
  * way once and unknown again stays for the admin (the daily ops digest lists it).
+ * ym249: receipts carrying an operation_key (the free-only/autonomous scope) are excluded — their
+ * unknown outcomes wait for the admin instead of an automatic re-send window. Legacy behaviour is
+ * untouched for rows without one.
  */
 export async function autoReleaseUnknownReceipts(now = Date.now()) {
   const rows = await sql<{ id: number }[]>`
     SELECT r.id FROM receipts r
     WHERE r.status = 'unknown' AND r.updated_at < ${new Date(now - AUTO_RELEASE_AFTER_MS)}
+      AND r.operation_key IS NULL
       AND NOT EXISTS (SELECT 1 FROM receipt_attempts a WHERE a.receipt_id = r.id AND a.error LIKE ${AUTO_RELEASE_NOTE + "%"})
     ORDER BY r.id LIMIT 200`;
   let released = 0;
