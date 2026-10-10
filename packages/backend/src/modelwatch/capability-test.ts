@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { sql } from "../db.ts";
 import { chatJson } from "../providers/llm.ts";
+import { mimoCircuitOpen } from "../providers/mimo.ts";
 import { OPENROUTER_FREE_KEY } from "./routing.ts";
 import { ZHIPU_FREE_KEY } from "../providers/zhipu.ts";
 import { OPENCODE_FREE_KEY } from "../providers/opencode.ts";
@@ -123,6 +124,9 @@ export interface TestOptions {
   /** 组合上限（每轮滚动）；缺省 COMBOS_PER_ROUND。 */
   cap?: number;
   now?: Date;
+  /** ym477（拍板 gate-review）：MIMO 熔断态整轮跳过（零调用零判卷）。生产调度位启用；
+   *  测试注入路径不传即不受闸影响。 */
+  skipOnMimoCircuitOpen?: boolean;
 }
 
 export interface TestSummary {
@@ -137,6 +141,8 @@ export interface TestSummary {
   calls: number;
   /** ym438：本轮因连续调用全失败被自动摘池（status=filtered）的智谱模型。 */
   retired: string[];
+  /** ym477：整轮被熔断闸跳过时的原因（"mimo-circuit-open"），未跳过=null。 */
+  skipped: string | null;
 }
 
 const JudgeSchema = z.object({
@@ -178,8 +184,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
 /** 一轮验收：选组合 → 每组合 10 次真实调用 → 打包付费判卷 → 验收写回 + 事件留痕。 */
 export async function runCapabilityTests(opts: TestOptions = {}): Promise<TestSummary> {
   const now = opts.now ?? new Date();
-  const summary: TestSummary = { at: now.toISOString(), ok: false, error: null, combos: 0, tested: 0, qualified: 0, rejected: 0, failedCombos: 0, calls: 0, retired: [] };
+  const summary: TestSummary = { at: now.toISOString(), ok: false, error: null, combos: 0, tested: 0, qualified: 0, rejected: 0, failedCombos: 0, calls: 0, retired: [], skipped: null };
   try {
+    // ym477（d-ym434-plan-residual 拍板 gate-review）：熔断态当晚整批跳过——判卷直调付费
+    // default 的套餐消耗不再发生；免费测试调用一并停（熔断期不扩证书面），恢复后次晚自然续跑。
+    if (opts.skipOnMimoCircuitOpen && (await mimoCircuitOpen())) {
+      summary.ok = true;
+      summary.skipped = "mimo-circuit-open";
+      await addEvent("capability_test", "batch", { skipped: summary.skipped });
+      return summary;
+    }
     const specs = new Map(capabilitySpecs().map((s) => [s.capability, s]));
     const articles = await sampleArticles();
     const combos = await pickTestCombos(opts.cap ?? COMBOS_PER_ROUND, now);

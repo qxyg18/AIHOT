@@ -14,6 +14,7 @@ import { pickTestCombos, runCapabilityTests } from "@aihot/backend/modelwatch/ca
 import { certifyCapability } from "@aihot/backend/modelwatch/monitor";
 import { ensureFreeRouting, invalidateFreeRouting, OPENROUTER_FREE_KEY } from "@aihot/backend/modelwatch/routing";
 import { modelFor, modelSources } from "@aihot/backend/editorial/models";
+import { MIMO_CIRCUIT_KEY } from "@aihot/backend/providers/mimo";
 import { chatJson } from "@aihot/backend/providers/llm";
 import { BudgetExceededError, ReceiptUnknownError } from "@aihot/backend/providers/receipts";
 import { buildLlmRequest, PolicyViolationError, type LlmPolicy } from "@aihot/backend/providers/llmEndpoint";
@@ -122,6 +123,48 @@ test("验收管线：rejected 写回；判卷失败不写回（组合保持未�
   const thrown = judged[1]!;
   const gone = await sql`SELECT 1 FROM model_free_capabilities WHERE model_id = ${thrown.model} AND capability = ${thrown.capability}`;
   assert.equal(gone.length, 0, "判卷失败不写回，下轮再测");
+});
+
+test("ym477 熔断闸（拍板 gate-review）：熔断态整轮跳过零调用零判卷；闸未启用/非熔断态照常跑", async () => {
+  const m = newModel("circuit");
+  await insertModel(m);
+  let calls = 0;
+  let judged = 0;
+  const inject = {
+    cap: 1,
+    callModel: async () => {
+      calls++;
+      return { ok: true, output: {}, error: null };
+    },
+    judge: async () => {
+      judged++;
+      return { verdict: "qualified" as const, passCount: 10, payload: { issues: "全过" }, receiptId: 990_004 };
+    },
+  };
+  // 熔断态：生产闸位整轮跳过（免费调用与付费判卷都不发生，事件留痕）
+  await sql`INSERT INTO settings (key, value, updated_by) VALUES (${MIMO_CIRCUIT_KEY}, ${sql.json({ openUntil: new Date(Date.now() + 3_600_000).toISOString() } as never)}, 'test')`;
+  try {
+    const skipped = await runCapabilityTests({ ...inject, skipOnMimoCircuitOpen: true });
+    assert.equal(skipped.skipped, "mimo-circuit-open");
+    assert.equal(skipped.ok, true);
+    assert.equal(skipped.combos, 0);
+    assert.equal(calls, 0, "熔断态零能力调用");
+    assert.equal(judged, 0, "熔断态零判卷（套餐消耗归零）");
+    const [event] = await sql<{ payload: Record<string, unknown> }[]>`SELECT payload FROM model_watch_events WHERE model_id = 'batch' AND kind = 'capability_test' ORDER BY id DESC LIMIT 1`;
+    assert.ok(event && String(event.payload.skipped ?? "") === "mimo-circuit-open", "跳过事件留痕");
+    // 闸未启用（判别性）：熔断态照常跑（旧码在此无闸，判卷照发）
+    const ungated = await runCapabilityTests({ ...inject });
+    assert.equal(ungated.skipped, null);
+    assert.equal(judged, 1);
+    // 非熔断态：闸开着也照常跑（拍板只收熔断期，常态验收节奏不变）
+    await sql`DELETE FROM settings WHERE key = ${MIMO_CIRCUIT_KEY}`;
+    const open = await runCapabilityTests({ ...inject, skipOnMimoCircuitOpen: true });
+    assert.equal(open.skipped, null);
+    assert.equal(judged, 2);
+    assert.equal(calls, 20, "两轮各 10 次能力调用（跳过轮零调用）");
+  } finally {
+    await sql`DELETE FROM settings WHERE key = ${MIMO_CIRCUIT_KEY}`;
+  }
 });
 
 test("合格线硬闸（ym196 复审 P3-1 销项）：判卷自评 qualified 但 passCount 不足线 → 落表 rejected 且 overridden 在案", async () => {

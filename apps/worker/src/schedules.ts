@@ -99,8 +99,9 @@ export const SCHEDULES: Scheduled[] = [
   { name: "model-watch.scan", cron: "30 6 * * *", missed: "once", quiet: "exempt", run: () => scanModelWatch() },
   // 免费模型能力级验收（ym196 命主令）：每免费模型×每能力位 10 次真实调用（免费零成本），
   // 付费模型判卷（≥9/10 合格→进能力路由；付费降为断链过渡档）。滚动批：每晚 8 组合，
-  // 未测优先、7 天复测；判卷走付费 default，优惠窗折扣价。
-  { name: "model-watch.capability-test", cron: "40 23 * * *", missed: "once", quiet: "exempt", offpeak: true, run: () => runCapabilityTests() },
+  // 未测优先、7 天复测；判卷走付费 default，优惠窗折扣价。ym477（拍板 gate-review）：
+  // MIMO 熔断态当晚整批跳过——判卷的套餐消耗归零，熔断期不扩证书面，恢复后次晚自然续跑。
+  { name: "model-watch.capability-test", cron: "40 23 * * *", missed: "once", quiet: "exempt", offpeak: true, run: () => runCapabilityTests({ skipOnMimoCircuitOpen: true }) },
   // 开源项目跟踪（ym190 建卡；ym195 命主令改双轮）：白天轮 06:47 扫描后立刻出解读——
   // 免费模型优先（免费路由在役主力即写即出，免费窗口未开回落 MIMO 付费班次），不等优惠窗。
   { name: "oss.watch", cron: "47 6 * * *", missed: "once", quiet: "exempt", run: () => scanOssWatch() },
