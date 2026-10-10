@@ -13,11 +13,8 @@
 // The sweep runs off-peak with the other model-heavy jobs (deepread.sweep); rows are keyed by
 // article, so a rerun only pays for articles that have no row yet. Vocab = the two leaderboard
 // seed files (SSOT) plus the structure step's own entity tags.
-// HOTFIX (2026-10-05, owner rule 7): container baseline (image 2026-10-02T17:44Z, pre-ym245)
-// + the rule-7 hunks only — the tree version additionally carries the ym245 input-identity
-// system whose 0053 migration is not applied to production, so the tree file must NOT be
-// hot-copied. The next full image build supersedes this file.
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { sql } from "../db.ts";
 import { chatJson, ModelOutputError } from "../providers/llm.ts";
@@ -39,6 +36,64 @@ const MAX_MALLS = 2;
 const HISTORY_PER_ENTITY = 4;
 /** Paid-call pacing, shared key with the analysis queues (brandprofiles rule). */
 const CALL_PACE_MS = 1500;
+
+/** Transient-failure retry ceiling (T08/ym245): attempts count per input identity — a revision or
+ *  basis change restarts the clock; the same input backs off 15min, then 30min, then stops
+ *  auto-retrying until its input moves again (AC2 "有重试上界"). */
+const MAX_ATTEMPTS = 3;
+const RETRY_BASE_MINUTES = 15;
+
+// ---------------------------------------------------------------------------
+// Input identity (T08/ym245, F5): a reading is only valid for the inputs that produced it — the
+// article's revision (content) plus a basis hash over the prompt version and the vocabulary seed
+// bytes. Code/taxonomy identity is deliberately out: it only changes with a deploy, and keying on
+// it would void the whole table on every release (ADR decision=simplify). Legacy rows (identity
+// NULL, migration 0052's contract) are never current — they read as a miss and get re-swept.
+// ---------------------------------------------------------------------------
+
+let basisCache: { value: string; at: number } | null = null;
+const BASIS_TTL_MS = 30_000;
+
+/** sha256(DEEPREAD_PROMPT_VERSION + brand/mall seed file bytes). The seeds are hot files (the
+ *  ym238 M1 note above), so this reads the raw bytes on a short TTL instead of trusting the
+ *  process-start vocab cache — a seed edit surfaces within BASIS_TTL_MS. When the value moves it
+ *  also drops vocab()'s parse cache: without that, a sweep would re-read every row against the
+ *  OLD vocabulary while stamping the NEW basis on the results (audit P1-1). An unreadable seed
+ *  holds the last good value instead of flipping the basis (an IO hiccup must not void every
+ *  row and re-read them all, audit P3-6). */
+function currentBasis(): string {
+  const now = Date.now();
+  if (basisCache && now - basisCache.at < BASIS_TTL_MS) return basisCache.value;
+  const h = createHash("sha256");
+  h.update(`${DEEPREAD_PROMPT_VERSION}\n`);
+  let unreadable = false;
+  for (const file of [BRANDS_FILE, MALLS_FILE]) {
+    try {
+      h.update(readFileSync(file));
+    } catch {
+      unreadable = true;
+    }
+  }
+  if (unreadable && basisCache) return basisCache.value;
+  const value = h.digest("hex");
+  if (basisCache && value !== basisCache.value) vocabCache = null;
+  basisCache = { value, at: now };
+  return value;
+}
+
+/** Test-only hooks: the basis cache and its TTL are process state, which no test can reach
+ *  otherwise (audit P2-3 — the basis change path used to be verified only by simulation).
+ *  resetBasisCache drops the vocab parse cache too: with the basis cache simply nulled there is
+ *  no old value to diff against, so the change-driven drop inside currentBasis() would never
+ *  fire — a forced re-read must mean both caches (the TTL-expiry path in production always has
+ *  the previous value to compare, so the drop fires there). */
+export const __deepreadTestHooks = {
+  resetBasisCache: (): void => {
+    basisCache = null;
+    vocabCache = null;
+  },
+  currentBasis: (): string => currentBasis(),
+};
 
 // ---------------------------------------------------------------------------
 // Vocabulary: the leaderboard seed files, loaded once per process.
@@ -65,12 +120,27 @@ let vocabCache: { brands: SeedBrand[]; malls: SeedMall[] } | null = null;
 
 function vocab(): { brands: SeedBrand[]; malls: SeedMall[] } {
   if (vocabCache) return vocabCache;
-  const brandsFile = JSON.parse(readFileSync(BRANDS_FILE, "utf8")) as {
-    brands?: Array<{ slug: string; name: string; keywords?: string[] }>;
-  };
-  const mallsFile = JSON.parse(readFileSync(MALLS_FILE, "utf8")) as {
-    malls?: Array<{ slug: string; name: string; city?: string; keywords?: string[]; area?: number; openedAt?: string; revenue?: number; footfallTier?: number }>;
-  };
+  // 种子裸读守卫（ym168 / ym160 shoumen P1-1）：读路径面=空词表降级不 500（分类退化为
+  // 纯规则匹配）；任一文件读失败不入缓存负态，下次读再试（种子部署后自动生效）。
+  let seedUnreadable = false;
+  let brandsFile: { brands?: Array<{ slug: string; name: string; keywords?: string[] }> } = {};
+  let mallsFile: { malls?: Array<{ slug: string; name: string; city?: string; keywords?: string[]; area?: number; openedAt?: string; revenue?: number; footfallTier?: number }> } = {};
+  try {
+    brandsFile = JSON.parse(readFileSync(BRANDS_FILE, "utf8")) as {
+      brands?: Array<{ slug: string; name: string; keywords?: string[] }>;
+    };
+  } catch (err) {
+    seedUnreadable = true;
+    console.warn(`[editorial] deepread brands seed unreadable (${BRANDS_FILE}):`, err instanceof Error ? err.message : err);
+  }
+  try {
+    mallsFile = JSON.parse(readFileSync(MALLS_FILE, "utf8")) as {
+      malls?: Array<{ slug: string; name: string; city?: string; keywords?: string[]; area?: number; openedAt?: string; revenue?: number; footfallTier?: number }>;
+    };
+  } catch (err) {
+    seedUnreadable = true;
+    console.warn(`[editorial] deepread malls seed unreadable (${MALLS_FILE}):`, err instanceof Error ? err.message : err);
+  }
   const withName = <T extends { name: string; keywords?: string[] }>(e: T): string[] =>
     [...new Set([...(e.keywords ?? []), e.name])].filter((k) => k.length >= 2);
   const mallsRaw = (mallsFile.malls ?? []).map((m) => ({
@@ -91,10 +161,12 @@ function vocab(): { brands: SeedBrand[]; malls: SeedMall[] } {
     ...m,
     keywords: [...new Set([m.name, ...m.keywords.filter((k) => kwUsers.get(k) === 1)])],
   }));
-  vocabCache = {
+  const built = {
     brands: (brandsFile.brands ?? []).map((b) => ({ slug: b.slug, name: b.name, keywords: withName(b) })),
     malls,
   };
+  if (seedUnreadable) return built; // 错误态禁缓存：下次读重试（tenancyByMall 同款负态）
+  vocabCache = built;
   return vocabCache;
 }
 
@@ -280,20 +352,72 @@ export interface DeepReadOutcome {
   status: DeepReadStatus;
   model?: string | null;
   error?: string | null;
+  /** Set when the pass never reached the provider (budget exhausted): the sweep stops the whole
+   *  round and the row must stay untouched — a budget state is global, not this article's. */
+  budgetStopped?: true;
 }
 
-async function storeRow(articleId: string, status: "skipped" | "failed", reason: string): Promise<void> {
+/** The input identity a pass actually saw (T08/ym245 + T08A/ym316): stored on every outcome row
+ *  so the sweep and the public read can tell a current reading from a stale one. Three layers:
+ *  revision (articles.revision — content edits), pubRevision (publications.revision — re-analysis
+ *  rewrites of summary/tags that leave the article row untouched), basis (prompt + vocab seeds). */
+interface InputIdentity {
+  revision: number;
+  pubRevision: number;
+  basis: string;
+}
+
+async function identityOf(articleId: string): Promise<InputIdentity> {
+  const [r] = await sql<{ revision: number; pub_revision: number | null }[]>`
+    SELECT a.revision, p.revision AS pub_revision
+    FROM articles a JOIN publications p ON p.article_id = a.id
+    WHERE a.id = ${articleId}`;
+  return { revision: r?.revision ?? 0, pubRevision: r?.pub_revision ?? 0, basis: currentBasis() };
+}
+
+async function storeRow(
+  articleId: string,
+  status: "skipped" | "failed",
+  reason: string,
+  identity?: InputIdentity,
+): Promise<void> {
   // skipped keeps its reason in skip_reason; failed keeps the error text in error (audit P3).
+  // T08/ym245: every outcome carries its input identity; attempts count per identity (a moved
+  // input restarts at 1, the same input climbs toward MAX_ATTEMPTS, then retry_at goes NULL and
+  // automatic retries stop). A failure downgrades the row's status but never touches the reading
+  // payload columns (kind/angle/interpretation/…) — the old reading survives until a newer
+  // success replaces it (AC3), while the row itself stops presenting as a valid ready.
+  const id = identity ?? (await identityOf(articleId));
+  const [existing] = await sql<{ status: string; input_revision: number | null; pub_revision: number | null; input_hash: string | null; attempts: number }[]>`
+    SELECT status, input_revision, pub_revision, input_hash, attempts FROM article_deep_reads WHERE article_id = ${articleId}`;
+  const sameInput = existing != null
+    && existing.input_revision === id.revision
+    && existing.pub_revision === id.pubRevision
+    && existing.input_hash === id.basis;
+  const attempts = sameInput ? existing.attempts + 1 : 1;
+  // Only failed waits (AC2): a skipped row is a permanent no-signal verdict, not a retry — its
+  // retry_at stays NULL, so the sweep only revisits it when its input identity actually moves.
+  const retryAt = status === "failed" && attempts < MAX_ATTEMPTS
+    ? new Date(Date.now() + RETRY_BASE_MINUTES * 2 ** (attempts - 1) * 60_000)
+    : null;
   await sql`
-    INSERT INTO article_deep_reads (article_id, status, skip_reason, error, updated_at)
-    VALUES (${articleId}, ${status}, ${status === "skipped" ? reason : null}, ${status === "failed" ? reason : null}, now())
-    ON CONFLICT (article_id) DO UPDATE SET status = ${status},
-      skip_reason = ${status === "skipped" ? reason : null}, error = ${status === "failed" ? reason : null}, updated_at = now()`;
+    INSERT INTO article_deep_reads (article_id, status, skip_reason, error, input_revision, pub_revision, input_hash, attempts, retry_at, updated_at)
+    VALUES (${articleId}, ${status}, ${status === "skipped" ? reason : null}, ${status === "failed" ? reason : null},
+            ${id.revision}, ${id.pubRevision}, ${id.basis}, ${attempts}, ${retryAt}, now())
+    ON CONFLICT (article_id) DO UPDATE SET
+      status = ${status},
+      skip_reason = ${status === "skipped" ? reason : null}, error = ${status === "failed" ? reason : null},
+      input_revision = ${id.revision}, pub_revision = ${id.pubRevision}, input_hash = ${id.basis},
+      attempts = ${attempts}, retry_at = ${retryAt}, updated_at = now()`;
 }
 
 /**
- * The reading for one published article. Transient provider trouble leaves no row (the next sweep
- * retries); an unusable model output is recorded as failed so it stops burning calls.
+ * The reading for one published article. Transient provider trouble records a failed row with a
+ * retry_at backoff (T08: the sweep re-picks it after the delay, up to MAX_ATTEMPTS per input
+ * identity); an unusable model output is recorded as failed the same way; a budget stop leaves
+ * no row at all — that state is global, and the sweep halts the round. A success commits in one
+ * transaction under the article row lock with a revision CAS: a revision that moved while the
+ * model ran abandons the pass instead of overwriting the newer reading's inputs (AC1).
  */
 export async function generateDeepRead(articleId: string): Promise<DeepReadOutcome> {
   const [row] = await sql<{
@@ -304,17 +428,20 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
     tags: string[] | null;
     body_text: string | null;
     at: Date | null;
+    revision: number;
+    pub_revision: number;
   }[]>`
     SELECT p.title, p.original_title, p.summary, p.category, p.tags, a.body_text,
-           coalesce(p.published_at, p.discovered_at) AS at
+           coalesce(p.published_at, p.discovered_at) AS at, a.revision, p.revision AS pub_revision
     FROM publications p JOIN articles a ON a.id = p.article_id
     WHERE p.article_id = ${articleId} AND p.visibility = 'public' AND p.eligible`;
   if (!row) return { ok: false, status: "pending", error: "not published" };
+  const identity: InputIdentity = { revision: row.revision, pubRevision: row.pub_revision, basis: currentBasis() };
 
   const input = { title: row.title, originalTitle: row.original_title, summary: row.summary, category: row.category, tags: row.tags ?? [], body: row.body_text, publishedAt: row.at };
   const cls = classifyArticle(input);
   if (!cls) {
-    await storeRow(articleId, "skipped", "no_entity_no_macro");
+    await storeRow(articleId, "skipped", "no_entity_no_macro", identity);
     return { ok: true, status: "skipped" };
   }
 
@@ -327,7 +454,7 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
   cls.malls = verified(cls.malls);
   if (cls.brands.length === 0 && cls.malls.length === 0) {
     if (cls.macro.length === 0 && !plainRead(input) && !defaultRead(input.publishedAt)) {
-      await storeRow(articleId, "skipped", "no_entity_no_macro");
+      await storeRow(articleId, "skipped", "no_entity_no_macro", identity);
       return { ok: true, status: "skipped" };
     }
     cls.kind = cls.macro.length > 0 ? "macro" : "plain";
@@ -369,11 +496,18 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
     });
   } catch (error) {
     const message = String(error instanceof Error ? error.message : error).slice(0, 300);
-    if (error instanceof ProviderRejectedError || error instanceof ReceiptBusyError || error instanceof BudgetExceededError || error instanceof ReceiptUnknownError) {
+    if (error instanceof BudgetExceededError) {
+      // Global state, not this article's: no row, no attempt count — the sweep halts the round.
+      return { ok: false, status: "pending", error: message, budgetStopped: true };
+    }
+    if (error instanceof ProviderRejectedError || error instanceof ReceiptBusyError || error instanceof ReceiptUnknownError) {
+      // Recoverable wait (AC2): a failed row with a retry_at backoff — not a fake terminal skip,
+      // and no model swap retry; the receipt's verdict stands.
+      await storeRow(articleId, "failed", message, identity);
       return { ok: false, status: "pending", error: message };
     }
     if (error instanceof ModelOutputError) {
-      await storeRow(articleId, "failed", message);
+      await storeRow(articleId, "failed", message, identity);
       return { ok: false, status: "failed", error: message };
     }
     throw error;
@@ -381,28 +515,66 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
 
   const interpretation = res.data.interpretation.trim().slice(0, 480);
   const entities = [...cls.brands, ...cls.malls].map((m) => ({ type: m.type, slug: m.slug, name: m.name }));
-  await sql`
-    INSERT INTO article_deep_reads (article_id, status, kind, entities, angle, interpretation, model, prompt_version, receipt_id, updated_at)
-    VALUES (${articleId}, 'ready', ${cls.kind}, ${sql.json(entities as never)}, ${res.data.angle}, ${interpretation},
-            ${res.model}, ${DEEPREAD_PROMPT_VERSION}, ${res.receiptId}, now())
-    ON CONFLICT (article_id) DO UPDATE SET
-      status = 'ready', skip_reason = NULL, error = NULL, kind = ${cls.kind}, entities = ${sql.json(entities as never)},
-      angle = ${res.data.angle}, interpretation = ${interpretation}, model = ${res.model},
-      prompt_version = ${DEEPREAD_PROMPT_VERSION}, receipt_id = ${res.receiptId}, updated_at = now()`;
+  // One transaction under the article row lock with a revision CAS (T07/ym240 pattern): a
+  // revision that moved while the model ran rolls the whole write back (AC1) — the row keeps its
+  // prior state and the next sweep retries on the current inputs.
+  const written = await sql.begin(async (tx) => {
+    const [cur] = await tx<{ revision: number; pub_revision: number }[]>`
+      SELECT a.revision, p.revision AS pub_revision
+      FROM articles a JOIN publications p ON p.article_id = a.id
+      WHERE a.id = ${articleId} FOR UPDATE OF a, p`;
+    if (!cur) return "article missing" as const;
+    if (cur.revision !== row.revision || cur.pub_revision !== row.pub_revision) return "stale revision" as const;
+    await tx`
+      INSERT INTO article_deep_reads (article_id, status, kind, entities, angle, interpretation, model, prompt_version, receipt_id, input_revision, pub_revision, input_hash, attempts, retry_at, updated_at)
+      VALUES (${articleId}, 'ready', ${cls.kind}, ${sql.json(entities as never)}, ${res.data.angle}, ${interpretation},
+              ${res.model}, ${DEEPREAD_PROMPT_VERSION}, ${res.receiptId}, ${identity.revision}, ${identity.pubRevision}, ${identity.basis}, 0, NULL, now())
+      ON CONFLICT (article_id) DO UPDATE SET
+        status = 'ready', skip_reason = NULL, error = NULL, kind = ${cls.kind}, entities = ${sql.json(entities as never)},
+        angle = ${res.data.angle}, interpretation = ${interpretation}, model = ${res.model},
+        prompt_version = ${DEEPREAD_PROMPT_VERSION}, receipt_id = ${res.receiptId},
+        input_revision = ${identity.revision}, pub_revision = ${identity.pubRevision}, input_hash = ${identity.basis}, attempts = 0, retry_at = NULL, updated_at = now()`;
+    return "written" as const;
+  });
+  if (written !== "written") return { ok: false, status: "pending", error: written };
   return { ok: true, status: "ready", model: res.model };
 }
 
-/** One sweep round: the newest public articles without a row, newest first. */
+/**
+ * One sweep round (T08/ym245). Candidates, entirely in SQL: articles with no row yet; rows whose
+ * input identity no longer matches (content revision moved, or the prompt/vocab basis changed —
+ * including legacy NULL rows) once their backoff has expired and under the attempt ceiling; and
+ * failed rows due for a retry, or whose input moved again after they hit the ceiling. The LIMIT
+ * keeps invalidation bounded: a vocab/prompt change re-reads the backlog a few rows per round,
+ * newest articles first, never as one unpaid mass re-run. `scanned` counts rows actually worked
+ * (a budget stop counts nothing) so the backfill loop's `scanned === 0` exit can't spin on a
+ * global budget stop.
+ */
 export async function sweepDeepReads(limit = 12): Promise<{ scanned: number; ready: number; skipped: number; failed: number }> {
+  const basis = currentBasis();
   const rows = await sql<{ article_id: string }[]>`
     SELECT p.article_id
     FROM publications p
+    JOIN articles a ON a.id = p.article_id
     LEFT JOIN article_deep_reads d ON d.article_id = p.article_id
-    WHERE d.article_id IS NULL AND p.visibility = 'public' AND p.eligible AND p.title IS NOT NULL
-    ORDER BY coalesce(p.published_at, p.discovered_at) DESC
+    WHERE p.visibility = 'public' AND p.eligible AND p.title IS NOT NULL
+      AND (
+        d.article_id IS NULL
+        OR (d.status IN ('ready', 'skipped')
+            AND (d.input_revision IS DISTINCT FROM a.revision OR d.pub_revision IS DISTINCT FROM p.revision
+                 OR d.input_hash IS DISTINCT FROM ${basis})
+            AND (d.retry_at IS NULL OR d.retry_at <= now()))
+        OR (d.status = 'failed'
+            AND ((d.retry_at IS NOT NULL AND d.retry_at <= now() AND d.attempts < ${MAX_ATTEMPTS})
+                 OR ((d.input_revision IS DISTINCT FROM a.revision OR d.pub_revision IS DISTINCT FROM p.revision
+                      OR d.input_hash IS DISTINCT FROM ${basis})
+                     AND (d.retry_at IS NULL OR d.retry_at <= now()))))
+      )
+    ORDER BY (CASE WHEN d.article_id IS NULL THEN 0 WHEN d.status = 'failed' THEN 1 ELSE 2 END),
+             coalesce(p.published_at, p.discovered_at) DESC
     LIMIT ${limit}`;
-  const stats = { scanned: rows.length, ready: 0, skipped: 0, failed: 0 };
-  for (const [i, r] of rows.entries()) {
+  const stats = { scanned: 0, ready: 0, skipped: 0, failed: 0 };
+  for (const r of rows) {
     if (shutdownSignal.signal.aborted) break;
     let out: DeepReadOutcome;
     try {
@@ -411,13 +583,18 @@ export async function sweepDeepReads(limit = 12): Promise<{ scanned: number; rea
       // One bad article must not kill the round: record it and move on (the next sweep retries it).
       await storeRow(r.article_id, "failed", String(error instanceof Error ? error.message : error).slice(0, 300)).catch(() => {});
       stats.failed += 1;
+      stats.scanned += 1;
       continue;
     }
+    if (out.budgetStopped) break; // global stop: the round ends, unworked rows count nothing
+    stats.scanned += 1;
     if (out.status === "ready") stats.ready += 1;
     else if (out.status === "skipped") stats.skipped += 1;
-    else if (out.status === "failed") stats.failed += 1;
+    // Both failed and pending outcomes sit on a failed row awaiting retry_at — count them as
+    // failed so the sweep's numbers match what the table actually holds (audit P3-5).
+    else stats.failed += 1;
     // Pace only after a paid call; skips cost nothing.
-    if (out.status === "ready" && i < rows.length - 1) await new Promise((resolve) => setTimeout(resolve, CALL_PACE_MS));
+    if (out.status === "ready" && stats.scanned < rows.length) await new Promise((resolve) => setTimeout(resolve, CALL_PACE_MS));
   }
   return stats;
 }
@@ -435,10 +612,17 @@ export interface SiteDeepReadRow {
 }
 
 export async function loadDeepReadForSite(articleId: string): Promise<SiteDeepReadRow | null> {
+  // Only a reading whose input identity is still current is public (AC3): the article's revision
+  // must match and the stored basis (prompt version + vocab seeds) must equal the current one —
+  // a legacy NULL identity row reads as a miss (0052's contract), and the item detail payload's
+  // AI 导读 stays the visitor's copy until a fresh reading lands.
   const [row] = await sql<{ kind: SiteDeepReadRow["kind"]; angle: SiteDeepReadRow["angle"]; interpretation: string; entities: unknown; updated_at: Date }[]>`
-    SELECT kind, angle, interpretation, entities, updated_at
-    FROM article_deep_reads
-    WHERE article_id = ${articleId} AND status = 'ready'`;
+    SELECT d.kind, d.angle, d.interpretation, d.entities, d.updated_at
+    FROM article_deep_reads d
+    JOIN articles a ON a.id = d.article_id
+    JOIN publications p ON p.article_id = d.article_id
+    WHERE d.article_id = ${articleId} AND d.status = 'ready'
+      AND d.input_revision = a.revision AND d.pub_revision = p.revision AND d.input_hash = ${currentBasis()}`;
   if (!row) return null;
   return {
     kind: row.kind,

@@ -117,7 +117,8 @@ before(async () => {
 after(async () => {
   // Park this file's residue outside the sweep's filter (same note as insights-transaction.test.ts).
   await sql`UPDATE articles SET processing_state = 'skipped' WHERE source_id = ${SOURCE}`;
-  await sql`DELETE FROM budgets WHERE service = 'llm'`;
+await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
   await stopBoss();
   await closeDb();
 });
@@ -210,7 +211,8 @@ test("AC2-T4: a budget stop leaves no row and halts the round (nothing counted a
     await resetState();
     const a1 = await article("国家统计局");
     const a2 = await article("国家统计局");
-    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 0, 0, 0)`;
+    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 0, 0, 0)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 0, per_hour = 0, per_day = 0`;
 
     const stats = await sweepDeepReads(5);
     assert.equal(stats.scanned, 0, `a global budget stop counts nothing worked (got ${JSON.stringify(stats)})`);
@@ -218,11 +220,15 @@ test("AC2-T4: a budget stop leaves no row and halts the round (nothing counted a
     assert.equal(await rowOf(a2), undefined, "the round halted — later articles were not even attempted");
     assert.equal(p.hits(), 0, "no provider call was made");
 
-    await sql`DELETE FROM budgets WHERE service = 'llm'`;
+    // "Budget back" = the migration 0036 defaults restored (a missing row is fail-closed since
+    // ym436, so a bare DELETE here would keep the sweep rejected, not unblocked).
+    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
     const after = await sweepDeepReads(5);
     assert.ok(after.ready >= 1, "with the budget back the sweep works the same articles");
   } finally {
-    await sql`DELETE FROM budgets WHERE service = 'llm'`;
+    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
     await p.close();
   }
 });

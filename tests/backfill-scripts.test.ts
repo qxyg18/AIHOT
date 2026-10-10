@@ -101,7 +101,8 @@ async function resetState() {
   await sql`DELETE FROM publications WHERE source_id LIKE 'test-backfill-scripts-%'`;
   await sql`DELETE FROM analyses WHERE article_id IN (SELECT id FROM articles WHERE source_id LIKE 'test-backfill-scripts-%')`;
   await sql`DELETE FROM article_deep_reads`;
-  await sql`DELETE FROM budgets WHERE service = 'llm'`;
+await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
 }
 
 before(async () => {
@@ -114,7 +115,8 @@ after(async () => {
   await sql`DELETE FROM publications WHERE source_id LIKE 'test-backfill-scripts-%'`;
   await sql`DELETE FROM analyses WHERE article_id IN (SELECT id FROM articles WHERE source_id = ${SOURCE})`;
   await sql`DELETE FROM article_deep_reads`;
-  await sql`DELETE FROM budgets WHERE service = 'llm'`;
+await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
   await stopBoss();
   await closeDb();
 });
@@ -264,7 +266,8 @@ test("AC2-T5: a budget stop leaves rows unworked and is reported as waiting_exte
     await resetState();
     await article("国家统计局");
     await article("国家统计局");
-    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 0, 0, 0)`;
+    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 0, 0, 0)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 0, per_hour = 0, per_day = 0`;
     const summary = await runBackfillDeepreads(["--all"]);
     assert.equal(summary.stoppedReason, "budget_stopped", `got ${JSON.stringify(summary)}`);
     assert.equal(summary.scanned, 0, "a budget stop works nothing");
@@ -272,7 +275,8 @@ test("AC2-T5: a budget stop leaves rows unworked and is reported as waiting_exte
     assert.equal(p.hits(), 0, "no provider call was made");
     const [count] = await sql<{ n: string }[]>`SELECT count(*)::text AS n FROM article_deep_reads`;
     assert.equal(count.n, "0", "no rows appeared");
-    await sql`DELETE FROM budgets WHERE service = 'llm'`;
+    await sql`INSERT INTO budgets (service, per_minute, per_hour, per_day) VALUES ('llm', 300, 6000, 40000)
+      ON CONFLICT (service) DO UPDATE SET per_minute = 300, per_hour = 6000, per_day = 40000`;
   } finally {
     await p.close();
   }
