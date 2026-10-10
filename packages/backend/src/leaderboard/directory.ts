@@ -11,6 +11,8 @@ import { sql } from "../db.ts";
 export const DIRECTORY_FILE = path.join(REPO_ROOT, "database/seeds/lb-models-2026-09-29.json");
 export const BRANDS_FILE = path.join(REPO_ROOT, "database/seeds/lb-brands-2026-10.json");
 export const MALLS_FILE = path.join(REPO_ROOT, "database/seeds/lb-malls-2026-10.json");
+/** v4.5：高德 POI 入驻图谱试点快照（scripts/collectors 产物并入种子目录随镜像分发；缺文件=详情页区块静默关闭）。 */
+export const TENANCY_FILE = path.join(REPO_ROOT, "database/seeds/lb-tenancy-2026-10.json");
 
 interface Directory {
   /** [slug, name, provider, provider slug, release date] */

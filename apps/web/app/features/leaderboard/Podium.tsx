@@ -17,8 +17,9 @@ const RANK_TEXT = ["text-rank-1", "text-rank-2", "text-rank-3"];
  * evidence, then who the model is beside the consensus index.
  */
 export function Podium({ entries, board }: { entries: LbBoardEntry[]; board: string }) {
-  const top = entries.filter((e) => e.rank <= 3).slice(0, 3);
-  if (top.length < 3) return null;
+  // rd13 过滤态语义：entries 已按名次升序，取幸存前三（显示原名次号）；守卫只看总数，避免筛选头部后区块整块消失。
+  const top = entries.slice(0, 3);
+  if (entries.length < 3) return null;
   return (
     <ol className="mt-3 hidden gap-3 md:grid md:grid-cols-3" aria-label="前三名">
       {top.map((e, i) => (

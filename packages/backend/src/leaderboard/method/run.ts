@@ -61,7 +61,16 @@ export async function runLeaderboardRound(opts: { at?: Date; force?: boolean } =
   const summary = {
     boards: BOARDS.map((b) => {
       const out = outputs.find((o) => o.board === b.key);
-      return { key: b.key, name: b.name, dimensions: b.dimensions.map(({ key, name, weight }) => ({ key, name, weight })), tiers: out?.tiers ?? {} };
+      // T13（ym246）：每榜本轮计分依据落库（T01 契约 LbRunBoardBasis 语义）——实际在役维度与计分分母
+      // 由 computeBoard 的 activeDims/totalWeight 生成；历史 run 无此字段，read 层如实标「历史未知」不回填。
+      const basis = out
+        ? {
+            effectiveDimensions: out.scoreBasis.dimensions.map((d) => d.key),
+            denominator: out.scoreBasis.totalWeight,
+            dimensions: out.scoreBasis.dimensions,
+          }
+        : null;
+      return { key: b.key, name: b.name, dimensions: b.dimensions.map(({ key, name, weight }) => ({ key, name, weight })), tiers: out?.tiers ?? {}, scoreBasis: basis };
     }),
     sources: sourceRows,
     consensus: {
@@ -95,7 +104,10 @@ export async function runLeaderboardRound(opts: { at?: Date; force?: boolean } =
           metric_count: e.sourceCount,
           summary: `${e.sourceCount} 项指标 · ${e.operatorCount} 家来源`,
           component_scores: { dimensions: e.dimensions, mode: out.mode },
-          detail: { mode: out.mode, sampleInsufficient: e.sampleInsufficient, operatorCount: e.operatorCount, dimensionNames: dimNames, dimensionTiers: out.tiers },
+          // rd7 值级成色 + rd8 推断填充/先验垫底：实体行级成色（含 infer 填充角标）覆盖营收/亲和维度角标，
+          // 其余实体用榜级 tiers；成色系数（machine 1.0/report 0.85/seed 0.7/infer 0.5）在算法内固定，
+          // 详情页可依角标档位复算加权分。
+          detail: { mode: out.mode, sampleInsufficient: e.sampleInsufficient, operatorCount: e.operatorCount, dimensionNames: dimNames, dimensionTiers: out.entityTiers[e.slug] ?? out.tiers },
         }));
       for (let i = 0; i < rows.length; i += 500) await tx`INSERT INTO lb_rankings ${tx(rows.slice(i, i + 500) as never)}`;
     }

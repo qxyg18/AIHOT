@@ -29,6 +29,8 @@ interface MallSeed {
   city: string;
   footfallTier: number;
   revenue: number | null;
+  /** rd7 值级成色：annual=联商网2025年度盘点值；estimate=项目长图人工估算（ka8 补录口径）。 */
+  revenueTier?: "annual" | "estimate";
   keywords: string[];
 }
 
@@ -69,7 +71,16 @@ export const manualSupplement: Fetcher = {
       mk("brand-stores", "门店规模（人工概数档位）", brands.filter((b) => b.stores != null).map((b) => row(b.name, b.slug, "brand-stores", "门店数（家，概数档位）", b.stores!))),
       mk("brand-social", "社媒指数（人工补录通道）", brands.filter((b) => b.socialIndex != null).map((b) => row(b.name, b.slug, "brand-social", "社媒指数", b.socialIndex!))),
       mk("mall-footfall", "商业体客流层级（人工种子）", malls.map((m) => row(m.name, m.slug, "mall-footfall", "客流层级（1-10）", m.footfallTier, { city: m.city }))),
-      mk("mall-revenue", "商业体2025销售额（联商盘点）", malls.filter((m) => m.revenue != null).map((m) => row(m.name, m.slug, "mall-revenue", "2025销售额（亿元）", m.revenue!, { city: m.city, dataNote: "联商网2025年度盘点·媒体整理不完全统计" }))),
+      // rd7 值级成色：revenueTier 随行落 metadata（annual=联商年度值→研报提取档；estimate=长图人工
+      // 估算→人工档），经 weighted.ts valueTierOf 透传到详情页 dimensionTiers（本期只标注，折价计分归 rd8）。
+      mk("mall-revenue", "商业体2025销售额（联商盘点+长图估算）", malls.filter((m) => m.revenue != null).map((m) => row(
+        m.name, m.slug, "mall-revenue", "2025销售额（亿元）", m.revenue!,
+        {
+          city: m.city,
+          revenueTier: m.revenueTier ?? "estimate",
+          dataNote: m.revenueTier === "annual" ? "联商网2025年度盘点·媒体整理不完全统计" : "项目长图人工估算（ka8 补录口径）",
+        },
+      ))),
     ];
   },
 };

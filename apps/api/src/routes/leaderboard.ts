@@ -2,7 +2,8 @@
 import type { FastifyInstance } from "fastify";
 import { LEADERBOARD_PUBLIC_BOARDS, type LeaderboardBoardKey } from "@aihot/contracts/taxonomy";
 import { loadBoard, loadModel, loadRulesData, loadSource, loadSources, NoLeaderboardRun } from "@aihot/backend/leaderboard/read";
-import { sendJsonWithEtag, sendProblem } from "../http/respond.ts";
+import { subViewByKey } from "@aihot/backend/leaderboard/registry";
+import { looseQuery, sendJsonWithEtag, sendProblem } from "../http/respond.ts";
 import { siteHandler } from "./site.ts";
 
 const CACHE = "public, max-age=120, s-maxage=300, stale-while-revalidate=600";
@@ -26,9 +27,24 @@ export function registerLeaderboard(app: FastifyInstance) {
   app.get("/api/site/leaderboard/boards/:key", guarded(async (req, reply) => {
     const key = (req.params as { key: string }).key;
     if (!(LEADERBOARD_PUBLIC_BOARDS as readonly string[]).includes(key)) return notFound(req, reply);
-    const body = await loadBoard(key as LeaderboardBoardKey);
+    // rd13 展示过滤：hide=逗号分隔主营隐藏档，mallType=画像类型；站点端点宽解析，未知参数忽略。
+    const q = looseQuery(req);
+    const body = await loadBoard(key as LeaderboardBoardKey, null, {
+      hideMainLines: (q.hide ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+      mallType: q.mallType || undefined,
+    });
     if (!body) return notFound(req, reply);
     return sendJsonWithEtag(req, reply, body, { etagPrefix: `lb-${key}`, cacheControl: CACHE });
+  }));
+
+  // rd9 子榜（分层视图）：品牌=价格带四层，商场=定位两层；实体子集与带内重排名在 read 层完成。
+  app.get("/api/site/leaderboard/subboards/:key", guarded(async (req, reply) => {
+    const key = (req.params as { key: string }).key;
+    const sub = subViewByKey(key);
+    if (!sub) return notFound(req, reply);
+    const body = await loadBoard(sub.board, sub.key);
+    if (!body) return notFound(req, reply);
+    return sendJsonWithEtag(req, reply, body, { etagPrefix: `lb-sub-${key}`, cacheControl: CACHE });
   }));
 
   app.get("/api/site/leaderboard/models/:slug", guarded(async (req, reply) => {

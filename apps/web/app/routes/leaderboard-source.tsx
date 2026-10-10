@@ -119,10 +119,10 @@ export default function LeaderboardSourcePage() {
             <table className="w-full min-w-[560px] text-[13.5px]">
               <thead className="bg-[rgba(28,39,51,0.04)] text-[12px] text-ink-4 dark:bg-white/[0.03]">
                 <tr className="border-b border-line">
-                  <th scope="col" className="w-24 whitespace-nowrap px-4 py-2.5 text-left font-medium lg:px-[22px]">原榜名次</th>
-                  <th scope="col" className="px-3 py-2.5 text-left font-medium">原榜型号</th>
+                  <th scope="col" className="w-24 whitespace-nowrap px-4 py-2.5 text-left font-medium lg:px-[22px]">来源名次</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">记录名称</th>
                   <th scope="col" className="px-3 py-2.5 text-left font-medium">原始成绩</th>
-                  <th scope="col" className="px-4 py-2.5 text-left font-medium lg:px-[22px]">{d.systemRows ? "运行配置" : "代表配置"}</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium lg:px-[22px]">{d.systemRows ? "运行条件" : "采用配置"}</th>
                 </tr>
               </thead>
               <tbody>

@@ -19,13 +19,37 @@ export const LB_CONFIDENCE_LABELS: Record<LbConfidence, string> = {
   LOW: "证据敏感",
 };
 
-/** rd4 数据置信级：machine=机器源 > report=研报提取 > seed=人工种子（榜单行/详情页角标）。 */
-export type LbSourceTier = "machine" | "report" | "seed";
+/** rd4 数据置信级：machine=机器源 > report=研报提取 > seed=人工种子（榜单行/详情页角标）。
+ *  rd8 增 infer=推断填充（缺数条件填充值，成色折价最低档 0.5），披露链与折价链同源。 */
+export type LbSourceTier = "machine" | "report" | "seed" | "infer";
 export const LB_SOURCE_TIER_LABELS: Record<LbSourceTier, string> = {
   machine: "机器源",
   report: "研报提取",
   seed: "人工种子",
+  infer: "推断填充",
 };
+
+/** ym132-④：文章信号（entity_signal_drafts approved）的类型与短名——实体页/榜详情页「文章信号」小节。 */
+export type LbSignalKind = "openings" | "revenue" | "stores";
+export const LB_SIGNAL_KIND_LABELS: Record<LbSignalKind, string> = {
+  openings: "新开店数",
+  revenue: "业绩数字",
+  stores: "门店数",
+};
+
+/** ym132-④：一条已审核的文章信号（人工审核位通过后才进入展示面）。 */
+export interface LbEntitySignal {
+  id: string;
+  kind: LbSignalKind;
+  value: number;
+  unit: string;
+  caliber: string | null;
+  quote: string;
+  articleId: string;
+  articleTitle: string | null;
+  /** 审核通过时刻（ISO）。 */
+  at: string;
+}
 
 /** 维度 key → 角标短名（正本=算法 DimensionSpec.name，此处仅供榜单行置信级角标拼装）。 */
 export const LB_DIMENSION_LABELS: Record<string, string> = {
@@ -37,6 +61,16 @@ export const LB_DIMENSION_LABELS: Record<string, string> = {
   volume: "声量",
   stores: "规模",
   expansion: "扩张",
+};
+
+/**
+ * rd14：详情页维度得分面板的展示顺序（=各榜 DimensionSpec 权重定稿序，业绩置首）。
+ * jsonb 维度分天然按键重排（规模/声量/业绩），面板按此表排序对齐列表页口径；
+ * order 未覆盖的历史维度键（如 expansion、v4.6 起的 firststore）尾追渲染，防丢数据。
+ */
+export const LB_DIMENSION_ORDER: Record<string, readonly string[]> = {
+  brand: ["revenue", "stores", "volume"],
+  mall: ["revenue", "footfall", "media", "affinity"],
 };
 
 export interface LbBrand {
@@ -67,11 +101,24 @@ export interface LbFx {
   sourceName: string;
 }
 
+/** T01/ym239：本轮 run 的每榜计分依据（有效维度/分母/说明）。历史 run 未落元数据时整体为 null，如实标"历史未知"，不猜本轮。 */
+export interface LbRunBoardBasis {
+  key: LeaderboardBoardKey;
+  /** 本轮实际参与计分的维度 key（按权重定稿序）；null=历史 run 未落元数据。 */
+  effectiveDimensions: string[] | null;
+  /** 计分分母=本轮有效维度权重之和（与 run registry 权重同源，由实际 activeDims/totalWeight 生成）；null=历史未知。 */
+  denominator: number | null;
+  /** 计分口径说明（覆盖不足/缺数成色等，由实际计分元数据生成）；null=历史未知。 */
+  scoreBasis: string | null;
+}
+
 export interface LbRunInfo {
   id: string;
   methodologyVersion: string;
   generatedAt: string;
   fx: LbFx | null;
+  /** T01/ym239：每榜本轮有效维度/分母证据（规则页/来源页披露同源）；缺省或 null=历史 run 未落。 */
+  boards?: LbRunBoardBasis[] | null;
 }
 
 export interface LbStability {
@@ -98,6 +145,8 @@ export interface LbModelRef {
 export interface LbProfile {
   /** 品牌主营品类 */
   category: string | null;
+  /** 英文名主名（ym166 落库批：种子 name_en 读时映射；null=未获页面证据，宁缺勿编） */
+  nameEn: string | null;
   /** 上市信息（交易所/代码/年份，文本） */
   listed: string | null;
   /** 年业绩预估（亿元人民币） */
@@ -140,6 +189,20 @@ export interface LbBoardTab {
   href: string;
 }
 
+/** rd9 子榜：总榜按分层口径切出的带内视图入口（带选择器渲染 + 计数角标）。 */
+export interface LbSubBoard {
+  key: string;
+  name: string;
+  /** 选择器短标签（如「中端」「家庭主流」）。 */
+  short: string;
+  href: string;
+  /** 该层实体数（与总榜同展示上限口径）。 */
+  count: number;
+  /** 命中规则：人工种子档案字段的命中值集合。 */
+  values: string[];
+  note: string;
+}
+
 export interface LbBoardMeta {
   key: LeaderboardBoardKey;
   name: string;
@@ -149,6 +212,8 @@ export interface LbBoardMeta {
   sourceCount: number;
   operatorCount: number;
   modelCount: number;
+  /** v4.5：本轮在役维度权重（由 run registry 聚合，键=维度 key、值=0-1）；页面权重条与算法同源。 */
+  weights?: Record<string, number>;
 }
 
 export interface LbBoardEntry {
@@ -168,6 +233,12 @@ export interface LbBoardEntry {
   mode: string | null;
   /** rd4：维度 key → 数据置信级（machine/report/seed），null=rd4 之前的历史 run。 */
   dimensionTiers: Record<string, string> | null;
+  /** rd9 子榜：该实体在总榜的名次；总榜视图=null，子榜行=总榜序（名次为带内重排后）。 */
+  overallRank: number | null;
+  /** v4.5：商业体客流档位原始值（人工种子 1-10 档，10 为最高；机器源接入后仍披露种子档）；品牌榜恒 null。 */
+  footfallTier: number | null;
+  /** ym132-①：该实体近 90 天站内报道数（与详情页相关报道同窗同闸）；0=无角标。 */
+  articleCount: number;
 }
 
 export interface LbBoardResponse {
@@ -175,6 +246,10 @@ export interface LbBoardResponse {
   board: LbBoardMeta;
   tabs: LbBoardTab[];
   entries: LbBoardEntry[];
+  /** rd9：当前榜单的分层子榜入口（总榜页与子榜页同列，带选择器渲染）；空数组=该榜无子榜。 */
+  subBoards: LbSubBoard[];
+  /** rd9：当前视图=子榜时的分层口径；null=总榜视图。 */
+  subView: { key: string; name: string; values: string[]; note: string } | null;
 }
 
 export type LbScoreFormat = "percent" | "fraction" | "number";
@@ -239,6 +314,8 @@ export interface LbComparison {
 
 export interface LbModelDetail {
   run: LbRunInfo;
+  /** T01/ym239：本详情当前所属榜（mall=商业体榜，brand=品牌榜）；可选，缺省/null=历史数据未标，不臆断。 */
+  currentBoard?: LeaderboardBoardKey | null;
   model: LbModelRef & { contextWindowTokens: number | null };
   price: LbPrice | null;
   overall: { rank: number | null; score: number | null; onBoard: boolean; confidence: LbConfidence | null; stability: LbStability | null };
@@ -247,16 +324,46 @@ export interface LbModelDetail {
   evidence: LbEvidenceGroup[];
   unmeasured: Array<{ key: string; name: string }>;
   /** rd4：商场实体维度档案——名次/维度分/维度置信级，null=非商场榜实体或历史 run 未落维度明细。 */
-  mallBoard: {
-    rank: number;
-    score: number | null;
-    coverage: number | null;
-    mode: string | null;
-    dimensions: Record<string, number | null> | null;
-    dimensionTiers: Record<string, string> | null;
-    unmeasuredDimensions: Array<{ key: string; name: string }>;
-  } | null;
+  mallBoard: LbDimensionBoard | null;
+  /** rd14：品牌实体维度档案——名次/维度分/维度置信级（业绩/规模/声量三维），null=非品牌榜实体或历史 run 未落维度明细。 */
+  brandBoard: LbDimensionBoard | null;
+  /** ym82：榜条目直达文章——该实体近 90 天关联文章（article_entities 标注，前 8 篇），空=无标注。 */
+  relatedArticles: LbRelatedArticle[];
+  /** ym82：该实体关联文章总数（含未列出的）。 */
+  relatedArticleCount: number;
+  /** ym132-④：已审核文章信号（新到旧）；空=该实体暂无 approved 信号，展示层整块不渲染。 */
+  entitySignals: LbEntitySignal[];
+  /** v4.5：商业体详情页「已开店童装品牌」——高德入驻图谱试点快照按种子商场名回连的边（needsReview=false）；null=非商场实体。 */
+  tenancyBrands: LbTenancyBrand[] | null;
+  /** ym152：实体档案页存在性（brand=brand_profiles ready 行；mall=种子商场名录命中，与 entityProfile 同 gate）——详情页入口链接据此渲染，false 不渲染防 404。 */
+  entityProfileReady: boolean;
   comparisons: LbComparison[];
+}
+
+/** v4.5：入驻图谱披露行（confidence=高德邻近信号强度：strong=150m 坐标邻近，weak=400m）；linked=品牌在品牌榜展示面。 */
+export interface LbTenancyBrand {
+  slug: string;
+  name: string;
+  confidence: "strong" | "weak";
+  linked: boolean;
+}
+
+/** ym82：榜详情页相关报道行（article_entities JOIN articles 的截取）。 */
+export interface LbRelatedArticle {
+  id: string;
+  title: string;
+  publishedAt: string | null;
+}
+
+/** rd14：实体维度得分面板载荷（品牌三维/商场五维同型，装配=read.ts loadModel 直取榜单行 component_scores+detail）。 */
+export interface LbDimensionBoard {
+  rank: number;
+  score: number | null;
+  coverage: number | null;
+  mode: string | null;
+  dimensions: Record<string, number | null> | null;
+  dimensionTiers: Record<string, string> | null;
+  unmeasuredDimensions: Array<{ key: string; name: string }>;
 }
 
 export interface LbSourceSummary {

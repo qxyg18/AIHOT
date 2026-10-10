@@ -3,8 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLoaderData, useSearchParams } from "react-router";
 import { Collapse } from "../components/ui/Presence";
 import type { Route } from "./+types/leaderboard-model";
-import type { LbComparison, LbEvidenceItem, LbModelDetail } from "@aihot/contracts/leaderboard";
-import { LB_DIMENSION_LABELS, LB_SOURCE_TIER_LABELS } from "@aihot/contracts/leaderboard";
+import type { LbComparison, LbDimensionBoard, LbEvidenceItem, LbModelDetail } from "@aihot/contracts/leaderboard";
+import { LB_DIMENSION_LABELS, LB_DIMENSION_ORDER, LB_SIGNAL_KIND_LABELS, LB_SOURCE_TIER_LABELS } from "@aihot/contracts/leaderboard";
 import { LEADERBOARD_BOARD_LABELS, LEADERBOARD_PUBLIC_BOARDS } from "@aihot/contracts/taxonomy";
 import { loadOr404 } from "../lib/api.server";
 import type { SiteInsightsResponse } from "@aihot/contracts/site";
@@ -67,6 +67,46 @@ function SectionHead({ eyebrow, title, sub }: { eyebrow: string; title: string; 
   );
 }
 
+// rd14：实体维度得分面板（品牌三维/商场五维同型；商场版 rd4 起、品牌版 rd14 起）。
+// 维度行按 LB_DIMENSION_ORDER（权重定稿序，业绩置首）渲染；order 未覆盖的历史维度键尾追。
+function DimensionBoardPanel({ title, board, order, foot }: { title: string; board: LbDimensionBoard; order: readonly string[]; foot?: string }) {
+  const dimensions = board.dimensions ?? {};
+  const orderedKeys = [...order.filter((k) => k in dimensions), ...Object.keys(dimensions).filter((k) => !order.includes(k))];
+  return (
+    <div className="mt-6">
+      <h3 className="flex items-baseline gap-2 text-[14px] font-semibold text-ink">
+        {title}
+        <span className="num text-[11.5px] font-normal text-ink-4">
+          第 {board.rank} 名 · {board.score != null ? board.score.toFixed(1) : "—"} 分
+          {board.coverage != null ? ` · 覆盖度 ${pctFixed(board.coverage)}` : ""}
+        </span>
+      </h3>
+      <ul className="mt-2.5 space-y-2">
+        {orderedKeys.map((k) => {
+          const v = dimensions[k];
+          return (
+            <li key={k} className="flex items-center justify-between gap-3 rounded-card border border-line bg-raised px-4 py-2.5">
+              <span className="text-[13px] text-ink-2">{LB_DIMENSION_LABELS[k] ?? k}</span>
+              <span className="flex items-center gap-3">
+                <TierChips tiers={board.dimensionTiers} dims={[k]} />
+                <span className="mono text-[15px] font-semibold text-ink">{v != null ? v.toFixed(1) : "—"}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {board.unmeasuredDimensions.length > 0 && (
+        <p className="mt-2.5 text-[12.5px] text-ink-3">
+          未覆盖维度（计 0 贡献）：{board.unmeasuredDimensions.map((u) => u.name).join("、")}。
+        </p>
+      )}
+      <p className="mt-2 text-[11.5px] text-ink-4">
+        {foot ?? "角标=该维度数据来源置信级：机器源＞研报提取＞人工种子＞推断填充；维度分按档位折价计权（1.0/0.85/0.7/0.5）。"}
+      </p>
+    </div>
+  );
+}
+
 function Stat({ label, children, foot }: { label: string; children: ReactNode; foot?: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col">
@@ -115,7 +155,7 @@ function profileIntro(d: LbModelDetail, isBrandEntity: boolean): string | null {
 function Capability({ d, from }: { d: LbModelDetail; from: string }) {
   return (
     <section className="mt-12">
-      <SectionHead eyebrow="CAPABILITY PROFILE" title="各有所长，看得更清楚。" sub="每项能力单独计算。没有足够的实测，就留空。" />
+      <SectionHead eyebrow="BOARD POSITIONS" title="各有所长，看得更清楚。" sub="每张榜单独计分。没有足够的实测，就留空。" />
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {d.categories.map((c) => (
           <Link
@@ -126,7 +166,7 @@ function Capability({ d, from }: { d: LbModelDetail; from: string }) {
             <span className="flex items-center justify-between gap-2">
               <span className="text-[14px] font-semibold text-ink transition-colors group-hover:text-accent">{c.name}</span>
               {c.rank !== null ? (
-                <span className={`mono text-[11.5px] font-semibold ${c.onBoard ? "text-accent" : "text-ink-4"}`}>{c.onBoard ? `#${c.rank}` : "30 名之外"}</span>
+                <span className={`mono text-[11.5px] font-semibold ${c.onBoard ? "text-accent" : "text-ink-4"}`}>{c.onBoard ? `#${c.rank}` : "展示上限之外"}</span>
               ) : (
                 <span className="text-[11px] text-ink-4">证据待补齐</span>
               )}
@@ -138,14 +178,14 @@ function Capability({ d, from }: { d: LbModelDetail; from: string }) {
               </>
             ) : (
               <>
-                <span className="mono mt-4 text-[32px] font-medium leading-none text-ink-4">—</span>
-                <span className="mt-auto pt-4 text-[12px] text-ink-4">暂无足够的可比成绩</span>
+                <span className="mono mt-4 text-[32px] font-medium leading-none tracking-[-0.03em] text-ink-4">—</span>
+                <span className="mt-auto pt-4 text-[12px] text-ink-4">暂无足够的可比数据</span>
               </>
             )}
           </Link>
         ))}
       </div>
-      <p className="mt-3 text-[12px] text-ink-4">不同分类的分数反映各自参照组中的排序支持，不能直接相加或用来比较不同能力的绝对高低。</p>
+      <p className="mt-3 text-[12px] text-ink-4">不同榜单的分数反映各自维度加权与参照组中的排序支持，不能直接相加或用来比较不同榜的绝对高低。</p>
     </section>
   );
 }
@@ -324,6 +364,101 @@ function EvidenceCard({ it }: { it: LbEvidenceItem }) {
   );
 }
 
+// ym82 串联首期：榜条目直达文章——article_entities 标注的近 90 天关联报道。
+// 零标注时整块不渲染（空态优雅降级）；日期与实体页同口径取 publishedAt 前 10 位。
+// ym132-①：本区块 id=in-the-news 供榜面行内「报道 N 篇」角标直达。
+function RelatedArticles({ d }: { d: ReturnType<typeof useLoaderData<typeof loader>> }) {
+  const articles = d.relatedArticles ?? [];
+  if (articles.length === 0) return null;
+  const entityType = d.mallBoard ? "mall" : "brand";
+  return (
+    <section id="in-the-news" className="mt-12 scroll-mt-6">
+      <SectionHead eyebrow="IN THE NEWS" title="相关报道，直接可读。" sub={`站内文章标注到 ${d.model.name} 的近 90 天报道，点击直达原文。`} />
+      <ul className="mt-5 space-y-2">
+        {articles.map((a) => (
+          <li key={a.id}>
+            <Link to={`/items/${a.id}`} className="card card-hover flex items-center justify-between gap-3 rounded-tile px-4 py-3">
+              <span className="min-w-0 truncate text-[13.5px] text-ink">{a.title}</span>
+              {a.publishedAt && <time className="mono shrink-0 text-[11.5px] text-ink-4">{a.publishedAt.slice(0, 10)}</time>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {/* ym152 审计 P2 销项：旧链接与 entityProfileReady 共闸，防无档品牌 404 死链（与头部新入口同 gate）。 */}
+      {d.entityProfileReady && d.relatedArticleCount > articles.length && (
+        <p className="mt-2.5 text-[12px] text-ink-4">
+          共 {d.relatedArticleCount} 篇。<Link to={`/entity/${entityType}/${d.model.slug}`} className="font-medium text-accent">查看实体档案页</Link>获取全部关联与共现分析。
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ym132-④：文章信号——站内报道提取的经营数据点，人工审核位通过后才进入此面
+// （drafts 表 approved，与实体页同源读面）；零信号整块不渲染。
+function EntitySignals({ d }: { d: ReturnType<typeof useLoaderData<typeof loader>> }) {
+  const signals = d.entitySignals ?? [];
+  if (signals.length === 0) return null;
+  return (
+    <section className="mt-12">
+      <SectionHead eyebrow="FROM THE COVERAGE" title="文章信号" sub={`站内报道里提取的 ${d.model.name} 经营数据点，经人工审核后展示。`} />
+      <ul className="mt-5 space-y-2">
+        {signals.map((s) => (
+          <li key={s.id} className="card rounded-tile px-4 py-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="rounded-mark bg-bg-sunk px-1.5 py-px text-[11px] text-ink-3">{LB_SIGNAL_KIND_LABELS[s.kind] ?? s.kind}</span>
+              <span className="mono text-[16px] font-semibold text-ink">{s.value.toLocaleString("zh-Hans-CN")}{s.unit}</span>
+              {s.caliber && <span className="text-[11.5px] text-ink-4">{s.caliber}</span>}
+              {s.at && <time className="ml-auto shrink-0 text-[11.5px] text-ink-4">{s.at.slice(0, 10)} 审核</time>}
+            </div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">“{s.quote}”</p>
+            <Link to={`/items/${s.articleId}`} prefetch="intent" className="mt-1 inline-flex text-[12px] font-medium text-accent transition-colors hover:text-accent-ink">
+              《{s.articleTitle ?? "查看原文"}》
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2.5 text-[11.5px] leading-relaxed text-ink-4">口径：站内文章数字经提取器归到本实体、人工审核通过后展示（非官方公报）；同一事实的多篇报道只保留审核记录，重复提取不叠加。</p>
+    </section>
+  );
+}
+
+// v4.5（2026-10-02 命主令）：商业体详情页「已开店童装品牌」——高德入驻图谱试点快照回连的边
+// （needsReview=false 已在读取层过滤）。品牌链到品牌榜详情页；零匹配整块不渲染。
+function TenancyBrands({ d }: { d: ReturnType<typeof useLoaderData<typeof loader>> }) {
+  const brands = d.tenancyBrands ?? [];
+  if (!d.mallBoard || brands.length === 0) return null;
+  return (
+    <section className="mt-12">
+      <SectionHead eyebrow="IN-STORE BRANDS" title="已入驻的童装品牌。" sub={`地图入驻图谱匹配到 ${d.model.name} 的童装品牌门店信号，点击直达品牌榜档案。`} />
+      <ul className="mt-5 flex flex-wrap gap-2">
+        {brands.map((b) => {
+          const chip = (
+            <>
+              <span>{b.name}</span>
+              <span className={`rounded-mark px-1.5 py-px text-[10.5px] font-normal ${b.confidence === "strong" ? "bg-accent-softer text-accent" : "bg-bg-sunk text-ink-3"}`}>
+                {b.confidence === "strong" ? "强信号" : "弱信号"}
+              </span>
+            </>
+          );
+          return (
+            <li key={b.slug}>
+              {b.linked ? (
+                <Link to={`/leaderboard/${b.slug}`} prefetch="intent" className="chip inline-flex items-center gap-1.5 transition-colors hover:border-ink-4 hover:text-accent">
+                  {chip}
+                </Link>
+              ) : (
+                <span className="chip inline-flex items-center gap-1.5">{chip}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2.5 text-[11.5px] text-ink-4">口径：高德 POI 坐标邻近（150m=强信号 / 400m=弱信号）与店名内嵌商场名双信号；人工复核未过的边不展示。试点期快照仅覆盖部分城市，全量采集接入后自动增厚。</p>
+    </section>
+  );
+}
+
 export default function LeaderboardModelPage() {
   const d = useLoaderData<typeof loader>();
   const [params] = useSearchParams();
@@ -337,6 +472,13 @@ export default function LeaderboardModelPage() {
   const isBrandEntity = profile?.category != null || profile?.stores != null;
   const intro = profileIntro(d, isBrandEntity);
   const withScores = d.categories.filter((c) => c.score !== null).length;
+  // T13（ym246）currentBoard 渲染：商场实体主榜=全国商业体榜（品牌榜视角 overall 恒空，不误称「未进入
+  // 综合榜」）；品牌实体主榜=童装品牌榜。头部名次/分数按主榜口径；上榜判定复用后端按各榜展示上限
+  // 算好的 onBoard（categories[].onBoard / overall.onBoard），页面不另维护 80/1000 副本。
+  const mallCategory = d.categories.find((c) => c.key === "mall");
+  const currentBoard = d.mallBoard
+    ? { label: "商业体榜加权分", isMall: true as const, rank: d.mallBoard.rank, score: d.mallBoard.score, onBoard: mallCategory?.onBoard ?? false, outLabel: "商业体榜展示上限之外" }
+    : { label: "品牌榜加权分", isMall: false as const, rank: overall.rank, score: overall.score, onBoard: overall.onBoard, outLabel: "品牌榜展示上限之外" };
   return (
     <div className="pb-12">
       <Link to={boardHref(from)} className="mt-4 inline-flex items-center gap-1.5 py-2 text-[13px] text-ink-3 transition-colors hover:text-accent lg:mt-0">
@@ -347,20 +489,40 @@ export default function LeaderboardModelPage() {
         <div className="flex items-center gap-4">
           <BrandMark brand={model.brand} size={52} />
           <div className="min-w-0">
-            <h1 className="text-[24px] font-semibold leading-[1.3] tracking-[-0.02em] text-ink">{model.name}</h1>
+            <h1 className="text-[24px] font-semibold leading-[1.3] tracking-[-0.02em] text-ink">
+              {model.name}
+              {/* ym166：英文名主名（种子 name_en 读时映射；null=未获证不展示，商场实体不展示） */}
+              {isBrandEntity && profile?.nameEn && <span className="ml-2 text-[15px] font-normal text-ink-3">{profile.nameEn}</span>}
+            </h1>
             <p className="num mt-1 text-[12.5px] text-ink-3">
               {(isBrandEntity ? (model.provider ?? "—") : [...new Set([profile?.province, model.provider].filter(Boolean))].join(" · ") || "—")} · {isBrandEntity ? (profile?.listed ?? "上市信息待核实") : profile?.openedAt ? `${profile.openedAt} 开业` : "开业年份待核实"} · {shortStamp(d.run.generatedAt)} 更新
             </p>
           </div>
         </div>
         <div className="sm:text-right">
-          <span className="block text-[12px] text-ink-4">综合共识指数</span>
-          <strong className="mono block text-[48px] font-medium leading-[1.25] tracking-[-0.055em] text-accent lg:text-[55px]">{overall.score !== null ? overall.score.toFixed(1) : "—"}</strong>
-          <b className={`text-[12px] font-medium ${overall.onBoard ? "text-ink-3" : "text-ink-4"}`}>
-            {overall.rank === null ? "未进入综合榜" : overall.onBoard ? `综合榜第 ${overall.rank} 名` : "综合榜前 30 名之外"}
+          <span className="block text-[12px] text-ink-4">{currentBoard.label}</span>
+          <strong className="mono block text-[48px] font-medium leading-[1.25] tracking-[-0.055em] text-accent lg:text-[55px]">{currentBoard.score != null ? currentBoard.score.toFixed(1) : "—"}</strong>
+          <b className={`text-[12px] font-medium ${currentBoard.onBoard ? "text-ink-3" : "text-ink-4"}`}>
+            {currentBoard.rank === null
+              ? currentBoard.isMall ? "未进入商业体榜" : "未进入品牌榜"
+              : currentBoard.onBoard
+                ? `${currentBoard.isMall ? "商业体榜" : "品牌榜"}第 ${currentBoard.rank} 名`
+                : currentBoard.outLabel}
           </b>
         </div>
       </header>
+
+      {/* ym152（命主令）：实体档案页入口——此前仅关联报道区条件隐藏，常驻挂头部下方；gate=entityProfileReady 防缺档 404。 */}
+      {d.entityProfileReady && (
+        <p className="mt-[-10px] pb-1">
+          <Link
+            to={`/entity/${d.mallBoard ? "mall" : "brand"}/${model.slug}`}
+            className="inline-flex items-center gap-1 text-[13px] font-medium text-accent transition-colors hover:text-accent-ink"
+          >
+            实体档案{d.mallBoard ? "" : " · 门店分布"} <IconArrowRight size={13} />
+          </Link>
+        </p>
+      )}
 
       {intro && (
         <section className="mt-6" aria-label="档案简介">
@@ -372,9 +534,9 @@ export default function LeaderboardModelPage() {
       )}
 
       <section className="grid grid-cols-2 gap-x-4 gap-y-6 border-y border-line py-6 lg:grid-cols-4" aria-label="实体概览">
-        <Stat label="分类成绩">
+        <Stat label="各榜成绩">
           {withScores}
-          <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">/ 4 项分类</small>
+          <small className="ml-1 font-sans text-[11px] font-normal text-ink-4">/ {d.categories.length} 张榜</small>
         </Stat>
         <Stat label="已有成绩">
           {d.metricCount}
@@ -421,33 +583,14 @@ export default function LeaderboardModelPage() {
       <section className="mt-12">
         <SectionHead eyebrow="BEHIND THE SCORE" title="每一项数据，都有来处。" sub="下面是该实体的各维度指标数据。展开可查看采集口径与采用方式。" />
         {d.mallBoard && d.evidence.length === 0 && (
-          <div className="mt-6">
-            <h3 className="flex items-baseline gap-2 text-[14px] font-semibold text-ink">
-              商业体榜五维得分
-              <span className="num text-[11.5px] font-normal text-ink-4">
-                第 {d.mallBoard.rank} 名 · {d.mallBoard.score != null ? d.mallBoard.score.toFixed(1) : "—"} 分
-                {d.mallBoard.coverage != null ? ` · 覆盖度 ${pctFixed(d.mallBoard.coverage)}` : ""}
-              </span>
-            </h3>
-            <ul className="mt-2.5 space-y-2">
-              {Object.entries(d.mallBoard.dimensions ?? {}).map(([k, v]) => (
-                <li key={k} className="flex items-center justify-between gap-3 rounded-card border border-line bg-raised px-4 py-2.5">
-                  <span className="text-[13px] text-ink-2">{LB_DIMENSION_LABELS[k] ?? k}</span>
-                  <span className="flex items-center gap-3">
-                    <TierChips tiers={d.mallBoard!.dimensionTiers} dims={[k]} />
-                    <span className="mono text-[15px] font-semibold text-ink">{v != null ? v.toFixed(1) : "—"}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {d.mallBoard.unmeasuredDimensions.length > 0 && (
-              <p className="mt-2.5 text-[12.5px] text-ink-3">
-                未覆盖维度（计 0 贡献）：{d.mallBoard.unmeasuredDimensions.map((u) => u.name).join("、")}。
-              </p>
-            )}
-            <p className="mt-2 text-[11.5px] text-ink-4">角标=该维度数据来源置信级：机器源＞研报提取＞人工种子；客流正源接入后自动升档。</p>
-          </div>
+          <DimensionBoardPanel
+            title="商业体榜维度得分"
+            board={d.mallBoard}
+            order={LB_DIMENSION_ORDER.mall}
+            foot="角标=该维度数据来源置信级：机器源＞研报提取＞人工种子＞推断填充；维度分按档位折价计权（1.0/0.85/0.7/0.5），客流正源接入后自动升档。"
+          />
         )}
+        {d.brandBoard && <DimensionBoardPanel title="童装品牌榜三维得分" board={d.brandBoard} order={LB_DIMENSION_ORDER.brand} />}
         {d.evidence.map((g) => (
           <div key={g.key} className="mt-6">
             <h3 className="flex items-baseline gap-2 text-[14px] font-semibold text-ink">
@@ -464,7 +607,7 @@ export default function LeaderboardModelPage() {
         {d.mallBoard && d.evidence.length === 0 ? null : d.unmeasured.length > 0 && (
           <div className="mt-6">
             <h3 className="text-[14px] font-semibold text-ink">未覆盖的指标</h3>
-            <p className="mt-1 text-[12.5px] text-ink-3">这些指标暂无该实体的数据，该维度计 0 贡献（各维度独立计权，不交叉补位），覆盖度单独披露。</p>
+            <p className="mt-1 text-[12.5px] text-ink-3">这些指标暂无该实体的数据；可条件填充的维度（如营收）已按同条件组中位数补「推断填充」值，其余该维度计 0 贡献（各维度独立计权，不交叉补位），覆盖度单独披露。</p>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {d.unmeasured.map((u) => (
                 <Link key={u.key} to={`/leaderboard/sources/${u.key}`} className="chip">
@@ -476,11 +619,17 @@ export default function LeaderboardModelPage() {
         )}
       </section>
 
+      <TenancyBrands d={d} />
+
+      <EntitySignals d={d} />
+
+      <RelatedArticles d={d} />
+
       <EntityInsightList insights={d.insights} />
 
       <section className="mt-10 border-t border-line pt-6">
         <h2 className="text-[15px] font-semibold text-ink">还有一些未知</h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">缺失的指标按 0 贡献计入固定权重的总分。实体的名次会随数据积累变化，分数相近时不宜过度解读细小差距。</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">缺失的指标按 0 贡献计入在役权重总和的总分（本轮在役维度与计分分母见排名规则页）。实体的名次会随数据积累变化，分数相近时不宜过度解读细小差距。</p>
         <Link to="/leaderboard/rules" className="mt-2.5 inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:text-accent-ink">
           了解计算方法 →
         </Link>

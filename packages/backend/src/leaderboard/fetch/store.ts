@@ -100,8 +100,10 @@ export async function resolveRows(result: FetchResult, dryRun = false): Promise<
 }
 
 function contentHash(rows: ResolvedRow[]): string {
+  // rd7：值级成色字段（revenueTier）计入内容哈希——它是随行披露语义的一部分，种子只改成色时
+  // 必须换快照重算（纯展示性 metadata 变更仍不触发重发布，判重口径不变）。
   const canon = rows
-    .map((r) => [r.sourceModelName, storedConfigurationKey(r), r.metricKey, r.rawScore, r.lowerBound ?? null, r.upperBound ?? null, r.modelId, r.selected])
+    .map((r) => [r.sourceModelName, storedConfigurationKey(r), r.metricKey, r.rawScore, r.lowerBound ?? null, r.upperBound ?? null, r.modelId, r.selected, (r.metadata?.revenueTier as string | undefined) ?? null])
     .sort((a, b) => (stableJson(a) < stableJson(b) ? -1 : 1));
   return sha256(stableJson(canon));
 }

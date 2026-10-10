@@ -3,10 +3,10 @@ import { Link } from "react-router";
 import type { LbBoardEntry } from "@aihot/contracts/leaderboard";
 import { LB_CONFIDENCE_LABELS } from "@aihot/contracts/leaderboard";
 import { BrandMark } from "./BrandMark";
-import { EvidenceBadge, TierChips } from "./Evidence";
+import { TierChips } from "./Evidence";
 import { modelHref } from "./format";
 
-type SortKey = "rank" | "date" | "coverage" | "revenue" | "stores" | "area";
+type SortKey = "rank" | "date" | "revenue" | "stores" | "area" | "footfall";
 
 function sortValue(e: LbBoardEntry, key: SortKey): number | null {
   switch (key) {
@@ -17,14 +17,15 @@ function sortValue(e: LbBoardEntry, key: SortKey): number | null {
       const y = e.model.profile?.openedAt ?? e.model.profile?.founded ?? null;
       return y ? -Number(y) : e.model.releasedAt ? -Date.parse(e.model.releasedAt) : null;
     }
-    case "coverage":
-      return -(e.coverage * 1000 + e.sourceCount);
     case "revenue":
       return e.model.profile?.revenueYi ?? null;
     case "stores":
       return e.model.profile?.stores ?? null;
     case "area":
       return e.model.profile?.areaWanSqm ?? null;
+    case "footfall":
+      // v4.5：客流档位原始值（人工种子 1-10 档）；榜单行自带，缺数据=null。
+      return e.footfallTier ?? null;
   }
 }
 
@@ -120,7 +121,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
   return (
     <>
     <table className="w-full border-collapse text-[14px]">
-      <caption className="sr-only">可按列重排的前 {entries.length} 名{isBrand ? "童装品牌" : "商业体"}</caption>
+      <caption className="sr-only">可按列重排的 {entries.length} 个实体</caption>
       <thead className="bg-[rgba(28,39,51,0.04)] text-[12px] text-ink-4 dark:bg-white/[0.03]">
         <tr className="border-y border-line">
           <th scope="col" className="w-[44px] py-2.5 pl-4 pr-1 text-left font-medium lg:w-[68px] lg:pl-[22px] lg:pr-3">
@@ -141,11 +142,12 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
               <th scope="col" className="hidden px-3 py-2.5 text-left font-medium lg:table-cell">所属集团</th>
               <SortHeader k="area" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">面积（万㎡）</SortHeader>
               <SortHeader k="date" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">开业日期</SortHeader>
+              <SortHeader k="footfall" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">客流档位</SortHeader>
             </>
           )}
-          <SortHeader k="coverage" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">指标覆盖</SortHeader>
           <SortHeader k="revenue" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">年业绩预估（亿元）</SortHeader>
           {isBrand && <SortHeader k="stores" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">门店规模预估（家）</SortHeader>}
+          <th scope="col" className="hidden px-3 py-2.5 text-right font-medium lg:table-cell">声量</th>
           <th scope="col" className="py-2.5 pl-2 pr-4 text-right font-medium lg:pl-3 lg:pr-[22px]">
             <button
               type="button"
@@ -163,9 +165,15 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
           <tr key={e.model.slug} data-slug={e.model.slug} className="group relative border-b border-line last:border-b-0 transition-colors hover:bg-accent-softer">
             <td className="py-3 pl-4 pr-1 align-middle lg:pl-[22px] lg:pr-3">
               <Rank rank={e.rank} />
+              {e.overallRank != null && (
+                <span className="num mt-1 block text-[10.5px] leading-none text-ink-4" title="该实体在总榜的名次">
+                  总榜{e.overallRank}
+                </span>
+              )}
             </td>
             <td className="px-2 py-3 lg:px-3">
-              <Link to={modelHref(e.model.slug, board)} prefetch="intent" className="block after:absolute after:inset-0 after:content-['']">
+              <div className="flex items-start gap-2">
+                <Link to={modelHref(e.model.slug, board)} prefetch="intent" className="block min-w-0 flex-1 after:absolute after:inset-0 after:content-['']">
                 <span className="flex items-center gap-3">
                   <BrandMark brand={e.model.brand} size={32} />
                   <span className="min-w-0">
@@ -197,6 +205,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                       </span>
                       <span className="block">
                         开业 <span className="num">{e.model.profile?.openedAt ?? "—"}</span> · 面积 <span className="num">{e.model.profile?.areaWanSqm != null ? `约 ${e.model.profile.areaWanSqm} 万㎡` : "—"}</span>
+                        {e.footfallTier != null && <> · 客流 <span className="num">{e.footfallTier} 档</span></>}
                       </span>
                       <span className="block">
                         年业绩 <span className="num">{e.model.profile?.revenueYi != null ? `约 ${e.model.profile.revenueYi} 亿` : "—"}</span>
@@ -208,7 +217,20 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                 <span className="mt-1 block lg:hidden">
                   <TierChips tiers={e.dimensionTiers} dims={Object.keys(e.dimensions ?? {}).filter((k) => e.dimensions?.[k] != null)} />
                 </span>
-              </Link>
+                </Link>
+                {/* ym132-①：行内「报道 N 篇」角标——桌面整行被外层 Link 的伪元素覆盖，角标须自身抬层
+                    （relative z-10）才能独立点击（无嵌套 <a>）；零报道不渲染，与详情页相关报道同窗同闸。 */}
+                {e.articleCount > 0 && (
+                  <Link
+                    to={`${modelHref(e.model.slug, board)}#in-the-news`}
+                    prefetch="intent"
+                    title={`近 90 天站内报道 ${e.articleCount} 篇，点击直达相关报道`}
+                    className="relative z-10 mt-0.5 shrink-0 whitespace-nowrap rounded-full bg-bg-2 px-2 py-0.5 text-[10.5px] leading-[16px] text-ink-3 transition-colors hover:bg-accent-softer hover:text-accent"
+                  >
+                    报道 {e.articleCount} 篇
+                  </Link>
+                )}
+              </div>
             </td>
             {isBrand ? (
               <>
@@ -226,15 +248,35 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                 <td className="hidden px-3 py-3 text-[12px] text-ink-3 lg:table-cell">{text(e.model.profile?.groupCompany)}</td>
                 <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.areaWanSqm)}</td>
                 <td className="mono hidden px-3 py-3 text-[12px] text-ink-3 lg:table-cell">{text(e.model.profile?.openedAt)}</td>
+                <td className="mono hidden px-3 py-3 text-[12px] text-ink-3 lg:table-cell">
+                  {/* v4.5 客流列：客流档位原始值直显（人工种子 1-10 档，10 为最高）；缺数据显 —。 */}
+                  {e.footfallTier != null ? (
+                    <span className="num text-[14.5px] font-medium text-ink" title="客流档位（人工种子 1-10 档，10 为最高；正源接入后自动升档）">
+                      {e.footfallTier} 档
+                    </span>
+                  ) : (
+                    <span className="text-ink-4">—</span>
+                  )}
+                </td>
               </>
             )}
-            <td className="relative z-10 hidden px-3 py-3 lg:table-cell">
-              <span className="num block text-[13px] text-ink-2">{e.sourceCount} 项指标</span>
-              <EvidenceBadge confidence={e.confidence} stability={e.stability} rank={e.rank} />
-              <TierChips tiers={e.dimensionTiers} dims={Object.keys(e.dimensions ?? {}).filter((k) => e.dimensions?.[k] != null)} />
-            </td>
             <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.revenueYi)}{e.model.profile?.revenueBasis ? <span className="ml-1 font-normal text-[11px] text-ink-4">（{e.model.profile.revenueBasis}）</span> : null}</td>
             {isBrand && <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.stores)}</td>}
+            <td className="hidden px-3 py-3 text-right align-middle lg:table-cell">
+              {/* rd13 声量列：维度分直显（品牌 volume / 商场 media），成色角标沿用 TierChips 单维口径；缺维度显 —。 */}
+              {(() => {
+                const dim = isBrand ? "volume" : "media";
+                const v = e.dimensions?.[dim];
+                return v == null ? (
+                  <span className="text-ink-4">—</span>
+                ) : (
+                  <span className="inline-flex items-baseline gap-1.5">
+                    <span className="mono text-[14px] font-medium text-ink">{v.toFixed(1)}</span>
+                    <TierChips tiers={e.dimensionTiers} dims={[dim]} />
+                  </span>
+                );
+              })()}
+            </td>
             <td className="py-3 pl-2 pr-4 text-right align-middle lg:pl-3 lg:pr-[22px]">
               <strong className={`mono inline-block text-[20px] font-semibold leading-7 tracking-[-0.02em] ${e.rank <= 3 ? "text-accent" : "text-ink"}`} aria-label={`${e.model.name} 共识指数 ${e.score.toFixed(1)}`}>
                 {e.score.toFixed(1)}

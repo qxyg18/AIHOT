@@ -11,9 +11,11 @@ const TIER_DOT: Record<LbSourceTier, string> = {
   machine: "bg-ok",
   report: "bg-accent",
   seed: "bg-amber",
+  // rd8 推断填充：缺数条件填充值角标（成色折价最低档），中性灰点与实测三档区分。
+  infer: "bg-ink-4",
 };
 
-/** rd4 置信级角标：实体的维度 → 数据来源档位（机器源＞研报提取＞人工种子），只展示传入且在役的维度。 */
+/** rd4 置信级角标：实体的维度 → 数据来源档位（机器源＞研报提取＞人工种子＞推断填充），只展示传入且在役的维度。 */
 export function TierChips({ tiers, dims }: { tiers: Record<string, string> | null; dims?: string[] }) {
   if (!tiers) return null;
   const keys = Object.keys(tiers).filter((k) => (dims ? dims.includes(k) : true) && tiers[k]);
