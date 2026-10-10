@@ -94,7 +94,7 @@ export function matchEntities(text: string, terms: EntityTerm[]): EntityHit[] {
   return [...bySlug.values()];
 }
 
-export const textOf = (a: ArticleText) => `${a.title} ${a.excerpt ?? ""} ${(a.body ?? "").slice(0, 600)}`;
+export const textOf = (a: ArticleText) => `${a.title} ${a.excerpt ?? ""} ${a.body ?? ""}`;
 export const hashOf = (a: ArticleText) => createHash("sha256").update(textOf(a)).digest("hex").slice(0, 32);
 
 /** Annotate new articles and articles whose text changed; `all` re-tags everything. */
@@ -105,7 +105,7 @@ export async function annotateArticleEntities(opts: { all?: boolean; limit?: num
   const alive = [...new Set(terms.map((t) => `${t.type}:${t.slug}`)), "brand:__none__"];
   await sql`DELETE FROM article_entities WHERE NOT ((entity_type || ':' || entity_slug) = ANY(${alive}))`;
   const rows = await sql<(ArticleText & { stored_hash: string | null })[]>`
-    SELECT a.id, a.title, a.excerpt, left(coalesce(a.body_text, ''), 600) AS body, e.h AS stored_hash
+    SELECT a.id, a.title, a.excerpt, coalesce(a.body_text, '') AS body, e.h AS stored_hash
     FROM articles a
     LEFT JOIN LATERAL (SELECT article_hash AS h FROM article_entities WHERE article_id = a.id LIMIT 1) e ON true
     WHERE ${opts.all ?? false} OR e.h IS NULL OR e.h = ''
