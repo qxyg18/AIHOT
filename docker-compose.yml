@@ -4,9 +4,14 @@ name: aihot
 
 x-app: &app
   build: .
-  image: aihot-app
+  # image 名每服务独立（ym531 甲案 jia-fen-tag）：锚内禁再加共享 image 行，防 tag 覆盖竞争复活
   env_file: .env
   restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
   environment: &app-env
     NODE_ENV: production
     DATABASE_URL: postgres://aihot:${POSTGRES_PASSWORD:-aihot}@db:5432/aihot
@@ -26,6 +31,11 @@ services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       POSTGRES_USER: aihot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aihot}
@@ -41,11 +51,13 @@ services:
   # Applies the database migrations and seeds the topics and demo sources, then exits.
   setup:
     <<: *app
+    image: aihot-app-setup
     restart: "no"
     command: ["sh", "-c", "node scripts/migrate.ts && node scripts/seed.ts"]
 
   api:
     <<: *app
+    image: aihot-app-api
     command: ["node", "apps/api/src/main.ts"]
     environment:
       <<: *app-env
@@ -57,6 +69,7 @@ services:
 
   worker:
     <<: *app
+    image: aihot-app-worker
     command: ["node", "apps/worker/src/main.ts"]
     depends_on:
       setup:
@@ -64,6 +77,7 @@ services:
 
   web:
     <<: *app
+    image: aihot-app-web
     command: ["node", "apps/web/server.ts"]
     environment:
       <<: *app-env
