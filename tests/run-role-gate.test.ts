@@ -148,7 +148,10 @@ test("api with AIHOT_RUN_ROLE=shadow serves without heartbeat or watchdog", asyn
   };
   const run = spawnEntry(API, env);
   await waitFor(run, "api started without side effects");
-  await new Promise((r) => setTimeout(r, 2_500)); // the heartbeat's first beat is immediate
+  // The 2.5 s window catches the heartbeat (its first beat is immediate). The watchdog's first
+  // tick is five minutes out, so a rogue watchdog start is not observable here — its blocking is
+  // covered structurally by the single sideEffectsEnabled call site in apps/api/src/main.ts.
+  await new Promise((r) => setTimeout(r, 2_500));
   run.kill();
   assertExitCode(await run.exited);
   assert.deepEqual(db.hits(), [], "shadow api must not write heartbeats or watchdog state");

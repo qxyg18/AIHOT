@@ -14,10 +14,10 @@ if (config.environmentName === "production" && !(config.adminPassword && config.
   throw new Error("Refusing to start in production: set ADMIN_PASSWORD (at least 12 characters) or configure Feishu sign-in");
 }
 
-// Run-role master gate (ym671): the api process itself has exactly two side effects — the
-// heartbeat settings row and the worker watchdog's settings writes and Feishu alerts. Both belong
-// to the active role; shadow/off (and a missing/invalid AIHOT_RUN_ROLE, failing closed to off)
-// serve the site without them.
+// Run-role master gate (ym671): the api process itself has exactly two startup side effects —
+// the heartbeat settings row and the worker watchdog's settings writes and Feishu alerts. Both
+// belong to the active role; shadow/off (and a missing/invalid AIHOT_RUN_ROLE, failing closed to
+// off) serve the site without them.
 const gate = resolveRunRole(process.env.AIHOT_RUN_ROLE);
 if (gate.failed) console.log(runRoleWarning(gate));
 
