@@ -4,8 +4,12 @@
 // 幂等：本地 seen 缓存（动态 id_str）；ingest 端 URL 判重兜底。
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = "D:/myhot-dev";
+// ym670/C1-03 参数化：仓库根默认按脚本位置推导（scripts/ 的上一级），MYHOT_ROOT 可覆写；
+// ingest 端点默认本机 3000，AIHOT_BASE_URL 可覆写（Linux/云端部署不再改代码）
+const ROOT = process.env.MYHOT_ROOT || fileURLToPath(new URL("..", import.meta.url));
+const BASE_URL = process.env.AIHOT_BASE_URL || "http://localhost:3000";
 const STATE_DIR = join(ROOT, ".data", "bili-patrol");
 const SEEN_FILE = join(STATE_DIR, "seen.json");
 const LOG_FILE = join(STATE_DIR, "patrol.log");
@@ -87,7 +91,7 @@ function toArticle(item) {
 
 async function pushToIngest(token, acc, arts) {
   if (!arts.length) return { created: 0 };
-  const res = await fetch("http://localhost:3000/api/ingest/items", {
+  const res = await fetch(`${BASE_URL}/api/ingest/items`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({

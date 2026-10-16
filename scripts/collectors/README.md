@@ -12,7 +12,7 @@
 
 | 件 | 作用 |
 |---|---|
-| `run_collect.py` | 调度器：高德=**夜档（01:00-06:00）**增量补坐标+失败重试+每月 1-3 日窗口全量刷评分（窗口外即刻跳过，`AMAP_FORCE=1` 手动强跑）；点评=探针一次+每小时滴灌；无凭据静默跳过。锁记 pid：持有者已死立即接管（防假死空跑） |
+| `run_collect.py` | 调度器：高德=**夜档（01:00-06:00）**增量补坐标+失败重试+每月 1-3 日窗口全量刷评分（窗口外即刻跳过，`AMAP_FORCE=1` 手动强跑）；点评=探针一次+每小时滴灌；无凭据静默跳过。锁记 pid（跨平台三态，ym670/C1-03）：持有者**确认已死**立即接管（防假死空跑）；**无法判活（未知）不立即接管**，按锁龄 6h 兜底——Linux 走 `os.kill(pid,0)` 语义；本机锁不跨机 |
 | `collect_amap.py` | 高德 v3 place/text（POI 搜索）：坐标+评分+地址+营业时间，逐条落盘中断零损失，配额到顶提前收工明晚续跑 |
 | `collect_amap_expand.py` | 三类词+品类词扩充引擎（品牌/品类/集团/mall-cat 场景⑦），断点续跑+30 天滚动重扫；夜档额度按 `night_allowance()`（10-14 凌晨一次性 20000；此后常态月更窗 80/平日 2000）共享封顶（`nightUsed` 记账） |
 | `mem_watchdog.pyw` | 内存看门狗：工作集超限/系统可用<600MB 兜底杀采集器保机，两种击杀后都清孤儿 run.lock（调度自动续跑） |
@@ -24,9 +24,23 @@
 
 ## 凭据（仓库外）
 
-`D:/secrets/radar-collect/config.json`：`amap_key`（**Web服务** 类型，Web端(JS API) 型 key 调 REST 会报
+默认路径=平台惯例（Windows `D:/secrets/radar-collect/config.json`；Linux `/srv/secrets/radar-collect/config.json`），
+**环境变量 `RADAR_COLLECT_CONFIG` 可覆写**（部署侧统一入口）。内容：`amap_key`（**Web服务** 类型，Web端(JS API) 型 key 调 REST 会报
 USERKEY_PLAT_NOMATCH）、`dianping_cookie`（DevTools 从已登录页请求头整串复制；会话票是 HttpOnly，
 页面脚本读不到；失效信号=logs 里连续 WALL 行，届时重登再复制一次）。**勿提交 git。**
+
+## 跨平台与环境变量（ym670/C1-03）
+
+| 变量 | 作用 | 缺省 |
+|---|---|---|
+| `RADAR_COLLECT_CONFIG` | 采集器凭据文件路径 | 平台惯例（见上） |
+| `RADAR_TZ` | 采集线"本地时间"时区（`radar_time.now_local()`，窗口/日期键统一走它） | `Asia/Shanghai` |
+| `MYHOT_ROOT` | 外挂巡逻脚本（bili/doubao/sogou）仓库根；`.data`/`.env` 随之解析 | 按脚本位置推导（`scripts/` 上一级） |
+| `AIHOT_BASE_URL` | 巡逻脚本 ingest 端点基址（`/api/ingest/items`） | `http://localhost:3000` |
+
+- 时区依赖已显式化：不再用宿主 `datetime.now()` 裸值（Linux 容器默认 UTC 会漂移夜档窗/月更窗/日期键）；
+  依赖 `zoneinfo`（Linux 容器需装 `tzdata`；缺失时自动退化固定 +08:00，中国 1991 年后无夏令时，日常口径等价）。
+- 锁语义测试套件：`python -X utf8 tests/test_run_collect_lock.py`（不触网；沙箱空凭据；Linux 容器/Windows 均可跑）。
 
 ## 调度
 

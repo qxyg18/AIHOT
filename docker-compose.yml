@@ -7,6 +7,9 @@ x-app: &app
   # image 名每服务独立（ym531 甲案 jia-fen-tag）：锚内禁再加共享 image 行，防 tag 覆盖竞争复活
   env_file: .env
   restart: unless-stopped
+  # ym670/C1-03：停机宽限 ≥200s 覆盖 queue.ts STOP_TIMEOUT_MS=195s 的 boss 排空
+  # （docker 默认 10s 后 SIGKILL 会截断在途付费调用，留下 outcome unknown 回执）
+  stop_grace_period: 200s
   logging:
     driver: json-file
     options:

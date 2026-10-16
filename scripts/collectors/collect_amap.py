@@ -8,11 +8,11 @@
 输出 out/mall-coords.json（slug -> POI 档案），不改种子文件本体；并入种子是后续人工审过的独立步骤。
 """
 import json
+import os
 import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -21,7 +21,13 @@ SEED = REPO / "database" / "seeds" / "lb-malls-2026-10.json"
 OUT = HERE / "out" / "mall-coords.json"
 STATE = HERE / "state" / "amap-state.json"
 LOG = HERE / "logs" / "amap.log"
-CONFIG = Path("D:/secrets/radar-collect/config.json")
+sys.path.insert(0, str(HERE))  # 直跑/被导入两种入口都可解析同目录共享件
+from radar_time import now_local, parse_local  # noqa: E402  （宿主时区显式化，ym670/C1-03）
+
+# 凭据路径：平台条件默认 + 环境变量 RADAR_COLLECT_CONFIG 覆写（同 run_collect.py）
+CONFIG = Path(os.environ.get("RADAR_COLLECT_CONFIG")
+              or ("D:/secrets/radar-collect/config.json" if os.name == "nt"
+                  else "/srv/secrets/radar-collect/config.json"))
 
 QUOTA_MARKS = ("CUOTAS", "LIMIT", "EXCEED")
 
@@ -33,7 +39,7 @@ def load_json(path, default):
 
 
 def log(msg):
-    line = f"[{datetime.now().isoformat(timespec='seconds')}] {msg}"
+    line = f"[{now_local().isoformat(timespec='seconds')}] {msg}"
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
@@ -113,7 +119,7 @@ def alt_keywords(m):
 def search_poi(key, m, interval):
     name = m["name"]
     city = m.get("city") or ""
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_local().isoformat(timespec="seconds")
     first = request_once(key, name, city, interval)
     if "error" in first:
         return {"error": first["error"]}
@@ -132,12 +138,12 @@ def search_poi(key, m, interval):
 
 def refresh_due(state, cfg):
     window = int(cfg.get("monthly_due_window_days", 3))
-    if datetime.now().day > window:
+    if now_local().day > window:
         return False
     last = state.get("lastRefreshAt")
     if not last:
         return True
-    return (datetime.now() - datetime.fromisoformat(last)).days >= 25
+    return (now_local() - parse_local(last)).days >= 25
 
 
 def main(mode="incremental"):
@@ -165,7 +171,7 @@ def main(mode="incremental"):
     for m in targets:
         slug, name = m["slug"], m["name"]
         result = search_poi(key, m, interval)
-        now = datetime.now().isoformat(timespec="seconds")
+        now = now_local().isoformat(timespec="seconds")
         if "error" in result:
             failed += 1
             state[slug] = {"error": result["error"], "at": now}
@@ -187,7 +193,7 @@ def main(mode="incremental"):
         OUT.write_text(json.dumps(coords, ensure_ascii=False, indent=1), encoding="utf-8")
         STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
     if mode == "refresh":
-        state["lastRefreshAt"] = datetime.now().isoformat(timespec="seconds")
+        state["lastRefreshAt"] = now_local().isoformat(timespec="seconds")
         STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
     remaining = sum(1 for m in malls if m.get("slug") and m["slug"] not in coords)
     review = sum(1 for v in coords.values() if v.get("needsReview"))

@@ -7,12 +7,12 @@
 城市 ID 仅内置高置信四城（1上海/2北京/3广州/4深圳），其余记录跳过待解析阶段补表。
 """
 import json
+import os
 import random
 import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -21,7 +21,13 @@ SEED = REPO / "database" / "seeds" / "lb-malls-2026-10.json"
 OUT = HERE / "out" / "dianping"
 STATE = HERE / "state" / "dianping-state.json"
 LOG = HERE / "logs" / "dianping.log"
-CONFIG = Path("D:/secrets/radar-collect/config.json")
+sys.path.insert(0, str(HERE))  # 直跑/被导入两种入口都可解析同目录共享件
+from radar_time import now_local  # noqa: E402  （宿主时区显式化，ym670/C1-03）
+
+# 凭据路径：平台条件默认 + 环境变量 RADAR_COLLECT_CONFIG 覆写（同 run_collect.py）
+CONFIG = Path(os.environ.get("RADAR_COLLECT_CONFIG")
+              or ("D:/secrets/radar-collect/config.json" if os.name == "nt"
+                  else "/srv/secrets/radar-collect/config.json"))
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 CITY_IDS = {"上海": 1, "北京": 2}
@@ -50,7 +56,7 @@ def save_json(path, data):
 
 
 def log(msg):
-    line = f"[{datetime.now().isoformat(timespec='seconds')}] {msg}"
+    line = f"[{now_local().isoformat(timespec='seconds')}] {msg}"
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
@@ -102,7 +108,7 @@ def probe(cookie, interval):
         except Exception as exc:  # 网络层失败也要记录成色
             r = {"status": None, "final_url": "", "login_wall": False,
                  "html": "", "error": repr(exc)}
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        stamp = now_local().strftime("%Y%m%d-%H%M%S")
         OUT.mkdir(parents=True, exist_ok=True)
         (OUT / f"probe-{m['slug']}-{stamp}.html").write_text(r["html"], encoding="utf-8")
         keep = {k: r[k] for k in ("status", "final_url", "login_wall") if k in r}
@@ -113,7 +119,7 @@ def probe(cookie, interval):
         log(f"PROBE {m['slug']} {m['name']}: status={keep.get('status')} "
             f"login_wall={keep.get('login_wall')} final={keep.get('final_url')[:80]}")
         sleep_like_human(interval)
-    state["probe"] = {"done": True, "at": datetime.now().isoformat(timespec="seconds"),
+    state["probe"] = {"done": True, "at": now_local().isoformat(timespec="seconds"),
                       "results": results}
     save_json(STATE, state)
     walls = sum(1 for r in results if r.get("login_wall"))
@@ -132,7 +138,7 @@ def trickle(cookie, interval, per_night):
     targets = ranked[:per_night]
     log(f"滴灌本轮 {len(targets)} 家（库内可抓 {len(candidates)}，间隔 {interval}s+抖动）")
     ok = failed = walled = 0
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_local().isoformat(timespec="seconds")
     for m in targets:
         url = search_url(m.get("city") or "", m["name"])
         try:
@@ -144,7 +150,7 @@ def trickle(cookie, interval, per_night):
             continue
         OUT.mkdir(parents=True, exist_ok=True)
         (OUT / f"{m['slug']}.html").write_text(r["html"], encoding="utf-8")
-        pages[m["slug"]] = {"at": datetime.now().isoformat(timespec="seconds"),
+        pages[m["slug"]] = {"at": now_local().isoformat(timespec="seconds"),
                             "status": r["status"], "login_wall": r["login_wall"]}
         ok += 1
         if r["login_wall"]:

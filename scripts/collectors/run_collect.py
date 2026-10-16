@@ -5,23 +5,24 @@
 10-14 凌晨一次性追进度，此后恢复常态额度规划（额度规则引擎单源 night_allowance）。
 提速令=官方并发上限 30 次/秒，请求间隔 3s→0.2s（config request_interval_sec）。
 调度=schtasks radar-merchant-collect 每小时 :15（窗口外高德段即刻跳过，点评滴灌不受影响）。
-凭据=D:/secrets/radar-collect/config.json（amap_key / dianping_cookie），未配置则本轮静默跳过。
+凭据路径=环境变量 RADAR_COLLECT_CONFIG（平台缺省见下方 CONFIG 定义；amap_key / dianping_cookie），未配置则本轮静默跳过。
 语义：
   高德 POI=增量补坐标+失败重试；每月 1-3 日窗口全量刷新（评分随月更）；
   点评热度=个人号滴灌（每小时一轮约10家、25秒+抖动），探针一次先行；
   名录扩容不在本管线（走联商/赢商公开榜单人工通道，zw19 口径）。
 """
-import ctypes
 import json
 import os
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-CONFIG = Path("D:/secrets/radar-collect/config.json")
+from radar_time import now_local  # noqa: E402  （宿主时区显式化，ym670/C1-03）
+CONFIG = Path(os.environ.get("RADAR_COLLECT_CONFIG")
+              or ("D:/secrets/radar-collect/config.json" if os.name == "nt"
+                  else "/srv/secrets/radar-collect/config.json"))
 LOG = HERE / "logs" / "run.log"
 LOCK = HERE / "state" / "run.lock"
 LOCK_STALE_SEC = 6 * 3600
@@ -39,7 +40,7 @@ def load_json(path, default):
 
 
 def log(msg):
-    line = f"[{datetime.now().isoformat(timespec='seconds')}] {msg}"
+    line = f"[{now_local().isoformat(timespec='seconds')}] {msg}"
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
@@ -47,20 +48,64 @@ def log(msg):
 
 
 def in_night_window(now=None):
-    h = (now or datetime.now()).hour
+    h = (now or now_local()).hour
     return NIGHT_START_HOUR <= h < NIGHT_END_HOUR
 
 
 def pid_alive(pid):
-    """Windows 进程存活探测（os.kill(pid,0) 在 Windows 会真杀进程，禁用）。"""
+    """持锁进程存活探测（跨平台三态）：True=存活 / False=确认已死 / None=未知（无法判活）。
+
+    ym670/C1-03 修复（Linux 阻断项）：原实现无条件走 ctypes.windll——POSIX 上
+    AttributeError 被异常路径吞成 False，上层误判「持有者已死」立即接管（本机 PID 锁
+    在 Linux 形同虚设）。现按平台分派，且探测失败（权限不足/意外错误）严格区别于
+    「确认已死」（None≠False，上层只在 False 时立即接管）。
+    仅本机 PID 锁语义，不扩展为跨机锁（多机单写者由部署侧保证）。
+    """
     try:
-        h = ctypes.windll.kernel32.OpenProcess(0x1000, 0, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
-        if h:
-            ctypes.windll.kernel32.CloseHandle(h)
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None  # 0/-1 是进程组语义（POSIX）或非法值：无法判活
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        except (ImportError, OSError, AttributeError):
+            return None
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        ERROR_INVALID_PARAMETER = 87  # OpenProcess 失败码：目标 pid 不存在
+        try:
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        except (OverflowError, ValueError, ctypes.ArgumentError):
+            return False  # pid 超出 DWORD 范围：不可能存在
+        if handle:
+            kernel32.CloseHandle(handle)
             return True
-        return False
-    except (ValueError, AttributeError):
-        return False
+        # 失败码区分：ERROR_INVALID_PARAMETER=进程不存在（已死）；其余（如
+        # ERROR_ACCESS_DENIED=权限不足）无法确认 → 未知
+        return False if ctypes.get_last_error() == ERROR_INVALID_PARAMETER else None
+    # POSIX：os.kill(pid, 0) 只做探活、不发信号（Windows 上 os.kill 会真杀进程，故只在
+    # 本分支使用）
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False  # ESRCH=进程不存在
+    except PermissionError:
+        return None  # EPERM=进程存在但无权探测（无法确认是本采集器持有者）→ 未知
+    except OverflowError:
+        return False  # pid 超出内核可表示范围：不可能存在
+    except OSError:
+        return None  # 其余异常一律未知（宁放过不误杀）
+    if sys.platform.startswith("linux"):
+        # 僵尸（已终止未回收）：kill(pid,0) 仍成功，但持有者已死——判死防假死空跑
+        try:
+            state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+            if state.rsplit(")", 1)[1].split()[0] == "Z":
+                return False
+        except (OSError, IndexError):
+            pass
+    return True
 
 
 def lock_holder_pid():
@@ -78,22 +123,25 @@ def main():
     if LOCK.exists():
         age = time.time() - LOCK.stat().st_mtime
         holder = lock_holder_pid()
-        if holder is not None and not pid_alive(holder):
-            # 持有者已死（看门狗杀/崩溃）→ 立即接管，不等锁龄（ym565：防夜间档假死空跑）
+        alive = pid_alive(holder) if holder is not None else None
+        if alive is False:
+            # 持有者确认已死（看门狗杀/崩溃）→ 立即接管，不等锁龄（ym565：防夜间档假死空跑）
             log(f"陈旧锁（持有者 pid={holder} 已死，锁龄 {int(age)}s），接管")
         elif age < LOCK_STALE_SEC:
-            log(f"上一轮仍在运行（锁龄 {int(age)}s），本轮跳过")
+            # 存活或未知（未知≠已死）→ 不立即接管，锁龄内跳过（ym670：Linux 退出码语义）
+            reason = "持有者存活" if alive else "无法判活"
+            log(f"上一轮仍在运行（{reason}，锁龄 {int(age)}s），本轮跳过")
             return 0
         else:
             log(f"发现陈旧锁（锁龄 {int(age)}s），接管")
     LOCK.parent.mkdir(parents=True, exist_ok=True)
-    LOCK.write_text(f"{datetime.now().isoformat(timespec='seconds')} {os.getpid()}", encoding="utf-8")
+    LOCK.write_text(f"{now_local().isoformat(timespec='seconds')} {os.getpid()}", encoding="utf-8")
     try:
         cfg = load_json(CONFIG, {})
         key = (cfg.get("amap_key") or "").strip()
         cookie = (cfg.get("dianping_cookie") or "").strip()
         if not key and not cookie:
-            log("凭据未配置（D:/secrets/radar-collect/config.json），本轮跳过")
+            log(f"凭据未配置（{CONFIG}），本轮跳过")
             return 0
         if key:
             if in_night_window() or os.environ.get("AMAP_FORCE") == "1":

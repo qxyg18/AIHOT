@@ -20,11 +20,11 @@
 import argparse
 import json
 import math
+import os
 import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -50,7 +50,13 @@ F_MALL_BRAND = OUT_DIR / "mall-brand-dist.json"   # ⑦：商场→品牌分布�
 F_FOUND = OUT_DIR / "poi-found-brands.json"      # ⑦：品类词扫出的未收录品牌（晋级候选）
 STATE = HERE / "state" / "amap-expand-state.json"
 LOG = HERE / "logs" / "amap-expand.log"
-CONFIG = Path("D:/secrets/radar-collect/config.json")
+sys.path.insert(0, str(HERE))  # 直跑/被导入两种入口都可解析同目录共享件
+from radar_time import now_local, parse_local  # noqa: E402  （宿主时区显式化，ym670/C1-03）
+
+# 凭据路径：平台条件默认 + 环境变量 RADAR_COLLECT_CONFIG 覆写（同 run_collect.py）
+CONFIG = Path(os.environ.get("RADAR_COLLECT_CONFIG")
+              or ("D:/secrets/radar-collect/config.json" if os.name == "nt"
+                  else "/srv/secrets/radar-collect/config.json"))
 
 QUOTA_MARKS = ("CUOTAS", "LIMIT", "EXCEED")
 STRONG_M, WEAK_M = 150.0, 400.0          # 邻近匹配半径（设计§六）
@@ -71,7 +77,7 @@ NIGHT_BUDGET_MONTH_WINDOW_DAYS = 3
 def night_allowance(now=None):
     """当晚请求总额度（命主 2026-10-13 修订）：10-14 凌晨=20000 一次性追进度；
     其余恢复常态规划——月更窗 1-3 日让位 80，平时 2000/晚。"""
-    d = (now or datetime.now()).date()
+    d = (now or now_local()).date()
     if d.isoformat() in NIGHT_BUDGET_ONESHOT:
         return NIGHT_BUDGET_ONESHOT[d.isoformat()]
     return (NIGHT_BUDGET_MONTH_WINDOW if d.day <= NIGHT_BUDGET_MONTH_WINDOW_DAYS
@@ -97,7 +103,7 @@ def save_json(path, obj):
 
 
 def log(msg):
-    line = f"[{datetime.now().isoformat(timespec='seconds')}] {msg}"
+    line = f"[{now_local().isoformat(timespec='seconds')}] {msg}"
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
@@ -329,7 +335,7 @@ def run_brands(key, slug, city, interval, state, alias=None):
             seen.add(p["poi_id"])
             uniq.append(p)
     page_capped = last_len == OFFSET["brands"] and len(uniq) < total
-    stamped = datetime.now().isoformat(timespec="seconds")
+    stamped = now_local().isoformat(timespec="seconds")
     if alias:
         # 过滤表须并入当前 alias（审计P1#1）：店名只含别名词的 POI 否则被自家过滤器误杀
         kept = [p for p in uniq
@@ -352,7 +358,7 @@ def run_brands(key, slug, city, interval, state, alias=None):
                              "pageCapped": page_capped,    # 翻页上限截断（设计§三到顶标记）
                              "province": province,
                              "sample": uniq[:SAMPLE_CAP],
-                             "fetchedAt": datetime.now().isoformat(timespec="seconds")}
+                             "fetchedAt": now_local().isoformat(timespec="seconds")}
     counts[slug] = entry
     save_json(F_COUNTS, counts)
     be = stores_all.get(slug) or {"brandName": name, "stores": {}}
@@ -383,7 +389,7 @@ def run_cat_mall(key, city, word, interval):
     page_capped = last_len == OFFSET["cat-mall"] and len(got) < cnt_total
     ce = malls_all.get(city) or {}
     ce[word] = {"pois": got, "pageCapped": page_capped,
-                "fetchedAt": datetime.now().isoformat(timespec="seconds")}
+                "fetchedAt": now_local().isoformat(timespec="seconds")}
     malls_all[city] = ce
     save_json(F_CITY_MALLS, malls_all)
     new_c = 0
@@ -392,7 +398,7 @@ def run_cat_mall(key, city, word, interval):
             continue
         cand[p["poi_id"]] = {**p, "discoveredFrom": "cat-mall",
                              "needsReview": not (p.get("type") or "").startswith("购物服务"),
-                             "fetchedAt": datetime.now().isoformat(timespec="seconds")}
+                             "fetchedAt": now_local().isoformat(timespec="seconds")}
         new_c += 1
     save_json(F_MALL_CAND, cand)
     return "ok", f"pois={len(got)} newCandidates={new_c}"
@@ -425,7 +431,7 @@ def run_cat_kids(key, city, word, interval):
     if err and not got:
         return "error", err
     ce = kids_all.get(city) or {}
-    ce[word] = {"pois": got, "fetchedAt": datetime.now().isoformat(timespec="seconds")}
+    ce[word] = {"pois": got, "fetchedAt": now_local().isoformat(timespec="seconds")}
     kids_all[city] = ce
     save_json(F_CITY_KIDS, kids_all)
     for p in got:
@@ -528,7 +534,7 @@ def run_mall_cat(key, slug, name, city, word, interval):
             break
     if err and not got:
         return "error", err
-    stamped = datetime.now().isoformat(timespec="seconds")
+    stamped = now_local().isoformat(timespec="seconds")
     matched = new_poi = 0
     for p in got:
         if not p.get("poi_id"):
@@ -616,13 +622,13 @@ def run_group(key, grp, word, city, interval):
             continue
         cand[p["poi_id"]] = {**p, "discoveredFrom": "group-line",
                              "needsReview": not (p.get("type") or "").startswith("购物服务"),
-                             "fetchedAt": datetime.now().isoformat(timespec="seconds")}
+                             "fetchedAt": now_local().isoformat(timespec="seconds")}
         new_c += 1
     save_json(F_MALL_CAND, cand)
     we = projects.get(word) or {"group": grp, "cities": {}}
     we["cities"][city] = {"pois": got,
                           "note": "v3 count 对集团词返回假 cap 值不可信，分布以名过滤实取为准",
-                          "fetchedAt": datetime.now().isoformat(timespec="seconds")}
+                          "fetchedAt": now_local().isoformat(timespec="seconds")}
     projects[word] = we
     save_json(F_GROUP, projects)
     return "ok", f"pois={len(got)} newCandidates={new_c}"
@@ -667,7 +673,7 @@ def main(argv=None):
     req_count = [0]
     # 夜档共享额度（命主 2026-10-13 修订：10-14 凌晨一次性 20000，此后恢复常态规划）：
     # 同晚续跑累计封顶，跨晚自动归零（night_key=运行日）
-    night_key = datetime.now().date().isoformat()
+    night_key = now_local().date().isoformat()
     cap = night_allowance()
     used_night = (state.get("nightUsed") or {}).get(night_key, 0)
     budget = max(0, min(args.budget, cap - used_night))
@@ -695,9 +701,10 @@ def main(argv=None):
             if not ts:
                 return True
             try:
-                return (datetime.now() - datetime.fromisoformat(ts)).days >= RESCAN_DAYS
+                ts_local = parse_local(ts)
             except ValueError:
                 return True
+            return (now_local() - ts_local).days >= RESCAN_DAYS
 
         todo = [(k, t) for k, t in keys if k not in done and (sc != "mall-cat" or stale(k))]
         log(f"场景 {sc}：队列 {len(keys)} 待办 {len(todo)}（预算余 {budget - used}）")
@@ -711,7 +718,7 @@ def main(argv=None):
                 if str(qh) == "budget_exhausted":
                     log(f"本轮预算 {budget} 用尽，收工（下轮续跑）")
                 else:
-                    state["quotaHitAt"] = datetime.now().isoformat(timespec="seconds")
+                    state["quotaHitAt"] = now_local().isoformat(timespec="seconds")
                     state["quotaHitInfo"] = str(qh)
                     save_json(STATE, state)
                     log(f"配额/风控信号触顶：{qh}——停线报命主（封了再议）")
@@ -728,7 +735,7 @@ def main(argv=None):
             state.setdefault("nightUsed", {})[night_key] = used_night + used
             if res == "ok":
                 if sc == "mall-cat":
-                    state.setdefault("doneAt", {}).setdefault(sc, {})[tk] = datetime.now().isoformat(timespec="seconds")
+                    state.setdefault("doneAt", {}).setdefault(sc, {})[tk] = now_local().isoformat(timespec="seconds")
                 else:
                     done.add(tk)
                     state.setdefault("done", {})[sc] = sorted(done)
@@ -738,7 +745,7 @@ def main(argv=None):
                 save_json(STATE, state)
                 log(f"FAIL {tk}: {info}")
         log(f"场景 {sc} 本段完成，累计请求 {used}")
-    state["lastRunAt"] = datetime.now().isoformat(timespec="seconds")
+    state["lastRunAt"] = now_local().isoformat(timespec="seconds")
     state.setdefault("nightUsed", {})[night_key] = used_night + used
     save_json(STATE, state)
     log(f"本轮结束：请求 {used}/{budget}（本晚累计 {used_night + used}/{cap}）")

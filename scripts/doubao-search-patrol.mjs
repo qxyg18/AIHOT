@@ -9,8 +9,16 @@
 //      node doubao-search-patrol.mjs --purpose=manual|deep --query="..." [--force-override]
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = "D:/myhot-dev";
+// ym670/C1-03 参数化：仓库根默认按脚本位置推导（scripts/ 的上一级），MYHOT_ROOT 可覆写；
+// ingest 端点默认本机 3000，AIHOT_BASE_URL 可覆写（Linux/云端部署不再改代码）
+const ROOT = process.env.MYHOT_ROOT || fileURLToPath(new URL("..", import.meta.url));
+const BASE_URL = process.env.AIHOT_BASE_URL || "http://localhost:3000";
+// 宿主时区显式化（ym670/C1-03）：日期键按 Asia/Shanghai 计算（Linux 容器默认 UTC 会漂移）
+const TZ = process.env.RADAR_TZ || "Asia/Shanghai";
+const localYmd = (d = new Date()) => new Intl.DateTimeFormat(
+  "en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const STATE_DIR = join(ROOT, ".data", "doubao-search");
 const SEEN_FILE = join(STATE_DIR, "seen.json");
 const LOG_FILE = join(STATE_DIR, "patrol.log");
@@ -18,7 +26,7 @@ const QUOTA_FILE = join(STATE_DIR, "quota.json");
 const QUERIES_FILE = join(STATE_DIR, "queries.json");
 
 const SEARCH_API = "https://open.feedcoopapi.com/search_api/web_search";
-const INGEST_URL = "http://localhost:3000/api/ingest/items";
+const INGEST_URL = `${BASE_URL}/api/ingest/items`;
 const MONTHLY_CAP = 500; // 控制台免费池（命主 2026-10-04 核实 500 档）
 const DAILY_STOP = 450; // 常态采集停线
 const HARD_STOP = 480; // 全停线（manual/deep 同停）
@@ -52,7 +60,7 @@ function readEnv(key) {
   return m[1].trim();
 }
 
-const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const monthKey = (d = new Date()) => localYmd(d).slice(0, 7);
 
 function loadQuota() {
   try {
@@ -77,7 +85,7 @@ const loadQueries = () => JSON.parse(readFileSync(QUERIES_FILE, "utf8"));
 
 // 常态词选择：按日期确定性轮换（行业 4/天 + 品牌 6/天；品牌池约 9-10 天全覆盖一轮）
 function pickDailyWords(q, rnd) {
-  const dayIdx = new Date().getDate() - 1;
+  const dayIdx = Number(localYmd().slice(8, 10)) - 1;
   const ind = q.industry, brands = q.brands, n = ind.length, m = brands.length;
   if (rnd === "am") {
     return [ind[dayIdx % n], ind[(dayIdx + 1) % n],
