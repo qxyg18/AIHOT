@@ -266,6 +266,11 @@ def main():
                     % (avail, SYS_MIN_MB, sorted(set(all_pids))))
                 kill_tree(sorted(set(all_pids)))
                 time.sleep(2)
+                # 与 [击杀] 分支同款自愈（ym565 遗留修）：兜底杀也必须清孤儿锁——
+                # 否则每小时调度按锁龄误判「上一轮仍在运行」跳过 6 小时（10-13 三次锁残留事故：08:15/12:26/14:24）。
+                if not find_targets() and RUN_LOCK.exists():
+                    RUN_LOCK.unlink(missing_ok=True)
+                    log("[自愈] 兜底杀后已清理孤儿锁 run.lock，等待下轮整点调度续跑")
 
             now = time.time()
             for pid, cl in find_targets():

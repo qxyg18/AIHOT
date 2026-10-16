@@ -28,7 +28,8 @@ def run(cmd, timeout=300):
 def fingerprint():
     """产物 + 商场字典输入一起入指纹：字典单独增长时也要触发重算（归位率随商场池提升）。"""
     fp = {}
-    for f in ("brand-stores.json", "brand-store-counts.json", "mall-candidates.json", "group-projects.json"):
+    for f in ("brand-stores.json", "brand-store-counts.json", "mall-candidates.json", "group-projects.json",
+              "mall-brand-dist.json", "poi-found-brands.json"):
         p = EXPAND / f
         if p.exists():
             st = p.stat()
@@ -62,7 +63,12 @@ def main():
         (EXPAND / "group-projects.json", DEST_EXPAND + "/"),
         (OUT / "mall-coords.json", DEST_OUT + "/"),
     ]
-    for src, dest in copies:
+    # 场景⑦产物可缺（mall-cat 首轮跑出前不存在，落库端按空集处理）
+    optional = [
+        (EXPAND / "mall-brand-dist.json", DEST_EXPAND + "/"),
+        (EXPAND / "poi-found-brands.json", DEST_EXPAND + "/"),
+    ]
+    for src, dest in copies + [(s, d) for s, d in optional if s.exists()]:
         if not src.exists():
             print(f"[fail] 缺文件 {src.name}")
             return 1, f"FAIL-缺文件 {src.name}"
