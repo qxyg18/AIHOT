@@ -1,0 +1,60 @@
+# Cloud overlay (Shanghai 2C4G shared box) — cloud plan phase 1, C1-06 (ym680).
+# Applied on the server on top of the base file:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file .env up -d db
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file .env run --rm setup
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file .env up -d api web cloudflared
+# The worker is deliberately NOT in that list until its activation window; if it ever runs here it
+# must be AIHOT_RUN_ROLE=shadow (the ym671 fail-closed gate turns a missing/invalid value into off).
+#
+# Deltas vs the local base file:
+#   * cloudflared (CF Tunnel) is the public entry to web:3000 — the caddy https profile stays unused.
+#   * Every container carries a §6 budget-table cap; memory-swap equals mem_limit (no container swap).
+#   * PG shared_buffers=64MB (shared-box decision; not the dedicated-box 25% rule).
+#   * Secrets bind and web host bind come from the server .env (AIHOT_SECRETS_DIR=/srv/secrets/aihot,
+#     WEB_BIND=127.0.0.1) — see the env vars introduced in the base file.
+name: aihot
+
+services:
+  db:
+    # Digest pinned at C1-06 build time; keep the tag for readability.
+    image: postgres:17-alpine@sha256:fill-after-pull
+    command: ["postgres", "-c", "shared_buffers=64MB"]
+    mem_limit: 1g
+    memswap_limit: 1g
+
+  setup:
+    mem_limit: 384m
+    memswap_limit: 384m
+
+  api:
+    mem_limit: 384m
+    memswap_limit: 384m
+
+  worker:
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  web:
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  cloudflared:
+    # Digest pinned at C1-06 build time (ym680, 2026-10-17); keep the tag for readability.
+    image: cloudflare/cloudflared:latest@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
+    restart: unless-stopped
+    # Dashboard-managed tunnel: the connector only needs the token from the Zero Trust dashboard
+    # (server .env CLOUDFLARED_TOKEN, mode 600, never in git). --no-autoupdate: the image is
+    # digest-pinned here, in-container self-updates would fight that.
+    command: ["tunnel", "--no-autoupdate", "--protocol", "auto", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN must be set in the server .env}
+    mem_limit: 64m
+    memswap_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      web:
+        condition: service_started
