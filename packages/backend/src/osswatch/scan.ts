@@ -10,6 +10,7 @@ import { chatJson } from "../providers/llm.ts";
 import { modelFor } from "../editorial/models.ts";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import { GH_API, foldCommits, ghFetchJson, parseRepo, type GhCommit, type GhRelease, type GhTag } from "./github.ts";
+import { pullLocalClone as pullLocalCloneDefault, type LocalPullOutcome } from "./localpull.ts";
 import { getLessons, lessonsBlock } from "./review.ts";
 import {
   getWatermarks, insertUpdate, listPendingUpdates, listProjects, saveDigest, saveDigestError,
@@ -57,6 +58,8 @@ export interface ScanOptions {
   fetchJson?: (url: string) => Promise<unknown>;
   /** 注入单条解读（测试）；缺省走 chatJson 付费链。 */
   digestOne?: (row: Pick<OssUpdateRow, "id" | "kind" | "payload">, project: OssProjectRow) => DigestOutcome | Promise<DigestOutcome>;
+  /** 注入本机 clone 拉新执行器（测试/演练）；缺省=真实 git（见 localpull.ts）。 */
+  pullLocal?: (slug: string) => Promise<LocalPullOutcome | null>;
   now?: Date;
 }
 
@@ -69,6 +72,8 @@ export interface ScanSummary {
   digested: number;
   pending: number;
   errors: string[];
+  /** ym697：本轮「只拉新」结果（失败=指针，不报错、不影响出刊）。 */
+  localPulls: LocalPullOutcome[];
 }
 
 /** 一次采集的全部材料（三面 + 默认分支名）。 */
@@ -149,7 +154,8 @@ export async function scanOssWatch(opts: ScanOptions = {}): Promise<ScanSummary>
   const startedAt = now.toISOString();
   const fetchJson = opts.fetchJson ?? ghFetchJson;
   const digestOne = opts.digestOne ?? digestUpdate;
-  const summary: ScanSummary = { at: startedAt, ok: false, error: null, projects: 0, updates: 0, digested: 0, pending: 0, errors: [] };
+  const pullLocal = opts.pullLocal ?? ((slug: string) => pullLocalCloneDefault(slug));
+  const summary: ScanSummary = { at: startedAt, ok: false, error: null, projects: 0, updates: 0, digested: 0, pending: 0, errors: [], localPulls: [] };
 
   const runDigest = async (row: OssUpdateRow, project: OssProjectRow): Promise<void> => {
     const out = await digestOne(row, project);
@@ -232,6 +238,25 @@ export async function scanOssWatch(opts: ScanOptions = {}): Promise<ScanSummary>
           baselineAt: baseline ? startedAt : wm!.baselineAt,
         };
         await saveWatermarks(marks);
+
+        // ym697 雷达触发线（松耦合乙案）：检出上游新 commit → 本机 clone 只拉新
+        // （fetch + --ff-only；不判定/不改认知库）。失败=指针，绝不抛、不影响出刊。
+        if (fold.keep.length > 0) {
+          try {
+            const pr = await pullLocal(project.slug);
+            if (pr) {
+              summary.localPulls.push(pr);
+              // 指针进日志（有料才出刊的正交面：拉新结果不写入刊 payload）
+              console.log(`[osswatch/localpull] ${pr.slug} ${pr.action} ${pr.ok ? "ok" : "pointer"}${pr.reason ? " — " + pr.reason : ""}`);
+            }
+          } catch (error) {
+            summary.localPulls.push({
+              slug: project.slug, clone: "", ok: false, action: "hook_error",
+              headBefore: null, headAfter: null, remoteHead: null,
+              reason: String(error).slice(0, 200),
+            });
+          }
+        }
 
         for (const row of fresh) await runDigest(row, project);
       } catch (error) {
