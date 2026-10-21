@@ -239,6 +239,8 @@ export interface LbBoardEntry {
   footfallTier: number | null;
   /** ym132-①：该实体近 90 天站内报道数（与详情页相关报道同窗同闸）；0=无角标。 */
   articleCount: number;
+  /** 2026-10-13：高德POI 实采门店数（brand_stores 档案行去重计数，含品牌词翻页+商业体品类词反推）；null=无采集数据（品牌榜外恒 null）。 */
+  amapStores: number | null;
 }
 
 export interface LbBoardResponse {
@@ -250,6 +252,20 @@ export interface LbBoardResponse {
   subBoards: LbSubBoard[];
   /** rd9：当前视图=子榜时的分层口径；null=总榜视图。 */
   subView: { key: string; name: string; values: string[]; note: string } | null;
+  /** 2026-10-13：品牌榜「POI 发现品牌」——品类词反推扫出、反复出现但未收录的品牌（仅品牌榜，其余榜空数组）。 */
+  poiFoundBrands: LbPoiFoundBrand[];
+  /** shoumen P2#2：发现品牌总数（截断前口径；poiFoundBrands 最多载前 50 行，展示层标「展示前 50」）。 */
+  poiFoundTotal: number;
+}
+
+/** 2026-10-13：POI 发现品牌行（poi_found_brands promoted 行；未进计分，待人工收编名录）。 */
+export interface LbPoiFoundBrand {
+  name: string;
+  poiCount: number;
+  mallCount: number;
+  cityCount: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
 }
 
 export type LbScoreFormat = "percent" | "fraction" | "number";
@@ -340,12 +356,15 @@ export interface LbModelDetail {
   comparisons: LbComparison[];
 }
 
-/** v4.5：入驻图谱披露行（confidence=高德邻近信号强度：strong=150m 坐标邻近，weak=400m）；linked=品牌在品牌榜展示面。 */
+/** v4.5：入驻图谱披露行（confidence=高德邻近信号强度：strong=150m 坐标邻近，weak=400m）；linked=品牌在品牌榜展示面。
+ * 2026-10-13：场景⑦ 商业体+品类词反推并入——poiCount=本商场去重门店 POI 数；discovered=品类词扫出的未收录品牌（slug=null 不链接）。 */
 export interface LbTenancyBrand {
-  slug: string;
+  slug: string | null;
   name: string;
   confidence: "strong" | "weak";
   linked: boolean;
+  poiCount?: number | null;
+  discovered?: boolean;
 }
 
 /** ym82：榜详情页相关报道行（article_entities JOIN articles 的截取）。 */

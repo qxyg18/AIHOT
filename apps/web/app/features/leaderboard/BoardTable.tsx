@@ -6,7 +6,7 @@ import { BrandMark } from "./BrandMark";
 import { TierChips } from "./Evidence";
 import { modelHref } from "./format";
 
-type SortKey = "rank" | "date" | "revenue" | "stores" | "area" | "footfall";
+type SortKey = "rank" | "date" | "revenue" | "stores" | "amap" | "area" | "footfall";
 
 function sortValue(e: LbBoardEntry, key: SortKey): number | null {
   switch (key) {
@@ -21,6 +21,9 @@ function sortValue(e: LbBoardEntry, key: SortKey): number | null {
       return e.model.profile?.revenueYi ?? null;
     case "stores":
       return e.model.profile?.stores ?? null;
+    case "amap":
+      // 2026-10-13：高德POI 实采门店数（去重档案行），缺采集数据=null 沉底。
+      return e.amapStores ?? null;
     case "area":
       return e.model.profile?.areaWanSqm ?? null;
     case "footfall":
@@ -147,6 +150,19 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
           )}
           <SortHeader k="revenue" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">年业绩预估（亿元）</SortHeader>
           {isBrand && <SortHeader k="stores" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">门店规模预估（家）</SortHeader>}
+          {isBrand && (
+            <SortHeader k="amap" sort={sort} dir={dir} onSort={onSort} className="hidden lg:table-cell">
+              <span className="inline-flex items-start gap-1 whitespace-nowrap">
+                高德POI
+                <span
+                  className="mt-[3px] inline-flex size-3.5 shrink-0 items-center justify-center rounded-full border border-current text-[9px] leading-none"
+                  title="高德 POI 统计到的门店数：按品牌检索累计实采并去重的门店档案行（含品牌词全量翻页与商业体品类词反推两路；闭店 POI 未剔除）；受翻页上限约束为部分覆盖，用于与门店规模预估对账。"
+                >
+                  i
+                </span>
+              </span>
+            </SortHeader>
+          )}
           <th scope="col" className="hidden px-3 py-2.5 text-right font-medium lg:table-cell">声量</th>
           <th scope="col" className="py-2.5 pl-2 pr-4 text-right font-medium lg:pl-3 lg:pr-[22px]">
             <button
@@ -195,7 +211,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                         </span>
                       )}
                       <span className="block">
-                        年业绩 <span className="num">{e.model.profile?.revenueYi != null ? `约 ${e.model.profile.revenueYi} 亿` : "—"}</span>{e.model.profile?.revenueBasis ? <span className="text-[11px] text-ink-4">（{e.model.profile.revenueBasis}）</span> : null} · 门店 <span className="num">{e.model.profile?.stores != null ? `约 ${e.model.profile.stores} 家` : "—"}</span>
+                        年业绩 <span className="num">{e.model.profile?.revenueYi != null ? `约 ${e.model.profile.revenueYi} 亿` : "—"}</span>{e.model.profile?.revenueBasis ? <span className="text-[11px] text-ink-4">（{e.model.profile.revenueBasis}）</span> : null} · 门店 <span className="num">{e.model.profile?.stores != null ? `约 ${e.model.profile.stores} 家` : "—"}</span>{e.amapStores != null ? <> · 高德POI <span className="num">{e.amapStores.toLocaleString("zh-Hans-CN")}</span></> : null}
                       </span>
                     </>
                   ) : (
@@ -262,6 +278,15 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
             )}
             <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.revenueYi)}{e.model.profile?.revenueBasis ? <span className="ml-1 font-normal text-[11px] text-ink-4">（{e.model.profile.revenueBasis}）</span> : null}</td>
             {isBrand && <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{numText(e.model.profile?.stores)}</td>}
+            {isBrand && (
+              <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">
+                {e.amapStores != null ? (
+                  <span title="高德 POI 统计到的门店数（实采去重）">{e.amapStores.toLocaleString("zh-Hans-CN")}</span>
+                ) : (
+                  <span className="text-ink-4">—</span>
+                )}
+              </td>
+            )}
             <td className="hidden px-3 py-3 text-right align-middle lg:table-cell">
               {/* rd13 声量列：维度分直显（品牌 volume / 商场 media），成色角标沿用 TierChips 单维口径；缺维度显 —。 */}
               {(() => {

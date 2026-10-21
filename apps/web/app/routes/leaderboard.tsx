@@ -163,7 +163,7 @@ export function headers() {
 }
 
 export default function LeaderboardPage() {
-  const { board, entries, run, subBoards, subView, mallType, hideMainLines, fullEntries } = useLoaderData<typeof loader>();
+  const { board, entries, run, subBoards, subView, mallType, hideMainLines, fullEntries, poiFoundBrands, poiFoundTotal } = useLoaderData<typeof loader>();
   const entrance = useEntrance();
   const insufficient = entries.filter((e) => e.sampleInsufficient);
   const ranked = entries.filter((e) => !e.sampleInsufficient);
@@ -210,6 +210,27 @@ export default function LeaderboardPage() {
           <div className="border-t border-line px-4 py-3 text-[12px] leading-relaxed text-ink-4 lg:px-[22px]">
             <span className="font-medium text-ink-3">样本不足（{insufficient.length}）：</span>
             {insufficient.map((e) => e.model.name).join("、")}——有效维度权重占比不足 30%，暂不进入正式名次。
+          </div>
+        )}
+        {board.key === "brand" && !subView && poiFoundBrands.length > 0 && (
+          <div className="border-t border-line px-4 py-3 lg:px-[22px]">
+            <p className="text-[12px] leading-relaxed text-ink-4">
+              <span className="font-medium text-ink-3">POI 发现品牌（{poiFoundTotal}）：</span>
+              商业体品类词反推反复扫到、尚未收录进品牌名单的品牌（≥3 店或 ≥2 商场），先行上榜占位不计名次，收编入册后进入正式计分。
+              {poiFoundTotal > poiFoundBrands.length && <span>（展示按门店数前 {poiFoundBrands.length} 个）</span>}
+            </p>
+            <ul className="mt-2.5 flex flex-wrap gap-2">
+              {poiFoundBrands.map((b) => (
+                <li
+                  key={b.name}
+                  className="chip inline-flex items-center gap-1.5"
+                  title={`高德POI ${b.poiCount} 店 · 覆盖 ${b.mallCount} 商场 / ${b.cityCount} 城`}
+                >
+                  <span>{b.name}</span>
+                  <span className="num rounded-mark bg-bg-sunk px-1.5 py-px text-[10.5px] font-normal text-ink-3">{b.poiCount} 店</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         <div className="border-t border-line px-4 py-3 text-[12px] leading-relaxed text-ink-4 lg:px-[22px]">

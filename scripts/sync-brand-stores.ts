@@ -13,6 +13,8 @@ const F_COUNTS = path.join(OUT, "expand/brand-store-counts.json");
 const F_STORES = path.join(OUT, "expand/brand-stores.json");
 const F_CAND = path.join(OUT, "expand/mall-candidates.json");
 const F_GROUP = path.join(OUT, "expand/group-projects.json");
+const F_MALL_BRAND = path.join(OUT, "expand/mall-brand-dist.json");
+const F_FOUND = path.join(OUT, "expand/poi-found-brands.json");
 const F_COORDS = path.join(OUT, "mall-coords.json");
 const F_SEED_MALLS = path.join(REPO_ROOT, "database/seeds/lb-malls-2026-10.json");
 
@@ -182,7 +184,8 @@ for (const chunk of chunks(all, 500)) {
       lng = excluded.lng, lat = excluded.lat, mall_hint = excluded.mall_hint,
       mall_slug = excluded.mall_slug, mall_match = excluded.mall_match, distance_m = excluded.distance_m,
       source = excluded.source, fetched_at = excluded.fetched_at, updated_at = now()
-    WHERE brand_stores.source <> 'full' OR excluded.source = 'full'`;
+    WHERE (brand_stores.source <> 'full' OR excluded.source = 'full')
+      AND brand_stores.source <> 'mall-cat'`;
 }
 for (const chunk of chunks(countRowsList, 500)) {
   if (chunk.length === 0) continue;
@@ -193,6 +196,73 @@ for (const chunk of chunks(countRowsList, 500)) {
       fetched_at = excluded.fetched_at, updated_at = now()`;
 }
 countRows = countRowsList.length;
+
+// 2026-10-13 场景⑦（命主：商业体+品类词反推品牌分布）：mall_brand_pois / poi_found_brands 落库；
+// 已收录品牌的 mall-cat POI 同步入 brand_stores（source='mall-cat'，冲突不覆盖既有档案行）。
+type MallDistPoi = {
+  name?: string; word?: string; brandSlug?: string | null; brandName?: string | null;
+  lng?: number | null; lat?: number | null; matchKind?: string | null; distanceM?: number | null;
+  firstSeen?: string; lastSeen?: string; seenCount?: number;
+};
+const mallDist = readJson<Record<string, { mallName?: string; city?: string; pois?: Record<string, MallDistPoi> }>>(F_MALL_BRAND, {});
+const mallPoiRows = Object.entries(mallDist).flatMap(([mallRef, e]) =>
+  Object.entries(e.pois ?? {}).map(([poiId, p]) => ({
+    mall_ref: mallRef, poi_id: poiId, poi_name: asStr(p.name) || poiId,
+    word: asStr(p.word) || null, brand_slug: asStr(p.brandSlug) || null,
+    brand_name: asStr(p.brandName) || null,
+    lng: typeof p.lng === "number" ? p.lng : null, lat: typeof p.lat === "number" ? p.lat : null,
+    distance_m: typeof p.distanceM === "number" ? p.distanceM : null,
+    match_kind: asStr(p.matchKind) || null,
+    first_seen: asTs(p.firstSeen), last_seen: asTs(p.lastSeen),
+    seen_count: typeof p.seenCount === "number" ? p.seenCount : 1,
+  })),
+);
+for (const chunk of chunks(mallPoiRows, 500)) {
+  if (chunk.length === 0) continue;
+  await sql`INSERT INTO mall_brand_pois ${sql(chunk, "mall_ref", "poi_id", "poi_name", "word", "brand_slug", "brand_name", "lng", "lat", "distance_m", "match_kind", "first_seen", "last_seen", "seen_count")}
+    ON CONFLICT (mall_ref, poi_id) DO UPDATE SET
+      poi_name = excluded.poi_name, word = excluded.word, brand_slug = excluded.brand_slug,
+      brand_name = excluded.brand_name, lng = excluded.lng, lat = excluded.lat,
+      distance_m = excluded.distance_m, match_kind = excluded.match_kind,
+      first_seen = excluded.first_seen, last_seen = excluded.last_seen,
+      seen_count = excluded.seen_count, updated_at = now()`;
+}
+
+type FoundRec = { name?: string; poiIds?: Record<string, string>; mallRefs?: string[]; cities?: string[]; firstSeen?: string; lastSeen?: string; promoted?: boolean };
+const foundFile = readJson<Record<string, FoundRec>>(F_FOUND, {});
+const foundRows = Object.entries(foundFile).map(([norm, f]) => ({
+  norm_name: norm, brand_name: asStr(f.name) || norm,
+  poi_count: Object.keys(f.poiIds ?? {}).length,
+  mall_count: (f.mallRefs ?? []).length,
+  city_count: (f.cities ?? []).length,
+  first_seen: asTs(f.firstSeen), last_seen: asTs(f.lastSeen),
+  promoted: !!f.promoted,
+}));
+for (const chunk of chunks(foundRows, 500)) {
+  if (chunk.length === 0) continue;
+  await sql`INSERT INTO poi_found_brands ${sql(chunk, "norm_name", "brand_name", "poi_count", "mall_count", "city_count", "first_seen", "last_seen", "promoted")}
+    ON CONFLICT (norm_name) DO UPDATE SET
+      brand_name = excluded.brand_name, poi_count = excluded.poi_count,
+      mall_count = excluded.mall_count, city_count = excluded.city_count,
+      first_seen = excluded.first_seen, last_seen = excluded.last_seen,
+      promoted = excluded.promoted, updated_at = now()`;
+}
+
+const mallBrandStores = mallPoiRows.flatMap((r) =>
+  r.brand_slug
+    ? [{
+        brand_slug: r.brand_slug, poi_id: r.poi_id, name: r.poi_name, poi_type: null,
+        province: null, city: null, district: null, address: null,
+        lng: r.lng, lat: r.lat, mall_hint: null, mall_slug: r.mall_ref, mall_match: r.match_kind,
+        distance_m: r.distance_m, source: "mall-cat", fetched_at: r.last_seen,
+      }]
+    : [],
+);
+for (const chunk of chunks(mallBrandStores, 500)) {
+  if (chunk.length === 0) continue;
+  await sql`INSERT INTO brand_stores ${sql(chunk, "brand_slug", "poi_id", "name", "poi_type", "province", "city", "district", "address", "lng", "lat", "mall_hint", "mall_slug", "mall_match", "distance_m", "source", "fetched_at")}
+    ON CONFLICT (brand_slug, poi_id) DO NOTHING`;
+}
 
 // Backfill province for count rows collected before the collector wrote it (and for any city
 // whose entry carried none): derive the city → province map from the store rows themselves.
@@ -213,8 +283,13 @@ for (const r of all) byMatch.set(r.mall_match ?? "none", (byMatch.get(r.mall_mat
 const [{ stores: dbStores }] = await sql<{ stores: number }[]>`SELECT count(*)::int AS stores FROM brand_stores`;
 const [{ counts: dbCounts }] = await sql<{ counts: number }[]>`SELECT count(*)::int AS counts FROM brand_store_counts`;
 const [{ listed }] = await sql<{ listed: number }[]>`SELECT coalesce(sum(listed_count), 0)::int AS listed FROM brand_store_counts`;
+const [{ mallPois }] = await sql<{ mallPois: number }[]>`SELECT count(*)::int AS "mallPois" FROM mall_brand_pois`;
+const [{ foundBrands }] = await sql<{ foundBrands: number }[]>`SELECT count(*)::int AS "foundBrands" FROM poi_found_brands WHERE promoted`;
 console.log(JSON.stringify({
   input_stores: all.length, input_counts: countRows, db_stores: dbStores, db_counts: dbCounts,
   listed_total: listed, mall_match: Object.fromEntries(byMatch),
+  mall_poi_rows: mallPoiRows.length, db_mall_pois: mallPois,
+  found_rows: foundRows.length, db_found_promoted: foundBrands,
+  mall_cat_stores: mallBrandStores.length,
 }, null, 1));
 await closeDb();

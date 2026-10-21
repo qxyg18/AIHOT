@@ -19,6 +19,7 @@ import type {
   LbSourcesResponse,
   LbSourceSummary,
   LbStability,
+  LbTenancyBrand,
 } from "@aihot/contracts/leaderboard";
 import { LB_DIMENSION_LABELS } from "@aihot/contracts/leaderboard";
 import type { SiteBrandCard } from "@aihot/contracts/site";
@@ -473,6 +474,26 @@ export async function loadBoard(key: LeaderboardBoardKey, subKey: string | null 
         GROUP BY e.entity_slug`
     : [];
   const articleCounts = new Map(countRows.map((r) => [r.slug, r.n]));
+  // 2026-10-13 命主令：品牌榜「高德POI」列——brand_stores 档案行实采门店数（poi_id 去重，
+  // 含品牌词全量翻页与商业体品类词反推两路）；仅品牌榜查询，其余榜恒 null。
+  const amapRows = key === "brand" && rowSlugs.length
+    ? await sql<{ slug: string; n: number }[]>`
+        SELECT brand_slug AS slug, count(*)::int AS n FROM brand_stores
+        WHERE brand_slug = ANY(${rowSlugs}) GROUP BY brand_slug`
+    : [];
+  const amapCounts = new Map(amapRows.map((r) => [r.slug, r.n]));
+  // 2026-10-13 命主令：品牌榜「POI 发现品牌」——品类词反推反复出现（≥3 店或 ≥2 场）的未收录品牌。
+  // shoumen P2#2：总数用窗口计数（LIMIT 截断前口径），展示层标「展示前 50」防截断数冒充总数。
+  const poiFoundRows = key === "brand"
+    ? await sql<{ name: string; poiCount: number; mallCount: number; cityCount: number; firstSeen: string | null; lastSeen: string | null; total: number }[]>`
+        SELECT brand_name AS name, poi_count AS "poiCount", mall_count AS "mallCount",
+               city_count AS "cityCount", first_seen::text AS "firstSeen", last_seen::text AS "lastSeen",
+               count(*) OVER ()::int AS total
+        FROM poi_found_brands WHERE promoted
+        ORDER BY poi_count DESC, brand_name LIMIT 50`
+    : [];
+  const poiFoundTotal = poiFoundRows[0]?.total ?? 0;
+  const poiFoundBrands: LbBoardResponse["poiFoundBrands"] = poiFoundRows.map(({ total: _total, ...r }) => r);
   const entries: LbBoardEntry[] = scoped.map(({ entry: e, rank, overallRank }) => {
     const m = view.modelsById.get(e.model_id)!;
     return {
@@ -491,6 +512,7 @@ export async function loadBoard(key: LeaderboardBoardKey, subKey: string | null 
       dimensionTiers: e.detail?.dimensionTiers ?? null,
       footfallTier: footfallSignal?.get(e.slug)?.score ?? null,
       articleCount: articleCounts.get(e.slug) ?? 0,
+      amapStores: amapCounts.get(e.slug) ?? null,
     };
   });
   const copy = BOARD_COPY[key];
@@ -512,6 +534,8 @@ export async function loadBoard(key: LeaderboardBoardKey, subKey: string | null 
     },
     tabs: boardTabs(),
     entries,
+    poiFoundBrands,
+    poiFoundTotal,
     subBoards: subViewsOfBoard(key).map((s) => ({
       key: s.key,
       name: s.name,
@@ -689,9 +713,46 @@ export async function loadModel(slug: string): Promise<LbModelDetail | null> {
 
   // v4.5（2026-10-02 命主令）：商业体详情页「已开店童装品牌」——入驻图谱试点快照回连本商场的边；
   // linked=品牌在品牌榜展示面（可点直达品牌榜详情），其余只列名不链接。
-  const tenancyBrands = mallEntry
-    ? (tenancyByMall().get(slug) ?? []).map((t) => ({ ...t, linked: view.pageSlugs.has(t.slug) }))
-    : null;
+  // 2026-10-13 命主令「去重更新到商场详情页」：场景⑦ 商业体+品类词反推分布并入（poi_id 级去重在采集端）——
+  // 已有图谱边补 poiCount，POI 独有品牌新增行（未收录品牌 discovered=true、slug=null 不链接）。
+  let tenancyBrands: LbTenancyBrand[] | null = null;
+  if (mallEntry) {
+    const merged = new Map<string, LbTenancyBrand>();
+    for (const t of tenancyByMall().get(slug) ?? []) {
+      merged.set(t.slug, { slug: t.slug, name: t.name, confidence: t.confidence, linked: view.pageSlugs.has(t.slug) });
+    }
+    const poiRows = await sql<{ brandSlug: string | null; brandName: string | null; n: number; weak: boolean }[]>`
+      SELECT brand_slug AS "brandSlug", min(brand_name) AS "brandName", count(*)::int AS n,
+             bool_or(match_kind = 'proximity-weak') AS weak
+      FROM mall_brand_pois WHERE mall_ref = ${slug}
+      GROUP BY brand_slug, brand_name`;
+    for (const r of poiRows) {
+      const dedupeKey = r.brandSlug ?? `@${r.brandName ?? ""}`;
+      const prev = merged.get(dedupeKey) ?? [...merged.values()].find((x) => x.name === r.brandName) ?? null;
+      if (prev) {
+        prev.poiCount = (prev.poiCount ?? 0) + r.n;
+        if (r.brandSlug && prev.slug == null) {
+          // 图谱行与 POI 行同名归并（未收录名后续被收录的情形）
+          prev.slug = r.brandSlug;
+          prev.linked = view.pageSlugs.has(r.brandSlug);
+        }
+        continue;
+      }
+      merged.set(dedupeKey, {
+        slug: r.brandSlug,
+        name: r.brandName ?? r.brandSlug ?? "",
+        confidence: r.weak ? "weak" : "strong",
+        linked: !!r.brandSlug && view.pageSlugs.has(r.brandSlug),
+        poiCount: r.n,
+        discovered: !r.brandSlug,
+      });
+    }
+    const confRank = (c: "strong" | "weak") => (c === "strong" ? 0 : 1);
+    tenancyBrands = [...merged.values()].sort((a, b) =>
+      confRank(a.confidence) - confRank(b.confidence)
+      || (b.poiCount ?? 0) - (a.poiCount ?? 0)
+      || a.name.localeCompare(b.name, "zh-Hans-CN"));
+  }
 
   return {
     run: view.info,

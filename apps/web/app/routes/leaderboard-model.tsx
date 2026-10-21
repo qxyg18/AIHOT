@@ -425,25 +425,30 @@ function EntitySignals({ d }: { d: ReturnType<typeof useLoaderData<typeof loader
 
 // v4.5（2026-10-02 命主令）：商业体详情页「已开店童装品牌」——高德入驻图谱试点快照回连的边
 // （needsReview=false 已在读取层过滤）。品牌链到品牌榜详情页；零匹配整块不渲染。
+// 2026-10-13（命主令「商业体+品类词反推」）：品类词扫出的门店分布并入同一名单——
+// 已收录品牌带「N 店」计数，未收录品牌标「POI 发现」不链接；poi_id 去重在采集端。
 function TenancyBrands({ d }: { d: ReturnType<typeof useLoaderData<typeof loader>> }) {
   const brands = d.tenancyBrands ?? [];
   if (!d.mallBoard || brands.length === 0) return null;
   return (
     <section className="mt-12">
-      <SectionHead eyebrow="IN-STORE BRANDS" title="已入驻的童装品牌。" sub={`地图入驻图谱匹配到 ${d.model.name} 的童装品牌门店信号，点击直达品牌榜档案。`} />
+      <SectionHead eyebrow="IN-STORE BRANDS" title="已入驻的童装品牌。" sub={`地图入驻图谱与品类词反推匹配到 ${d.model.name} 的童装品牌门店信号，点击直达品牌榜档案。`} />
       <ul className="mt-5 flex flex-wrap gap-2">
         {brands.map((b) => {
           const chip = (
             <>
               <span>{b.name}</span>
-              <span className={`rounded-mark px-1.5 py-px text-[10.5px] font-normal ${b.confidence === "strong" ? "bg-accent-softer text-accent" : "bg-bg-sunk text-ink-3"}`}>
-                {b.confidence === "strong" ? "强信号" : "弱信号"}
+              {b.poiCount != null && (
+                <span className="num rounded-mark bg-bg-sunk px-1.5 py-px text-[10.5px] font-normal text-ink-3">{b.poiCount} 店</span>
+              )}
+              <span className={`rounded-mark px-1.5 py-px text-[10.5px] font-normal ${b.discovered ? "bg-bg-sunk text-ink-3" : b.confidence === "strong" ? "bg-accent-softer text-accent" : "bg-bg-sunk text-ink-3"}`}>
+                {b.discovered ? "POI 发现" : b.confidence === "strong" ? "强信号" : "弱信号"}
               </span>
             </>
           );
           return (
-            <li key={b.slug}>
-              {b.linked ? (
+            <li key={b.slug ?? b.name}>
+              {b.linked && b.slug ? (
                 <Link to={`/leaderboard/${b.slug}`} prefetch="intent" className="chip inline-flex items-center gap-1.5 transition-colors hover:border-ink-4 hover:text-accent">
                   {chip}
                 </Link>
@@ -454,7 +459,7 @@ function TenancyBrands({ d }: { d: ReturnType<typeof useLoaderData<typeof loader
           );
         })}
       </ul>
-      <p className="mt-2.5 text-[11.5px] text-ink-4">口径：高德 POI 坐标邻近（150m=强信号 / 400m=弱信号）与店名内嵌商场名双信号；人工复核未过的边不展示。试点期快照仅覆盖部分城市，全量采集接入后自动增厚。</p>
+      <p className="mt-2.5 text-[11.5px] text-ink-4">口径：高德 POI 坐标邻近（150m=强信号 / 400m=弱信号）与店名内嵌商场名双信号，并入「商业体名+品类词」反推的门店分布（按门店去重，N 店=去重 POI 数）；人工复核未过的图谱边不展示，未收录品牌仅列名不链接。</p>
     </section>
   );
 }
