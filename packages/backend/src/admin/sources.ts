@@ -129,7 +129,7 @@ export async function updateSource(id: string, input: { patch: unknown; version:
       health = CASE WHEN ${patch.enabled ?? null}::boolean IS FALSE THEN 'paused' WHEN ${patch.enabled ?? null}::boolean IS TRUE AND health = 'paused' THEN 'unknown' ELSE health END,
       next_fetch_at = CASE WHEN ${patch.enabled ?? null}::boolean IS TRUE THEN now() ELSE next_fetch_at END
       WHERE id = ${id} RETURNING *`;
-    await audit(actor, "source.update", `source:${id}`, input.reason ?? null, Object.fromEntries(keys.map((k) => [k, before[k]])), patch);
+    await audit(actor, "source.update", `source:${id}`, input.reason ?? null, Object.fromEntries(keys.map((k) => [k, before[k]])), patch, undefined, tx);
     // What public exits show for this source's articles is derived from these fields: re-derive them
     // all (in the worker) so a revoked licence or an isolated source stops on every exit.
     if (keys.some((k) => PUBLICATION_FIELDS.includes(k) && JSON.stringify(before[k]) !== JSON.stringify(patch[k]))) {
@@ -164,14 +164,16 @@ const CreateSchema = z
 export function sourceIdentity(kind: string, config: Record<string, unknown>): string | null {
   const raw = (config.feedUrl ?? config.url ?? config.listUrl ?? config.endpoint ?? null) as string | null;
   if (kind === "x_search") {
-    const m = /from:([A-Za-z0-9_]{1,15})/.exec(String(config.query ?? ""));
+    const m = /(?:^|\s)from:([A-Za-z0-9_]{1,15})/.exec(String(config.query ?? ""));
     return m ? `x:${m[1]!.toLowerCase()}` : null;
   }
   if (!raw) return null;
+  // A value that is not a URL keeps its own "raw:" namespace so it never collides with the
+  // x: handle space or a normalised https identity (ym318 ISS-1).
   try {
-    return normalizeUrl(String(raw).replace(/^https:\/\/r\.jina\.ai\//, "")) ?? String(raw);
+    return normalizeUrl(String(raw).replace(/^https:\/\/r\.jina\.ai\//, "")) ?? `raw:${String(raw)}`;
   } catch {
-    return String(raw);
+    return `raw:${String(raw)}`;
   }
 }
 
@@ -180,7 +182,10 @@ export function sourceIdentity(kind: string, config: Record<string, unknown>): s
 export async function findDuplicateSource(kind: string, config: Record<string, unknown>, exec: Db = sql) {
   const identity = sourceIdentity(kind, config);
   if (!identity) return null;
-  const rows = await exec<{ id: string; kind: string; config: Record<string, unknown>; name: string }[]>`SELECT id, kind, config, name FROM sources WHERE kind = ${kind}`;
+  // One address is one source across kinds (T04/AC2): an rss feed and a web_list page on the same
+  // endpoint are one source. Identities are namespaced (x:, raw:, normalised https), so rows of
+  // unrelated kinds cannot collide by accident.
+  const rows = await exec<{ id: string; kind: string; config: Record<string, unknown>; name: string }[]>`SELECT id, kind, config, name FROM sources`;
   return rows.find((r) => sourceIdentity(r.kind, r.config) === identity) ?? null;
 }
 
@@ -189,16 +194,34 @@ export async function createSource(input: unknown, actor: string) {
   assertSupportedConfig(s.kind, s.config);
   // New sources are enabled on insert: an overseas suspect must carry the tag from birth.
   assertOverseasTagged({ name: s.name, config: s.config, tags: s.tags, participation_mode: s.participation_mode, enabled: true });
-  const dup = await findDuplicateSource(s.kind, s.config);
-  if (dup) return { created: false as const, duplicate: dup };
-  const [row] = await sql`
-    INSERT INTO sources (id, name, kind, config, tier, participation_mode, interval_minutes, first_party, tags, site_fulltext, syndicate_fulltext, next_fetch_at)
-    VALUES (${s.id}, ${s.name}, ${s.kind}, ${sql.json(s.config as never)}, ${s.tier}, ${s.participation_mode}, ${s.interval_minutes}, ${s.first_party}, ${s.tags},
-            ${s.site_fulltext}, ${s.syndicate_fulltext}, now())
-    ON CONFLICT (id) DO NOTHING RETURNING *`;
-  if (!row) throw new Conflict(`信源 ID ${s.id} 已存在`);
-  await audit(actor, "source.create", `source:${s.id}`, null, null, s);
-  return { created: true as const, source: row };
+  const identity = sourceIdentity(s.kind, s.config);
+  return sql.begin(async (tx) => {
+    // One address is one source: the SAME advisory-lock key activate.ts takes (hashtext of
+    // sourceIdentity), so a manual create and an activation of this endpoint serialise instead of
+    // racing to two rows. The row, its audit row and the lock release commit together (AC1/AC3).
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${identity ?? `source-id:${s.id}`})::bigint)`;
+    // Re-read under the lock: READ COMMITTED sees a winner that committed while we waited, so this
+    // becomes the duplicate read-back instead of a second source.
+    const dup = await findDuplicateSource(s.kind, s.config, tx);
+    if (dup) return { created: false as const, duplicate: dup };
+    const [row] = await tx`
+      INSERT INTO sources (id, name, kind, config, tier, participation_mode, interval_minutes, first_party, tags, site_fulltext, syndicate_fulltext, next_fetch_at)
+      VALUES (${s.id}, ${s.name}, ${s.kind}, ${tx.json(s.config as never)}, ${s.tier}, ${s.participation_mode}, ${s.interval_minutes}, ${s.first_party}, ${s.tags},
+              ${s.site_fulltext}, ${s.syndicate_fulltext}, now())
+      ON CONFLICT (id) DO NOTHING RETURNING *`;
+    if (!row) {
+      // The id is taken although no duplicate address was found: only a row on our own identity is
+      // the create we lost to (a writer outside this lock path); any other row is a real id conflict.
+      const [existing] = await tx<{ id: string; kind: string; config: Record<string, unknown>; name: string }[]>`
+        SELECT id, kind, config, name FROM sources WHERE id = ${s.id}`;
+      if (existing && identity !== null && sourceIdentity(existing.kind, existing.config) === identity) {
+        return { created: false as const, duplicate: existing };
+      }
+      throw new Conflict(`信源 ID ${s.id} 已存在`);
+    }
+    await audit(actor, "source.create", `source:${s.id}`, null, null, s, undefined, tx);
+    return { created: true as const, source: row };
+  });
 }
 
 export async function fetchNow(id: string, actor: string) {
