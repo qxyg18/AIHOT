@@ -7,6 +7,7 @@
 
 1. **镜像锚定 commit**：一次发版的全部镜像构建自同一 `git archive HEAD` 快照，tag=commit 短 sha（8 位）。禁止从工作树直接 rsync——未跟踪文件漂移正是 2026-10-17 迁云镜像缺高德线特性的根因。
 2. **四容器同生共死**：`up -d` 一次换 api/worker/web/setup（db/cloudflared 镜像 digest 锁定不随发版变）。只换一半=版本错配（ym739 教训：web 被遗漏跑旧镜像四天）。
+   **回写义务**：在服务器 release/build 目录里做的任何运维值改动（compose 键、镜像 digest、env、限额）必须回写 git 并提交，否则下次发版按 `git archive HEAD` 重建会被静默抹掉。实例：ym730/C1-10 的 `oom_score_adj: -500` 只落在服务器 overlay 未回写，2026-10-21 22:00 发版即丢失（ym780 回补）；ym752 的占位 digest 同型。判据：发版后逐项比对现役容器实值与 git HEAD 中 compose 的声明，不一致即视为本次发版缺陷。
 3. **两道前置闸**（缺一发版中止）：
    - 本地 `npm run typecheck && npm run test`：全绿，或红项**全部落在已登记基线红清单内**（见下节；清单外新红=发版中止）。结果与对照结论贴 RELEASE.json gates。
    - 云端迁移账本核验：待发版新增的 `database/migrations/*.sql` 若云端库已手工建过表，`schema_migrations` 必须已有对应行，否则 setup 跑迁移会撞「表已存在」把四个容器全部拖死（非幂等迁移=停机开关）。核验：`sudo docker exec aihot-db-1 sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 10"'`，与本次新增迁移清单比对；缺行且表已存在→先补 `INSERT INTO schema_migrations (name) VALUES ('<文件名>')` 再发版。
@@ -50,6 +51,7 @@
 ## 验证清单（切换后逐项）
 
 - `sudo docker ps`：api/worker/web 同 tag、healthy；setup exited 0。
+- `sudo docker inspect aihot-db-1 --format '{{.HostConfig.OomScoreAdj}}'` = `-500`，且 `/proc/$(sudo docker inspect -f '{{.State.Pid}}' aihot-db-1)/oom_score_adj` 回读 `-500`（两处都要核：前者是声明值，后者是生效值）。注意 `docker update` 在 Docker 29.x **不支持** `--oom-score-adj`，该值只在容器创建时由 compose 设定，所以这一项只能靠「git 快照带对」+「发版后核」，不能事后补。
 - `curl -s http://127.0.0.1:3000/ | grep <title>`（首页 SSR）。
 - 本排行榜页抽查（对照本次发版的功能面）。
 - `curl -s http://172.18.0.3:3001/api/site/changelog`（经 api 容器 IP）反映第 7 步新条目=热加载生效。
