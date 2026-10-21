@@ -1,6 +1,9 @@
 // opencode 目录同步与存在性预检（ym467 S05）：直连宿主客户端 GET /provider（Basic 鉴权），
 // 免费判定 =「-free」后缀或常免费白名单（big-pickle，与 HUB 盯守轴同口径）且客户端报告
 // 零价（cost.input/output 都 0——双信号一致才ingest，防把付费档误接进免费池）。
+// ym20261020：没有宿主客户端（云端常态）时改拉 opencode.ai 公共免费网关（Magpie
+// opencode-2-free 同款）：网关 models 列表决定「此刻可调用」，models.opencode.ai 目录补
+// 上下文/零价元数据；池/证书/路由与 serve 传输共用同一套（同上游、同模型 id）。
 // 动作：①目录新增免费模型 → 自动接入（行+池+事件，走 pool.onboardOpencodeModel）；
 // ②池内模型从目录消失 → ended+出池+事件（行保留可回，目录再现由 onboard 复活）；
 // ③客户端版本与免费集合快照写 settings（opencodewatch.hello），版本/集合变化出事件
@@ -10,7 +13,7 @@
 import { credential } from "../config.ts";
 import { sql } from "../db.ts";
 import { addEvent } from "../modelwatch/store.ts";
-import { opencodeConfigured, opencodeClientFetch } from "../providers/opencode.ts";
+import { fetchOpencodeDirectCatalog, opencodeConfigured, opencodeServeConfigured, opencodeClientFetch } from "../providers/opencode.ts";
 import { getOpencodePool, markOpencodeModelEnded, onboardOpencodeModel } from "./pool.ts";
 
 export const OPENCODE_HELLO_KEY = "opencodewatch.hello";
@@ -41,6 +44,8 @@ export function planOpencodeSync(pool: string[], catalogIds: string[]): { onboar
 
 export interface OpencodeCatalog {
   version: string | null;
+  /** serve=宿主客户端目录；direct=opencode.ai 公共免费网关（无登录直连）。 */
+  transport: "serve" | "direct";
   /** opencode provider 下的全部模型（不含其他 provider）。 */
   models: CatalogModel[];
   /** 免费集合（双信号过滤后）。 */
@@ -55,8 +60,12 @@ interface ProviderModel {
   status?: string;
 }
 
-/** 拉客户端目录：POST /session 取版本（顺带活体探针）→ GET /provider 取 opencode 面 → 删会话。 */
+/** 拉目录：宿主客户端在则 GET /provider（旧路）；否则直连公共网关的 models 列表 + 目录元数据。 */
 export async function fetchOpencodeCatalog(): Promise<OpencodeCatalog> {
+  if (!opencodeServeConfigured()) {
+    const direct = await fetchOpencodeDirectCatalog();
+    return { version: direct.version, transport: "direct", models: direct.models, freeIds: direct.freeIds };
+  }
   const probe = await opencodeClientFetch("POST", "/session", { body: {}, timeoutMs: 30_000 });
   if (probe.status !== 200) throw new Error(`opencode session probe HTTP ${probe.status}: ${probe.body.slice(0, 200)}`);
   const probeBody = JSON.parse(probe.body) as { id?: string; version?: string };
@@ -86,7 +95,7 @@ export async function fetchOpencodeCatalog(): Promise<OpencodeCatalog> {
     }];
   });
   const freeIds = models.filter((m) => isFreeOpencodeModel(m.id) && m.zeroPrice).map((m) => m.id);
-  return { version: probeBody.version ?? null, models, freeIds };
+  return { version: probeBody.version ?? null, transport: "serve", models, freeIds };
 }
 
 export interface OpencodeScanSummary {
@@ -106,7 +115,7 @@ export async function scanOpencodeWatch(): Promise<OpencodeScanSummary> {
   const at = new Date().toISOString();
   const summary: OpencodeScanSummary = { at, ok: false, error: null, version: null, versionChanged: false, freeTotal: 0, onboarded: 0, ended: 0, suspicious: false };
   if (!opencodeConfigured()) {
-    summary.error = "OPENCODE_SERVE_URL / OPENCODE_SERVER_PASSWORD 未配置（models.env）";
+    summary.error = "OPENCODE_SERVE_URL / OPENCODE_SERVER_PASSWORD 未配置且 OPENCODE_DIRECT_ENABLED=false（直连也关闭）";
     return summary;
   }
   try {
@@ -129,8 +138,11 @@ export async function scanOpencodeWatch(): Promise<OpencodeScanSummary> {
         model: id,
         name: m?.name ?? id,
         contextTokens: m?.contextTokens ?? null,
-        sourceUrl: "client:/provider",
-        note: `ym467 目录同步自动接入（免费双信号：后缀/白名单 + 客户端零价）`,
+        sourceUrl: catalog.transport === "direct" ? "gateway:https://opencode.ai/inference/v1/models" : "client:/provider",
+        note: catalog.transport === "direct"
+          ? "ym20261020 直连公共网关自动接入（免费双信号：后缀/白名单 + 目录零价）"
+          : `ym467 目录同步自动接入（免费双信号：后缀/白名单 + 客户端零价）`,
+        transport: catalog.transport,
       });
       summary.onboarded++;
     }
@@ -143,7 +155,13 @@ export async function scanOpencodeWatch(): Promise<OpencodeScanSummary> {
     const curFree = catalog.freeIds.slice().sort().join(",");
     summary.versionChanged = !!prev?.version && !!catalog.version && prev.version !== catalog.version;
     if (summary.versionChanged) {
-      await addEvent("opencode_version_changed", "", { from: prev?.version ?? null, to: catalog.version, note: "客户端版本漂移：接入 pin=1.18.35，升级可能断链（守护/熔断兜底）" });
+      await addEvent("opencode_version_changed", "", {
+        from: prev?.version ?? null,
+        to: catalog.version,
+        note: catalog.transport === "direct"
+          ? "直连网关客户端版本漂移（OPENCODE2_CLIENT_VERSION）：网关若收紧身份门禁，可能整通道 403（熔断兜底）"
+          : "客户端版本漂移：接入 pin=1.18.35，升级可能断链（守护/熔断兜底）",
+      });
     }
     if (prev && prevFree !== curFree) {
       await addEvent("opencode_free_set_changed", "", { from: prev.freeIds ?? [], to: catalog.freeIds, note: "免费集合变化（增/减员）——与 HUB 盯守轴 opencode-watch 双通道同源可对照" });

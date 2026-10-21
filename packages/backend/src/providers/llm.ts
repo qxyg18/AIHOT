@@ -11,7 +11,7 @@ import { isMimoBalanceError, openMimoCircuit } from "./mimo.ts";
 import { isFreeAccountQuotaError, PROVIDER_MODELS, routeForPurpose, routerReport, type ProviderKey } from "./api-router.ts";
 import { freeRoutingSnapshot, openOpenRouterCircuit, OPENROUTER_FREE_KEY } from "../modelwatch/routing.ts";
 import { openZhipuCircuit, ZHIPU_FREE_KEY } from "./zhipu.ts";
-import { callOpencode, isOpencodeChannelFailure, openOpencodeCircuit, OPENCODE_FREE_KEY } from "./opencode.ts";
+import { callOpencode, isOpencodeChannelFailure, openOpencodeCircuit, opencodeConfigured, opencodeTransport, OPENCODE_FREE_KEY } from "./opencode.ts";
 import { capabilityForPurpose } from "../modelwatch/capability-routing.ts";
 import { sql } from "../db.ts";
 
@@ -333,7 +333,8 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           : [{ model, channel: null }];
   // 各候选按所属通道解析端点/凭据/服务名/extra（跨通道兜底时与发起预设不同）；非免费预设
   // 候选（channel=null）沿用预设解析结果（含 default 的 admin override）。opencode 面
-  // apiKey 位承载 OPENCODE_SERVER_PASSWORD（Basic 鉴权密码，callOpencode 内组头）。
+  // apiKey 位承载 OPENCODE_SERVER_PASSWORD（Basic 鉴权密码，callOpencode 内组头）；无宿主
+  // 凭据时该通道走直连公共网关（Magpie opencode-2-free 同款），因此不要求两条凭据都在。
   const credsOf = (c: FreeCandidate) =>
     c.channel === "zhipu"
       ? { baseUrl: credential("models", "ZHIPU_BASE_URL"), apiKey: credential("models", "ZHIPU_API_KEY") }
@@ -345,7 +346,11 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
   const serviceOf = (c: FreeCandidate) => (c.channel === "zhipu" ? "zhipu-free" : c.channel === "openrouter" ? "openrouter" : c.channel === "opencode" ? "opencode-free" : spec.service);
   const extraOf = (c: FreeCandidate): Record<string, unknown> | undefined =>
     c.channel === "zhipu" ? MODELS[ZHIPU_FREE_KEY]!.extra : c.channel === "openrouter" ? MODELS[OPENROUTER_FREE_KEY]!.extra : c.channel === "opencode" ? undefined : spec.extra;
-  const runnable = candidates.filter((c) => { const creds = credsOf(c); return !!c.model && !!creds.baseUrl && !!creds.apiKey; });
+  const runnable = candidates.filter((c) => {
+    if (c.channel === "opencode") return !!c.model && opencodeConfigured();
+    const creds = credsOf(c);
+    return !!c.model && !!creds.baseUrl && !!creds.apiKey;
+  });
   if (runnable.length === 0) {
     // 免费预设：本通道凭据缺失照旧报「未配置」；凭据在而链空=快照空/熔断（上层应已落付费）。
     const free = spec.key === OPENROUTER_FREE_KEY || spec.key === ZHIPU_FREE_KEY || spec.key === OPENCODE_FREE_KEY;
@@ -400,7 +405,7 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           model: candidate.model,
           purpose: opts.purpose,
           subject: opts.subject,
-          identity: { model: candidate.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens: candMaxTokens, extra: (isAnthropicEndpoint(creds.baseUrl!) ? null : candExtra) ?? null },
+          identity: { model: candidate.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens: candMaxTokens, extra: (isAnthropicEndpoint(creds.baseUrl ?? "") ? null : candExtra) ?? null },
           requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens: candMaxTokens, ...(degradeImage ? { imageDropped: true } : {}) },
           attemptTag: opts.attemptTag,
           // ym249: free-only calls are one operation across candidate models — the operation key carries no
@@ -417,21 +422,27 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           const started = Date.now();
           // ym467：opencode 候选经客户端中介出文（内部完成会话建/发/删三段），响应归一到
           // OpenAI 形（choices[0].message.content + usage）供下游 replyText/usageOf 单形消费。
+          // ym20261020：无宿主凭据时 callOpencode 走直连公共网关（同一上游、同一模型 id），
+          // 站点侧仍是普通非流式消费（SSE 在通道层折叠）。
           if (candidate.channel === "opencode") {
             const oc = await callOpencode({
-              baseUrl: creds.baseUrl!,
-              password: creds.apiKey!,
+              baseUrl: creds.baseUrl ?? "",
+              password: creds.apiKey ?? "",
               model: candidate.model,
               system: opts.system,
               user: typeof candUser === "string" ? candUser : userText,
+              maxTokens: candMaxTokens,
+              temperature,
+              sessionSeed: `${opts.purpose}:${opts.subject}`,
               timeoutMs: opts.timeoutMs ?? 120_000,
+              transport: opencodeTransport(),
             });
             return {
               response: { ...oc.response, _latencyMs: Date.now() - started },
               requestId: oc.requestId,
               usage: oc.usage,
               cost: null,
-              costEvidence: { basis: "free-tier-client", model: candidate.model, priced: false } as Record<string, unknown>,
+              costEvidence: { basis: oc.transport === "direct" ? "free-tier-public" : "free-tier-client", transport: oc.transport, model: candidate.model, priced: false } as Record<string, unknown>,
             };
           }
           let res: Response;

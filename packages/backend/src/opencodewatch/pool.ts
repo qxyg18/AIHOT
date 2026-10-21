@@ -55,6 +55,8 @@ async function saveOpencodePool(state: OpencodePoolState, actor: string): Promis
  *  'ended'（目录消失）复活为 observing（机器结论可逆——目录再现即回来）。池去重并入。 */
 export async function onboardOpencodeModel(input: {
   model: string; name: string; contextTokens: number | null; sourceUrl: string; note: string;
+  /** 目录来源：serve=宿主客户端；direct=opencode.ai 公共免费网关（无需凭据）。 */
+  transport?: "serve" | "direct";
 }): Promise<{ modelId: string; created: boolean; revived: boolean; retired: boolean }> {
   const modelId = opencodeModelIdOf(input.model);
   const existing = await sql<{ status: string }[]>`SELECT status FROM model_watch_models WHERE model_id = ${modelId}`;
@@ -76,7 +78,7 @@ export async function onboardOpencodeModel(input: {
       VALUES
         (${modelId}, ${input.name}, 'opencode', 'free_tier', ${input.contextTokens}, false, true,
          now(), '0', '0', 'observing', ${input.note},
-         ${sql.json({ channel: "opencode", baseUrlEnv: "OPENCODE_SERVE_URL", autoOnboard: true, sourceUrl: input.sourceUrl } as never)})
+         ${sql.json({ channel: "opencode", transport: input.transport ?? "serve", baseUrlEnv: (input.transport ?? "serve") === "direct" ? null : "OPENCODE_SERVE_URL", autoOnboard: true, sourceUrl: input.sourceUrl } as never)})
       ON CONFLICT (model_id) DO NOTHING RETURNING model_id`;
     created = inserted.length > 0;
   }
