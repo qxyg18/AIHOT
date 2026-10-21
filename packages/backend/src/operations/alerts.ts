@@ -212,6 +212,24 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
     });
   }
 
+  // 精选干旱：收录和处理照常、但评分链整体退化时（模型路由劣化、门槛与通道错配、免费档
+  // 静默断供），首页可以数天没有新入选而上面任何一条都不响（2026-10-16…21 迁云窗口实例）。
+  // 只在收录仍在进新文章时判，收录停摆由 content.collect 报；digest 起步观察误报率，稳了再议调级。
+  if (collecting() && modelsOn()) {
+    const DROUGHT_MS = Number(process.env.ALERT_SELECTED_DROUGHT_HOURS || 36) * 3600_000;
+    const [drought] = await sql<{ at: Date | null; fresh: number }[]>`
+      SELECT (SELECT max(selected_ready_at) FROM publications WHERE selected) AS at,
+             (SELECT count(*)::int FROM articles WHERE discovered_at > now() - interval '6 hours') AS fresh`;
+    if (drought?.at && drought.fresh > 0 && now - drought.at.getTime() > DROUGHT_MS) {
+      out.push({
+        key: "content.selected",
+        level: "digest",
+        title: "首页精选很久没有新入选",
+        detail: `最近一次入选 ${beijingStamp(drought.at)}，近 6 小时仍收录了 ${drought.fresh} 篇；评分链疑似整体退化（模型路由/门槛/通道），对照今日 analyses 的评分分布排查（ym768）`,
+      });
+    }
+  }
+
   return out;
 }
 

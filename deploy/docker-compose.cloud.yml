@@ -29,6 +29,13 @@ services:
   api:
     mem_limit: 384m
     memswap_limit: 384m
+    # The changelog lives on the host (created/extended by the release runbook) so a deploy can
+    # append release entries without a rebuild; loadChangelog() picks the change up by mtime.
+    # The file must exist BEFORE `up -d` or Docker would create a directory in its place.
+    volumes:
+      - /srv/radar/shared/changelog.json:/data/changelog.json:ro
+    environment:
+      AIHOT_CHANGELOG_FILE: /data/changelog.json
 
   worker:
     mem_limit: 512m
