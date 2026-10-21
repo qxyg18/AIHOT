@@ -290,7 +290,7 @@ const verdict = errors.length === 0 ? "PASS" : "FAIL";
 const stats = {
   changed: changedPaths.length, declared: declaredHunks.length, external: external.length,
   external_unattributed: externalUnattributed,
-  roots: roots.length, closure: closure.length, hit: [...hitNodes].length, policy_sha256: policySha.slice(0, 16),
+  roots: roots.length, closure: closure.size, hit: [...hitNodes].length, policy_sha256: policySha.slice(0, 16),
 };
 console.log(JSON.stringify({ verdict, errors, stats, manifest: manifest.task_id, kind, risk: manifest.risk, risk_floor: floor }));
 if (verdict === "FAIL") {

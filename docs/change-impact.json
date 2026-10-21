@@ -59,7 +59,8 @@
         "scripts/sync-brand-stores.ts",
         "scripts/entity-signals.ts",
         "tests/entity-signals.test.ts",
-        "tests/brand-cards.test.ts"
+        "tests/brand-cards.test.ts",
+        "tests/entity-profile-count.test.ts"
       ],
       "consumer_edges": [
         "leaderboard",
@@ -69,6 +70,7 @@
       "required_checks": [
         "node --test tests/entity-signals.test.ts",
         "node --test tests/brand-cards.test.ts",
+        "node --test tests/entity-profile-count.test.ts",
         "npm run typecheck"
       ],
       "risk_floor": "high",
@@ -124,6 +126,7 @@
       "business_root": "信源新建、权利、过滤、启停",
       "owned_paths": [
         "packages/backend/src/sources/",
+        "packages/backend/src/admin/sources.ts",
         "apps/api/src/routes/admin.ts",
         "industry/sources.json",
         "industry/source-policy.ts",
@@ -134,6 +137,13 @@
         "leaderboard"
       ],
       "required_checks": [
+        "node --test tests/sources.test.ts",
+        "node --test tests/source-create.test.ts",
+        "node --test tests/source-activation.test.ts",
+        "node --test tests/source-admission.test.ts",
+        "node --test tests/source-identity-boundary.test.ts",
+        "node --test tests/source-rules.test.ts",
+        "node --test tests/rss-conditional.test.ts",
         "npm run typecheck"
       ],
       "risk_floor": "high",
@@ -146,7 +156,8 @@
         "packages/backend/src/editorial/",
         "packages/backend/src/providers/",
         "apps/api/src/routes/insights.ts",
-        "industry/prompts/"
+        "industry/prompts/",
+        "tests/insights-transaction.test.ts"
       ],
       "consumer_edges": [
         "publication.read"
@@ -299,6 +310,10 @@
         "sources.registry"
       ],
       "required_checks": [
+        "SOURCE_DISCOVERY_ENABLED=1 SOURCE_PROBE_ENABLED=1 ALLOW_PRIVATE_NETWORK_FETCH=true node --test tests/admission-jobs.test.ts",
+        "node --test tests/admission-jobs-off.test.ts",
+        "SOURCE_PROBE_ENABLED=1 node --test tests/admission-activation-round.test.ts",
+        "node --test tests/admission-activation-round-off.test.ts",
         "npm run typecheck"
       ],
       "risk_floor": "high",

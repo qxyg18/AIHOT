@@ -81,6 +81,14 @@ test("AC1 完整闭包：榜算法变更声明规则/详情回归 → PASS", () 
   assert.equal(r.verdict.verdict, "PASS");
 });
 
+test("stats.closure 为真实闭包节点数（ym649：Set 取 .length=undefined 被 JSON 静默丢弃的回归闸）", () => {
+  const r = run(base({}), [LB]);
+  assert.equal(r.code, 0, `应过却失败: ${r.stderr}`);
+  assert.equal(typeof r.verdict.stats.closure, "number", `stats.closure 须为数字，实得 ${JSON.stringify(r.verdict.stats)}`);
+  assert.equal(r.verdict.stats.closure, 3, "L→R→D 闭包应为 3 节点");
+  assert.equal(r.verdict.stats.hit, 1, "命中根节点应恰 1 个");
+});
+
 test("AC1 只改榜算法缺规则/详情回归声明 → FAIL 且指名缺口", () => {
   const m = base({ closure: [{ node: "L", disposition: "changed", evidence: SELF }] });
   const r = run(m, [LB]);
