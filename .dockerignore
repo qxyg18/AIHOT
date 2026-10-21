@@ -9,3 +9,11 @@ apps/web/.react-router
 .git
 .github
 *.log
+
+# Build hygiene (ym752): backups must never ship in the image. A bare `*.bak*` only
+# matches the build-context root, so the **/ variants are the ones that cover
+# packages/**/src backups (the ym739 image leak).
+*.bak*
+*.bak-*
+**/*.bak*
+**/*.bak-*

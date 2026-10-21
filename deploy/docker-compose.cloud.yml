@@ -19,6 +19,7 @@ services:
     # Digest pinned at C1-06 build time; keep the tag for readability.
     image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     command: ["postgres", "-c", "shared_buffers=64MB"]
+    oom_score_adj: -500
     mem_limit: 1g
     memswap_limit: 1g
 
