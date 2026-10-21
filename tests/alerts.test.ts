@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { getBoss, stopBoss } from "@aihot/backend/jobs/queue";
 import { upsertMaterial } from "@aihot/backend/content/materials";
-import { checkAlerts } from "@aihot/backend/operations/alerts";
+import { checkAlerts, collectFindings } from "@aihot/backend/operations/alerts";
 
 const T = tag();
 const SOURCE = `test-alerts-${T}`;
@@ -57,4 +57,33 @@ test("an outage is announced once, repeated hourly, and closed with one recovery
   assert.deepEqual(stuck(r.sent), ["content.process:recovered"]);
   r = await checkAlerts(t0 + 80 * 60_000);
   assert.deepEqual(stuck(r.sent), []);
+});
+
+test("a selection drought with collection alive reaches the digest (ym768)", async () => {
+  process.env.COLLECT_ENABLED = "true";
+  process.env.MODEL_CALLS_ENABLED = "true";
+  const t0 = Date.now();
+  const drought = async (at: number) => (await collectFindings(at)).filter((f) => f.key === "content.selected");
+
+  // Nothing selected yet: max(selected_ready_at) is NULL, no drought claim.
+  assert.equal((await drought(t0)).length, 0);
+
+  // Last selection 40h ago while articles keep arriving (the before() seeds ten 3h-old ones):
+  // the scoring chain looks stalled → digest-level finding naming the last selection time.
+  await sql`INSERT INTO publications (article_id, title, source_id, channel, url, discovered_at, timeline_at, sort_at, selected, selected_ready_at)
+            VALUES (${ids[0]}, ${`drought ${T}`}, ${SOURCE}, 'news', ${`https://example.com/${T}-sel`},
+                    now() - interval '2 days', now() - interval '2 days', now() - interval '2 days', true, ${new Date(t0 - 40 * 3600_000)})`;
+  const found = await drought(t0);
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.level, "digest");
+
+  // A selection one hour ago means no drought.
+  await sql`UPDATE publications SET selected_ready_at = ${new Date(t0 - 3600_000)} WHERE article_id = ${ids[0]}`;
+  assert.equal((await drought(t0)).length, 0);
+
+  // Collection itself stalled (nothing discovered in 6h) is content.collect's message, not the
+  // drought's: the same 40h-old selection must stay silent when no fresh articles arrive.
+  await sql`UPDATE publications SET selected_ready_at = ${new Date(t0 - 40 * 3600_000)} WHERE article_id = ${ids[0]}`;
+  await sql`UPDATE articles SET discovered_at = now() - interval '7 hours' WHERE id IN ${sql(ids)}`;
+  assert.equal((await drought(t0)).length, 0);
 });
