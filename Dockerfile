@@ -3,7 +3,8 @@
 # China). Build arg APT_MIRROR switches the Debian mirror (e.g. http://mirrors.cloud.tencent.com):
 # deb.debian.org is unreachable from the Shanghai box (ym767) and its proxy/resolver MITMs TLS
 # (https mirrors fail cert verification inside containers), so the mirror is meant to be http://.
-# The sed only rewrites the build stage's sources; it never reaches the runtime image.
+# Note: the rewrite lands in the base stage, so the runtime image also carries the rewritten
+# sources file; harmless because the runtime never runs apt (USER node).
 FROM node:24-trixie-slim AS base
 ARG APT_MIRROR=
 WORKDIR /app

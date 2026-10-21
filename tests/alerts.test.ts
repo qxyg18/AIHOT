@@ -65,6 +65,11 @@ test("a selection drought with collection alive reaches the digest (ym768)", asy
   const t0 = Date.now();
   const drought = async (at: number) => (await collectFindings(at)).filter((f) => f.key === "content.selected");
 
+  // The shared test database keeps publications from earlier suites/runs (the sweep only clears
+  // new/failed articles); a leftover selected row would anchor max(selected_ready_at) and mask
+  // the case below. Control the selection state for this test.
+  await sql`UPDATE publications SET selected = false WHERE selected`;
+
   // Nothing selected yet: max(selected_ready_at) is NULL, no drought claim.
   assert.equal((await drought(t0)).length, 0);
 
