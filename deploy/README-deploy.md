@@ -31,7 +31,7 @@
    `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build --build-arg APT_MIRROR=http://mirrors.cloud.tencent.com --build-arg NPM_REGISTRY=http://registry.npmmirror.com`（deb.debian.org 从上海机器不可达，不传 APT_MIRROR 会在 apt 层卡死；2026-10-21 实测）。
 5. 打 tag：api/worker/web/setup 四镜像 `docker tag aihot-app-<svc>:latest aihot-app-<svc>:$SHA8`。
 6. 新 release 目录：`mkdir -p $REL && cp build-$SHA8/docker-compose.yml $REL/ && cp -r build-$SHA8/deploy $REL/ && cp <现役>/.env $REL/`。
-7. changelog 宿主文件（首次才建）：`mkdir -p /srv/radar/shared && cp build-$SHA8/industry/changelog.json /srv/radar/shared/changelog.json`；此后每次发版向该文件头部 inserts 一条 `{date,time,kind:"更新",title,body[]}` 并更新 `latestVersion=$SHA8`（api 按文件 mtime 热加载，无需重启）。
+7. changelog 宿主文件（首次才建）：`mkdir -p /srv/radar/shared && cp build-$SHA8/industry/changelog.json /srv/radar/shared/changelog.json`；此后每次发版向该文件头部 inserts 一条 `{date,time,kind:"更新",title,body[]}` 并更新 `latestVersion=<该条目的日期与时间，形如 2026-10-21T22:00>`（api 按文件 mtime 热加载，无需重启）。**latestVersion 是页面展示的版本时点，不是 commit 锚**；commit 锚记在本 release 的 RELEASE.json `commit`/`commit_full`（2026-10-21 首演实发即为时戳口径，本条按实态校正）。
 8. 落 RELEASE.json（见下）。
 9. 切换：`cd $REL && sudo docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file .env up -d`。
 10. 验证（见下）→ 通过后把旧 build 目录与旧 release 目录保留（回滚锚），两个版本以外的更旧目录可清。

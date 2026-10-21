@@ -8,6 +8,7 @@ import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { sql } from "../db.ts";
 import { beijingDay, beijingStamp, duration, formatAlert, formatRecovery, sendAlert, type Finding, type Level } from "../notify/feishu.ts";
 import { backupConfigured } from "./backup.ts";
+import { envPositiveNumber } from "./env-number.ts";
 import { zhipuCircuitState } from "../providers/zhipu.ts";
 import { openRouterCircuitState } from "../modelwatch/routing.ts";
 
@@ -16,7 +17,7 @@ const REPEAT_MS: Record<Exclude<Level, "digest">, number> = { now: 3600_000, tod
 const collecting = () => process.env.COLLECT_ENABLED !== "false";
 const modelsOn = () => process.env.MODEL_CALLS_ENABLED !== "false";
 /** How long the site may go without a new article before it counts as stalled (small source lists are quieter). */
-const QUIET_MS = Number(process.env.ALERT_QUIET_MINUTES || 360) * 60_000;
+const QUIET_MS = envPositiveNumber("ALERT_QUIET_MINUTES", 360) * 60_000;
 
 /** Everything wrong right now, with its level. */
 export async function collectFindings(now = Date.now()): Promise<Finding[]> {
@@ -216,7 +217,7 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
   // 静默断供），首页可以数天没有新入选而上面任何一条都不响（2026-10-16…21 迁云窗口实例）。
   // 只在收录仍在进新文章时判，收录停摆由 content.collect 报；digest 起步观察误报率，稳了再议调级。
   if (collecting() && modelsOn()) {
-    const DROUGHT_MS = Number(process.env.ALERT_SELECTED_DROUGHT_HOURS || 36) * 3600_000;
+    const DROUGHT_MS = envPositiveNumber("ALERT_SELECTED_DROUGHT_HOURS", 36) * 3600_000;
     const [drought] = await sql<{ at: Date | null; fresh: number }[]>`
       SELECT (SELECT max(selected_ready_at) FROM publications WHERE selected) AS at,
              (SELECT count(*)::int FROM articles WHERE discovered_at > now() - interval '6 hours') AS fresh`;
