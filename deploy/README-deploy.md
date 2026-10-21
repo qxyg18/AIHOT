@@ -8,8 +8,16 @@
 1. **镜像锚定 commit**：一次发版的全部镜像构建自同一 `git archive HEAD` 快照，tag=commit 短 sha（8 位）。禁止从工作树直接 rsync——未跟踪文件漂移正是 2026-10-17 迁云镜像缺高德线特性的根因。
 2. **四容器同生共死**：`up -d` 一次换 api/worker/web/setup（db/cloudflared 镜像 digest 锁定不随发版变）。只换一半=版本错配（ym739 教训：web 被遗漏跑旧镜像四天）。
 3. **两道前置闸**（缺一发版中止）：
-   - 本地 `npm run typecheck && npm run test` 全绿（提交前跑，结果贴 RELEASE.json）。
+   - 本地 `npm run typecheck && npm run test`：全绿，或红项**全部落在已登记基线红清单内**（见下节；清单外新红=发版中止）。结果与对照结论贴 RELEASE.json gates。
    - 云端迁移账本核验：待发版新增的 `database/migrations/*.sql` 若云端库已手工建过表，`schema_migrations` 必须已有对应行，否则 setup 跑迁移会撞「表已存在」把四个容器全部拖死（非幂等迁移=停机开关）。核验：`sudo docker exec aihot-db-1 sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 10"'`，与本次新增迁移清单比对；缺行且表已存在→先补 `INSERT INTO schema_migrations (name) VALUES ('<文件名>')` 再发版。
+
+### 基线红清单（2026-10-21 ym767 首演登记；清单外新红=发版中止）
+
+既有红与已知 flake，非发版面回归，发版闸按「全绿或全部落在清单内」判定：
+
+- admission 族（先于 2026-10-21 发版面存在，1299463 复测实证）：admission-activation-round R1/R4、admission-jobs 发现轮/探测轮、source-admission R2/R5/R7-R11+R13/robots 单元（'unknown'≠'pass' 断言族）。
+- 负载/顺序型 flake：analyze-shutdown SIGTERM×3、translate-shutdown SIGTERM×2、translate 用例族、capability-routing insights-selection T7/T8、embeddings（文件级，单独复跑绿）。
+- 维护纪律：清单增删须有独立归因证据（如父提交复测），随发版在 RELEASE.json gates 同步当前清单状态。
 
 ## 步骤
 
@@ -31,9 +39,9 @@
 
 ```json
 {
-  "commit": "<full sha>", "commit_short": "$SHA8", "built_at": "...", "released_at": "...",
+  "commit": "$SHA8", "commit_full": "<full sha>", "built_at": "...", "released_at": "...",
   "images": {"api": "aihot-app-api:$SHA8", "worker": "...", "web": "...", "setup": "..."},
-  "gates": {"typecheck_test": "<结果摘要>", "migration_ledger": "<核验结论>"},
+  "gates": {"typecheck_test": "<结果摘要+基线红对照结论>", "migration_ledger": "<核验结论>"},
   "changelog_entry": "<本次向 /srv/radar/shared/changelog.json 追加的条目 title>",
   "rollback": "cd <旧release目录> && docker compose ... up -d（或 docker tag 指回旧 tag 后 up -d）"
 }
