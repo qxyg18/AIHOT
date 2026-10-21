@@ -203,6 +203,19 @@ test("pickTestCombos: 未测排前，7 天前的旧行排复测队尾", async ()
   assert.ok(combos.some((c) => c.modelId === fresh), "未测组合在列");
 });
 
+test("ym560 onlyModels: 定向补测只回指定模型的组合（放行行首批 verdict 的正道）", async () => {
+  const target = newModel("target");
+  const other = newModel("other");
+  await insertModel(target);
+  await insertModel(other);
+  const combos = await pickTestCombos(5, new Date(), [target]);
+  assert.equal(combos.length, 5, "满 cap 取未测组合");
+  assert.ok(combos.every((c) => c.modelId === target), "只回定向模型的组合");
+  // 缺省口径判别性对照：全局队列仍同时含定向模型与其它在役模型。
+  const all = await pickTestCombos(500);
+  assert.ok(all.some((c) => c.modelId === target) && all.some((c) => c.modelId === other), "缺省仍为全局队列");
+});
+
 // ---- ym249：免费护栏（AC1/AC2/AC4/AC5/AC6）----
 
 const freeBudget = () =>

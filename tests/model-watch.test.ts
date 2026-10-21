@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { isFreePricing, parseFreeUntil, tierOfOpenRouter, verdictOfProbe, type OrModel, type ProbeResult } from "@aihot/backend/modelwatch/openrouter";
-import { pickRouting, scanModelWatch } from "@aihot/backend/modelwatch/monitor";
+import { eligibleForUse, pickRouting, scanModelWatch } from "@aihot/backend/modelwatch/monitor";
 import { getRoutingState, refreshFreeModel, type WatchRow } from "@aihot/backend/modelwatch/store";
 import { getOpencodePool, onboardOpencodeModel, removeFromOpencodePool } from "@aihot/backend/opencodewatch/pool";
 
@@ -158,15 +158,21 @@ test("full cycle: discover → observe → verdict → primary → fallback afte
   assert.equal(s5.routing.primary, C.id, "frozen: the primary stays put");
 });
 
-test("below the 1M context bar: recorded and displayed, never observed or routed", async () => {
+test("ym560 context gate open: a sub-1M promo enters the observation window and can take the primary slot", async () => {
   await cleanWatch();
   const small = or(`${T}-s/promo-small`, { contextLength: 256_000 });
-  await scanModelWatch({ fetchModels: () => Promise.resolve([small, A]), probe: false });
-  const s = await scanModelWatch({ fetchModels: () => Promise.resolve([small, A]), probeModel: async () => goodProbe(), now: hours(25) });
-  assert.equal(s.routing.primary, A.id, "only the eligible model can become primary");
-  const rows = await sql<{ model_id: string; status: string; verdict_note: string | null }[]>`SELECT model_id, status, verdict_note FROM model_watch_models WHERE model_id LIKE ${`${T}-s%`}`;
-  assert.equal(rows[0]?.status, "filtered");
-  assert.match(rows[0]?.verdict_note ?? "", /不足 1M/);
+  assert.equal(eligibleForUse(small), true, "上下文闸放开（2026-10-13）：<1M 的 promo 有启用资格");
+  await scanModelWatch({ fetchModels: () => Promise.resolve([small]), probe: false });
+  const rows1 = await sql<{ model_id: string; status: string; observe_until: Date | null; verdict_note: string | null }[]>`
+    SELECT model_id, status, observe_until, verdict_note FROM model_watch_models WHERE model_id LIKE ${`${T}-s%`}`;
+  assert.equal(rows1[0]?.status, "observing", "<1M 新模型落观察态（不再 filtered 仅陈列）");
+  assert.ok(rows1[0]?.observe_until, "观察窗已开启");
+  assert.equal(rows1[0]?.verdict_note, null, "不再写「不足 1M」陈列注记");
+  // 观察窗到点、探针过关 → vetted 并接任主力（去留以实测质量定，上下文不再是拦路石）。
+  const s = await scanModelWatch({ fetchModels: () => Promise.resolve([small]), probeModel: async () => goodProbe(), now: hours(25) });
+  assert.equal(s.routing.primary, small.id, "上下文 <1M 的免费模型过探针后可当主力");
+  const rows2 = await sql<{ status: string }[]>`SELECT status FROM model_watch_models WHERE model_id LIKE ${`${T}-s%`}`;
+  assert.equal(rows2[0]?.status, "vetted");
 });
 
 test("events record the transitions", async () => {

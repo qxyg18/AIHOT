@@ -1,8 +1,9 @@
 // 免费模型监控主循环（24h 一轮，worker 的 model-watch.scan 调度；后台页面可手动触发）：
 //   拉列表 → 差分（新免费/重新免费/持续刷新/到期） → 探针 → 24h 观察窗自动判定 →
 //   主力/简单档/替补选任 → 写 settings.modelwatch.routing（60s 缓存 + 失效广播给 modelFor
-//   与 openrouter-free 预设）。策略口径（命主 2026-10-02）：
-//   - 只启用上下文 ≥1M 的免费模型（context 达标才进观察窗，不达标仅陈列报「筛选未达标」）；
+//   与 openrouter-free 预设）。策略口径（命主 2026-10-02；上下文闸 2026-10-13 重核定）：
+//   - 上下文闸放开（命主 2026-10-13 重核定，废止「≥1M 启用线」）：不足 1M 的免费模型同样进观察窗
+//     与能力实测，去留以实测质量定（原口径：只启用上下文 ≥1M 的，不达标仅陈列报「筛选未达标」）；
 //   - 优惠期内的免费模型优先支撑本站运行（未显式指派的能力位自动切过去，显式后台/环境指派不动）；
 //   - 新模型先进 24h 观察窗，探针不过关只进简单能力位（预筛/摘要/结构抽取）；
 //   - 切换主力时，上一任仍免费的模型留作替补（调用失败自动换替补重试）；
@@ -18,12 +19,14 @@ import { saveCapabilityRoute } from "./capability-routing.ts";
 import { evalSpecsFor, type EvalSpec } from "../editorial/analyze.ts";
 
 export const OBSERVE_WINDOW_MS = 24 * 3600_000;
-/** 启用门槛（命主 2026-10-02）：上下文不足 1M 的免费模型只陈列，不进观察窗不路由。 */
-export const MIN_FREE_CONTEXT_TOKENS = 1_000_000;
+/** 启用门槛：上下文闸已放开（命主 2026-10-13 重核定，废止 2026-10-02 的「上下文 ≥1M 启用线」）——
+ *  不足 1M 的免费模型同样进观察窗与能力实测，去留以实测质量定；常量保留为 0 = 不作拦截
+ *  （沿革：原值 1_000_000，不达标者落 filtered 仅陈列）。 */
+export const MIN_FREE_CONTEXT_TOKENS = 0;
 /** 每轮探针上限（在役漂移复查优先，再补观察窗里最早到点的）。 */
 const PROBE_CAP = 4;
 
-/** promo 且上下文达标的才有启用资格。 */
+/** promo 即具启用资格；上下文门槛常量现为 0（2026-10-13 闸放开），比较保留作门槛挂点。 */
 export function eligibleForUse(m: OrModel): boolean {
   return m.tier === "promo" && m.contextLength >= MIN_FREE_CONTEXT_TOKENS;
 }

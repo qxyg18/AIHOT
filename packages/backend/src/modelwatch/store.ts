@@ -65,8 +65,9 @@ export async function getWatchModel(modelId: string): Promise<WatchRow | null> {
   return rows[0] ?? null;
 }
 
-/** 新免费模型入行。达标的 promo 进 24h 观察窗；常年免费档与上下文不足 1M 的只陈列
- *  （filtered=筛选未达标，命主口径 2026-10-02；人工判定可越线启用）。 */
+/** 新免费模型入行。promo 进 24h 观察窗；常年免费档只陈列（listed）。沿革：2026-10-02 口径下
+ *  上下文不足 1M 的 promo 落 filtered 仅陈列；命主 2026-10-13 重核定放开该闸——不足 1M 同样进
+ *  观察窗，去留以实测质量定（filtered 现仅余通道池连续失败自动摘池等既有路径；人工判定可越线启用）。 */
 export async function insertFreeModel(m: OrModel, observeUntil: Date, eligible: boolean): Promise<void> {
   const status = m.tier === "free_tier" ? "listed" : eligible ? "observing" : "filtered";
   await sql`
@@ -76,7 +77,7 @@ export async function insertFreeModel(m: OrModel, observeUntil: Date, eligible: 
     VALUES (${m.id}, ${m.name}, ${m.vendor}, ${m.tier}, ${m.contextLength}, ${m.supportsVision}, ${m.supportsJson},
       now(), ${m.freeUntilHint}, ${m.promptPrice}, ${m.completionPrice},
       ${status}, ${status === "observing" ? observeUntil : null},
-      ${status === "filtered" ? `上下文 ${m.contextLength} 不足 1M 启用线，仅陈列` : null},
+      ${status === "filtered" ? `上下文 ${m.contextLength} 不达启用门槛，仅陈列` : null},
       ${new Date().toISOString()}, ${sql.json(providerFactsOf(m) as never)})
     ON CONFLICT (model_id) DO NOTHING`;
 }

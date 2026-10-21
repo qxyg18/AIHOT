@@ -127,6 +127,10 @@ export interface TestOptions {
   /** ym477（拍板 gate-review）：MIMO 熔断态整轮跳过（零调用零判卷）。生产调度位启用；
    *  测试注入路径不传即不受闸影响。 */
   skipOnMimoCircuitOpen?: boolean;
+  /** ym560（存量放行定向补测）：只测这些模型，缺省=全局滚动队列（夜间调度口径不变）。
+   *  用途：放行/摘除后对指定模型做有界实测——上游免费额度按请求次数计（openrouter 免费档
+   *  账号级日限），滚动队列排在放行行之前的组合足够多时，定向轮是拿到首批 verdict 的正道。 */
+  onlyModels?: string[];
 }
 
 export interface TestSummary {
@@ -153,11 +157,13 @@ const JudgeSchema = z.object({
 });
 
 /** 待测组合：未测优先，再按 tested_at 最旧优先取 7 天前测过的（qualified/rejected 同权复测）。
- *  组合=在役免费模型（非 ended/filtered）× 全能力位，TS 侧笛卡尔积+内存过滤（量级 ~几百，免脆 SQL）。 */
-export async function pickTestCombos(cap: number, now = new Date()): Promise<Array<{ modelId: string; capability: string }>> {
+ *  组合=在役免费模型（非 ended/filtered）× 全能力位，TS 侧笛卡尔积+内存过滤（量级 ~几百，免脆 SQL）。
+ *  ym560：onlyModels 给定即收窄为该批模型的组合（定向补测；缺省口径与排序不变）。 */
+export async function pickTestCombos(cap: number, now = new Date(), onlyModels?: string[]): Promise<Array<{ modelId: string; capability: string }>> {
   const retestBefore = now.getTime() - RETEST_AFTER_DAYS * 86_400_000;
-  const models = await sql<{ model_id: string; free_from: Date | null }[]>`
+  const all = await sql<{ model_id: string; free_from: Date | null }[]>`
     SELECT model_id, free_from FROM model_watch_models WHERE status NOT IN ('ended', 'filtered') ORDER BY free_from DESC NULLS LAST, model_id`;
+  const models = onlyModels?.length ? all.filter((m) => onlyModels.includes(m.model_id)) : all;
   const existing = await sql<{ model_id: string; capability: string; tested_at: Date }[]>`SELECT model_id, capability, tested_at FROM model_free_capabilities`;
   const lastTested = new Map(existing.map((r) => [`${r.model_id}|${r.capability}`, r.tested_at.getTime()]));
   const fresh: Array<{ modelId: string; capability: string }> = [];
@@ -196,7 +202,7 @@ export async function runCapabilityTests(opts: TestOptions = {}): Promise<TestSu
     }
     const specs = new Map(capabilitySpecs().map((s) => [s.capability, s]));
     const articles = await sampleArticles();
-    const combos = await pickTestCombos(opts.cap ?? COMBOS_PER_ROUND, now);
+    const combos = await pickTestCombos(opts.cap ?? COMBOS_PER_ROUND, now, opts.onlyModels);
     summary.combos = combos.length;
     // ym438：智谱成员的本轮调用面（连续全失败自动摘池的依据；判卷失败/rejected 不算）。
     const round: RoundOutcome[] = [];

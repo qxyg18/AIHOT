@@ -214,7 +214,7 @@ test("扫描基线：新免费模型自动入验收队列+池；窗口公告自�
   const noticeRow = await byTitle("夜间畅用活动");
   assert.equal(noticeRow!.routing_action!.action, "window_written");
   assert.equal(noticeRow!.routing_action!.active, false, "活动已到期 → 窗口停（摘窗）");
-  assert.equal(planActive(), false, "部署窗口状态一致：当前无套餐窗");
+  assert.equal(planActive(Date.UTC(2026, 9, 14, 4, 0)), false, "部署窗口状态一致：2026-10-14 12:00 北京该时刻无套餐窗（settings 已到期；常量层 18:00-09:00 之外）");
 
   // 发布记录只记录。
   const release = await byTitle("GLM-Z9-Flash 免费模型上线");
@@ -309,7 +309,7 @@ test("planActive 两层取或：settings 窗口在挂即真，键清=回落代�
   assert.equal(planActive(bj(10, 23, 0)), true, "settings 层在挂（历史日期，免泄漏干扰他测）");
   assert.equal(planActive(bj(11, 8, 0)), true);
   assert.equal(planActive(bj(10, 12, 0)), false);
-  assert.equal(planActive(), false, "规则已过期 → 摘窗（当前无窗）");
+  assert.equal(planActive(bj(11, 12, 0)), false, "规则已过期 → 摘窗（该时刻两层均不在挂）");
 
   const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
   await savePlanWindowRule({ mode: "auto", from: today, to: today, daily: { start: "00:00", end: "23:59" }, updatedAt: "t" });
@@ -317,7 +317,10 @@ test("planActive 两层取或：settings 窗口在挂即真，键清=回落代�
   assert.equal(planActive(), true, "恢复 → 自动挂窗");
   await sql`DELETE FROM settings WHERE key = 'zhipu.plan_window'`;
   await refreshPlanWindow();
-  assert.equal(planActive(), false, "键清=回落代码常量（ym436 落地态：10-13 前全天免费/MIMO）");
+  assert.equal(planActive(bj(10, 12, 0)), false, "键清=回落代码常量（该时刻常量窗不在挂：白天）");
+  // 2026-10-13 18:00（PLAN_WINDOW_FROM）起常量层每夜 18:00-09:00 在挂：显式时刻断言，免挂钟干扰
+  //（本文件 10-13 晚起曾因拿真实当前时刻断言「无窗」而必红；基线对照与归因见 ym560 artifacts）。
+  assert.equal(planActive(Date.UTC(2026, 9, 14, 12, 0)), true, "键清=回落代码常量（2026-10-14 20:00 北京：常量窗在挂）");
 });
 
 // ---- 连续失败自动摘池 ----
