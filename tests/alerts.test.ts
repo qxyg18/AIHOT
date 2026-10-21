@@ -87,8 +87,10 @@ test("a selection drought with collection alive reaches the digest (ym768)", asy
   assert.equal((await drought(t0)).length, 0);
 
   // Collection itself stalled (nothing discovered in 6h) is content.collect's message, not the
-  // drought's: the same 40h-old selection must stay silent when no fresh articles arrive.
+  // drought's: the same 40h-old selection must stay silent when no fresh articles arrive. Other
+  // suites leave analyzed articles behind (the sweep only clears new/failed), so age out every
+  // recent article — not just this test's — or fresh stays >0 and the drought keeps firing.
   await sql`UPDATE publications SET selected_ready_at = ${new Date(t0 - 40 * 3600_000)} WHERE article_id = ${ids[0]}`;
-  await sql`UPDATE articles SET discovered_at = now() - interval '7 hours' WHERE id IN ${sql(ids)}`;
+  await sql`UPDATE articles SET discovered_at = now() - interval '7 hours' WHERE discovered_at > now() - interval '6 hours'`;
   assert.equal((await drought(t0)).length, 0);
 });
