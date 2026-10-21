@@ -7,6 +7,11 @@ import { sql } from "../db.ts";
 import { entityTerms, matchEntities, type ArticleText, type EntityType } from "./matcher.ts";
 import { listApprovedSignals, type ApprovedSignal } from "./signals.ts";
 
+/** The article-page visibility gate (ym95/ym242): public publication × editorial source. One
+ * shared fragment so no query in this file can drift out of the gate — ym566: the entity count
+ * query once did, and the entity page headline counted the reverse cases the list correctly hid. */
+const PUBLIC_EDITORIAL = sql`AND p.visibility = 'public' AND s.participation_mode = 'editorial'`;
+
 export interface ArticleEntityRow {
   type: EntityType;
   slug: string;
@@ -30,7 +35,7 @@ export async function articleEntities(articleId: string): Promise<ArticleEntityR
   const [gate] = await sql<{ n: number }[]>`
     SELECT count(*)::int AS n
     FROM publications p JOIN sources s ON s.id = p.source_id
-    WHERE p.article_id = ${articleId} AND p.visibility = 'public' AND s.participation_mode = 'editorial'`;
+    WHERE p.article_id = ${articleId} ${PUBLIC_EDITORIAL}`;
   if (!gate || gate.n === 0) return [];
   const rows = await sql<ArticleEntityRow[]>`
     SELECT entity_type AS type, entity_slug AS slug, entity_name AS name, matched_via AS "matchedVia"
@@ -133,7 +138,7 @@ async function coOccurrences(side: "mall" | "brand", slug: string): Promise<{ w9
     JOIN publications p ON p.article_id = a.id
     JOIN sources s ON s.id = p.source_id
     WHERE e1.entity_type = ${side} AND e1.entity_slug = ${slug}
-      AND p.visibility = 'public' AND s.participation_mode = 'editorial'
+      ${PUBLIC_EDITORIAL}
       AND coalesce(a.published_at, a.discovered_at) >= now() - interval '365 days'
       ${conf1} ${conf2}
     GROUP BY e2.entity_slug, recent`;
@@ -165,7 +170,7 @@ async function mallDynamics(slug: string, name: string): Promise<MallDynamic[]> 
     JOIN publications p ON p.article_id = a.id
     JOIN sources s ON s.id = p.source_id
     WHERE e.entity_type = 'mall' AND e.entity_slug = ${slug}
-      AND p.visibility = 'public' AND s.participation_mode = 'editorial'
+      ${PUBLIC_EDITORIAL}
       AND (e.matched_via = e.entity_name OR char_length(e.matched_via) >= 4)
       AND coalesce(a.published_at, a.discovered_at) >= now() - interval '365 days'
     ORDER BY "publishedAt" DESC NULLS LAST LIMIT 60`;
@@ -239,7 +244,7 @@ export async function entityProfile(type: EntityType, slug: string): Promise<Ent
     JOIN publications p ON p.article_id = a.id
     JOIN sources s ON s.id = p.source_id
     WHERE e.entity_type = ${type} AND e.entity_slug = ${slug}
-      AND p.visibility = 'public' AND s.participation_mode = 'editorial'
+      ${PUBLIC_EDITORIAL}
     ORDER BY coalesce(a.published_at, a.discovered_at) DESC LIMIT 20`;
   if (articles.length === 0) {
     // Same fallback: a live scan keeps a fresh entity's page non-empty before annotation lands.
@@ -249,12 +254,22 @@ export async function entityProfile(type: EntityType, slug: string): Promise<Ent
         SELECT a.id, a.title, a.published_at AS "publishedAt" FROM articles a
         WHERE (coalesce(a.title, '') || ' ' || coalesce(a.excerpt, '') || ' ' || left(coalesce(a.body_text, ''), 600)) ILIKE ${"%" + terms[0]!.keyword + "%"}
           AND EXISTS (SELECT 1 FROM publications p JOIN sources s ON s.id = p.source_id
-                      WHERE p.article_id = a.id AND p.visibility = 'public' AND s.participation_mode = 'editorial')
+                      WHERE p.article_id = a.id ${PUBLIC_EDITORIAL})
         ORDER BY coalesce(a.published_at, a.discovered_at) DESC LIMIT 20`;
     }
   }
+  // ym242: the headline count shares the article-page gate (public × editorial) and counts the
+  // whole visible set, not the 20-row page — reverse cases (withdrawn / summary-only / hot
+  // source / isolated source / non-public backfill) stay annotated but are neither listed nor
+  // counted. The fallback path keeps count 0: its ILIKE hits are not annotation rows.
   const [{ count }] = await sql<{ count: string }[]>`
-    SELECT count(*)::text AS count FROM article_entities WHERE entity_type = ${type} AND entity_slug = ${slug}`;
+    SELECT count(*)::text AS count
+    FROM article_entities e
+    JOIN articles a ON a.id = e.article_id
+    JOIN publications p ON p.article_id = a.id
+    JOIN sources s ON s.id = p.source_id
+    WHERE e.entity_type = ${type} AND e.entity_slug = ${slug}
+      ${PUBLIC_EDITORIAL}`;
 
   let leaderboard: EntityProfile["leaderboard"] = null;
   if (board) {
