@@ -388,8 +388,9 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           maxTokens: candMaxTokens,
           jsonMode: spec.jsonMode && opts.json !== false,
           extra: candExtra,
+          // 免费通道数据政策=allow（命主 2026-10-20 决定允许供应商训练/留存；deny 会挡住需训练同意的免费端点）。
           ...(freeOnly
-            ? { policy: { serverMaxPrice: 0, requireParameters: true, dataPolicy: "deny" } }
+            ? { policy: { serverMaxPrice: 0, requireParameters: true, dataPolicy: "allow" } }
             : {}),
         });
     try {

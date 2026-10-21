@@ -160,7 +160,8 @@ async function oneCall(model: string, system: string, user: string, fetcher: typ
     temperature: 0.2,
     maxTokens: 400,
     jsonMode: false,
-    policy: { serverMaxPrice: 0, requireParameters: true, dataPolicy: "deny" },
+    // 探针与业务同口径：allow（命主 2026-10-20 决定），否则需训练同意的免费模型探针恒 404。
+    policy: { serverMaxPrice: 0, requireParameters: true, dataPolicy: "allow" },
   });
   const started = Date.now();
   const receipt = await paidRequest(
