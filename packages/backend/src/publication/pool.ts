@@ -2,6 +2,7 @@
 import type { PoolResponse, TimelineFilters } from "@aihot/contracts/site";
 import { beijingDate, beijingMidnight } from "@aihot/contracts/time";
 import { one, sql, withCustomPlans, type Db } from "../db.ts";
+import { envPositiveNumber } from "../operations/env-number.ts";
 import {
   categoryCondition, channelCondition, ITEM_COLUMNS, ITEM_FROM, listedCondition, tagCondition, toFeedItemSummary, topicCondition,
   type ItemRow,
@@ -20,8 +21,8 @@ export class SearchBusyError extends Error {
 
 // Search capacity guard: bounded concurrency with a short queue. Overflow answers 503 + Retry-After
 // instead of letting machine traffic drag list browsing down.
-const MAX_CONCURRENT_SEARCHES = Number(process.env.SEARCH_MAX_CONCURRENCY || 4);
-const MAX_QUEUED_SEARCHES = Number(process.env.SEARCH_MAX_QUEUE || 8);
+const MAX_CONCURRENT_SEARCHES = envPositiveNumber("SEARCH_MAX_CONCURRENCY", 4);
+const MAX_QUEUED_SEARCHES = envPositiveNumber("SEARCH_MAX_QUEUE", 8);
 let running = 0;
 const waiters: Array<() => void> = [];
 

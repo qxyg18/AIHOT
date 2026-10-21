@@ -5,6 +5,7 @@ import { identityKeyFor, upsertMaterial } from "../content/materials.ts";
 import { enqueue, QUEUES } from "../jobs/queue.ts";
 import { queueProcessing } from "../jobs/content.ts";
 import { BudgetExceededError } from "../providers/receipts.ts";
+import { envPositiveNumber } from "../operations/env-number.ts";
 import { fetchRss } from "./rss.ts";
 import { allowed, fetchDetail, fetchWebList, type DetailNeed } from "./web-list.ts";
 import { unsupportedConfig } from "./config-keys.ts";
@@ -355,7 +356,7 @@ async function scheduleXShards(): Promise<number> {
 }
 
 /** Every minute: enqueue due sources (enabled, not WeChat/external), oldest due first; X accounts by shard. */
-export async function scheduleDueSources(limit = Number(process.env.FETCH_SCHEDULE_BATCH || 40)): Promise<{ enqueued: number; shards: number }> {
+export async function scheduleDueSources(limit = envPositiveNumber("FETCH_SCHEDULE_BATCH", 40)): Promise<{ enqueued: number; shards: number }> {
   const kinds: string[] = (process.env.COLLECT_KINDS || "rss,web_list,json_list,x_search").split(",");
   // Listings fetched through Jina Reader are paid; development can leave them out.
   const skipJina = process.env.COLLECT_SKIP_JINA === "true";
