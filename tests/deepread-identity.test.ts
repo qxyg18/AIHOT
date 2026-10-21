@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { __deepreadTestHooks, classifyArticle, generateDeepRead, loadDeepReadForSite, sweepDeepReads } from "@aihot/backend/editorial/deepread";
+import { invalidateModelCache } from "@aihot/backend/editorial/models";
 import { BRANDS_FILE } from "@aihot/backend/leaderboard/directory";
 import { ENTITIES } from "@aihot/industry/taxonomy";
 import { upsertMaterial } from "@aihot/backend/content/materials";
@@ -541,6 +542,52 @@ test("Rule7-T14: the re-verify path honors the rule-7 default read (entity strip
     assert.equal(reading!.kind, "plain");
     assert.deepEqual(reading!.entities, [], "the unverifiable entity is stripped from the payload");
   } finally {
+    await p.close();
+  }
+});
+
+test("AC2-T15: a shift-window wait burns no attempts and halts the round (ym558 F-2)", async (t) => {
+  const p = await newStub();
+  // Beijing wall clock, same convention as lib/windows.ts and default-model.test.ts.
+  const bj = (y: number, mo: number, d: number, h: number, mi = 0) => Date.UTC(y, mo - 1, d, h - 8, mi);
+  const hadKey = "XIAOMI_MIMO_API_KEY" in process.env;
+  const keyBefore = process.env.XIAOMI_MIMO_API_KEY;
+  try {
+    await resetState();
+    const a1 = await article("国家统计局");
+    const a2 = await article("国家统计局");
+    // The F-2 window: deepread unoverridden (the stub's DEEPREAD_MODEL pin removed), no MIMO key,
+    // inside the daytime shift — modelFor throws ShiftWaitError before any provider call. The
+    // bug (audit-48h F-2): ShiftWaitError subclasses ProviderRejectedError, so the catch face
+    // recorded a failed row and burned attempts toward MAX_ATTEMPTS on every sweep until the
+    // articles were stranded. The fix: the wait leaves no row, counts nothing, halts the round.
+    delete process.env.DEEPREAD_MODEL;
+    if (hadKey) delete process.env.XIAOMI_MIMO_API_KEY;
+    t.mock.timers.enable({ apis: ["Date"], now: bj(2026, 10, 10, 14, 0) }); // Saturday midday: the shift
+    invalidateModelCache();
+
+    const stats = await sweepDeepReads(5);
+    assert.equal(stats.scanned, 0, `a shift wait counts nothing worked (got ${JSON.stringify(stats)})`);
+    assert.equal(await rowOf(a1), undefined, "the waiting article has no row — attempts never start");
+    assert.equal(await rowOf(a2), undefined, "the round halted — later articles were not even attempted");
+    assert.equal(p.hits(), 0, "no provider call was made");
+
+    // Window over, pin back: the same backlog reads normally and attempts start from zero —
+    // the wait never counted toward the ceiling.
+    process.env.DEEPREAD_MODEL = "one-model";
+    if (hadKey) process.env.XIAOMI_MIMO_API_KEY = keyBefore;
+    t.mock.timers.tick(bj(2026, 10, 13, 20, 0) - bj(2026, 10, 10, 14, 0)); // inside the plan window
+    invalidateModelCache();
+    const after = await sweepDeepReads(5);
+    assert.ok(after.ready >= 1, "with the window over the sweep reads the backlog");
+    const row = await rowOf(a1);
+    assert.equal(row!.status, "ready");
+    assert.equal(row!.attempts, 0, "the wait never counted — attempts start clean");
+  } finally {
+    process.env.DEEPREAD_MODEL = "one-model";
+    if (hadKey) process.env.XIAOMI_MIMO_API_KEY = keyBefore;
+    else delete process.env.XIAOMI_MIMO_API_KEY;
+    invalidateModelCache();
     await p.close();
   }
 });

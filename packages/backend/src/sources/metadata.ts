@@ -39,13 +39,17 @@ const NEVER = new Date(8640000000000000).toISOString();
 /** One bounded pass over the source's dateless articles (ym253). Pure metadata: the detail request
  *  asks for the date only — no body, no re-extraction — and each filled date is stored through the
  *  normal material entrance, whose metadata path records no revision and starts no analysis. */
-export async function enrichMissingMetadata(source: SourceRow, opts: { budget?: number } = {}): Promise<MetaEnrichResult> {
+export async function enrichMissingMetadata(source: SourceRow, opts: { budget?: number; skipUrls?: Iterable<string> } = {}): Promise<MetaEnrichResult> {
   // The caller (collectSource) only runs this for listing kinds; the guard keeps a future caller
   // from burning detail requests on kinds whose pages have none (x_search).
   if (source.kind === "x_search" || source.kind === "mp_account" || source.kind === "external") {
     return { eligible: 0, checked: 0, enriched: 0, failed: 0, progress: { failed: {} } };
   }
   const budget = opts.budget ?? META_ENRICH_PER_RUN;
+  // The listing's own detail path already handled the URLs this run surfaced; those are skipped so a
+  // fresh item is never read twice (once by the listing, once by the pass). The pass is for material
+  // an earlier run left without a date.
+  const skip = [...(opts.skipUrls ?? [])];
   const progress: MetaEnrichProgress = { failed: { ...((source.cursor?.metaEnrich as MetaEnrichProgress | undefined)?.failed ?? {}) } };
   const now = Date.now();
   const waiting = Object.entries(progress.failed).filter(([, f]) => Date.parse(f.retryAfter) > now).map(([url]) => url);
@@ -55,6 +59,7 @@ export async function enrichMissingMetadata(source: SourceRow, opts: { budget?: 
     SELECT id, url, title, discovered_at, count(*) OVER () AS total FROM articles
     WHERE source_id = ${source.id} AND published_at IS NULL
       ${waiting.length ? sql`AND url NOT IN ${sql(waiting)}` : sql``}
+      ${skip.length ? sql`AND url NOT IN ${sql(skip)}` : sql``}
     ORDER BY discovered_at LIMIT ${budget + 100}`;
   const eligible = rows[0]?.total ?? 0;
   let checked = 0;

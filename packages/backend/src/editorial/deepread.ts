@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { sql } from "../db.ts";
 import { chatJson, ModelOutputError } from "../providers/llm.ts";
 import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptUnknownError } from "../providers/receipts.ts";
-import { modelFor } from "./models.ts";
+import { modelFor, ShiftWaitError } from "./models.ts";
 import { promptText, promptVersion } from "./prompts.ts";
 import { BRANDS_FILE, MALLS_FILE } from "../leaderboard/directory.ts";
 import { ENTITIES } from "@aihot/industry/taxonomy";
@@ -498,6 +498,14 @@ export async function generateDeepRead(articleId: string): Promise<DeepReadOutco
     const message = String(error instanceof Error ? error.message : error).slice(0, 300);
     if (error instanceof BudgetExceededError) {
       // Global state, not this article's: no row, no attempt count — the sweep halts the round.
+      return { ok: false, status: "pending", error: message, budgetStopped: true };
+    }
+    if (error instanceof ShiftWaitError) {
+      // F-2/ym558: a shift-window wait is a fleet condition (free pool empty + circuit window),
+      // not this article's fault — no row, no attempt burn (content.ts waiting-branch semantics).
+      // Halting the round like budget-stop keeps the backlog riding out the window untouched;
+      // letting it fall through to the rejected branch would burn attempts toward MAX_ATTEMPTS
+      // and strand the articles (deep read lost until their input identity moves).
       return { ok: false, status: "pending", error: message, budgetStopped: true };
     }
     if (error instanceof ProviderRejectedError || error instanceof ReceiptBusyError || error instanceof ReceiptUnknownError) {

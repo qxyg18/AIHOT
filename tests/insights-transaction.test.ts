@@ -217,11 +217,19 @@ test("AC3: concurrent passes never interleave; replay is stable; an empty pass l
       `a whole batch survived (${statements.join(",")})`,
     );
 
+    // The wire request carries no attemptTag (buildLlmRequest sends model/messages only), so the
+    // stub cannot route payloads per attempt — arrival order decides which pass gets X or Y.
+    // Replay therefore asserts against ac3-b's own recorded receipt raw, not "the second arrival":
+    // whichever batch ac3-b actually received, replaying its tag reproduces exactly that batch.
+    const [ac3b] = await sql<{ response: { choices: Array<{ message: { content: string } }> } }[]>`
+      SELECT response FROM receipts WHERE id = ${b.receiptId!}`;
+    const ac3bStatements = (JSON.parse(ac3b!.response.choices[0]!.message.content) as { insights: Array<{ statement: string }> })
+      .insights.map((i) => i.statement.trim().slice(0, 200));
     const replay = await extractInsights(id, { attemptTag: "ac3-b" });
     assert.equal(replay.ok, true);
-    assert.equal(replay.count, 3);
+    assert.equal(replay.count, ac3bStatements.length, "replay reproduces ac3-b's own batch (whichever it was)");
     assert.equal(p.hits(), 2, "replaying a completed receipt re-sends nothing");
-    assert.deepEqual((await insightsOf(id)).map((r) => r.statement), ["Y观点一", "Y观点二", "Y观点三"], "same input, same rows");
+    assert.deepEqual((await insightsOf(id)).map((r) => r.statement), ac3bStatements, "same input, same rows");
 
     payloadFor = () => ({ insights: [] });
     const empty = await extractInsights(id, { attemptTag: "ac3-empty" });

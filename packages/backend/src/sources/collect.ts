@@ -9,6 +9,7 @@ import { fetchRss } from "./rss.ts";
 import { allowed, fetchDetail, fetchWebList, type DetailNeed } from "./web-list.ts";
 import { unsupportedConfig } from "./config-keys.ts";
 import { fetchJsonList } from "./json-list.ts";
+import { enrichMissingMetadata } from "./metadata.ts";
 import { fetchXSearch, planXShards, readXSearch, shardHandle, shardQuery, SHARDABLE_SQL, tweetToCandidate, type XBacklog, type XRead } from "./x.ts";
 import { FetchError, type Candidate, type IngestIncludeFilter, type SourceRow } from "./types.ts";
 
@@ -201,6 +202,20 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
     }
 
     ({ created, revised } = await store(sourceId, candidates, firstImport ? "first-import" : null));
+
+    // The bounded metadata pass (ym253): stored articles an earlier run left without a date get one
+    // date-only detail read each, so a long listing's tail is not stuck dateless forever. URLs this
+    // run's listing surfaced are skipped — the listing's own detail path is their reader, and a
+    // known item must never be read twice.
+    let metaEnrich: { checked: number; enriched: number } | null = null;
+    if (source.kind === "rss" || source.kind === "web_list" || source.kind === "json_list") {
+      const pass = await enrichMissingMetadata({ ...source, cursor: nextCursor }, { skipUrls: candidates.map((c) => c.url) });
+      if (pass.checked > 0) {
+        nextCursor.metaEnrich = pass.progress;
+        metaEnrich = { checked: pass.checked, enriched: pass.enriched };
+        detail = { ...(detail ?? {}), metaEnrich };
+      }
+    }
 
     if (firstImport) nextCursor.initializedAt = new Date().toISOString();
     nextCursor.lastOkAt = new Date().toISOString();
