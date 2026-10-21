@@ -18,8 +18,8 @@
 1. 本地：`npm run typecheck && npm run test` → 全绿后提交并 push（或至少 commit）。
 2. `git archive HEAD -o /tmp/aihot-$SHA8.tar && gzip /tmp/aihot-$SHA8.tar` → `scp` 到服务器 `/srv/radar/build-$SHA8.tar.gz`。
 3. 服务器：`mkdir -p /srv/radar/build-$SHA8 && tar xzf build-$SHA8.tar.gz -C build-$SHA8`。
-4. 构建（内存紧，串行；大陆网络慢走腾讯源）：
-   `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build`（需要时加 `--build-arg NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/`）。
+4. 构建（内存紧，串行；大陆网络走镜像源。**必须 http:// 协议**：该机代理/解析器对 TLS 做中间人，容器内 https 镜像源一律证书校验失败；http 腾讯源实测 1s 拉完 10.2MB）：
+   `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build --build-arg APT_MIRROR=http://mirrors.cloud.tencent.com --build-arg NPM_REGISTRY=http://registry.npmmirror.com`（deb.debian.org 从上海机器不可达，不传 APT_MIRROR 会在 apt 层卡死；2026-10-21 实测）。
 5. 打 tag：api/worker/web/setup 四镜像 `docker tag aihot-app-<svc>:latest aihot-app-<svc>:$SHA8`。
 6. 新 release 目录：`mkdir -p $REL && cp build-$SHA8/docker-compose.yml $REL/ && cp -r build-$SHA8/deploy $REL/ && cp <现役>/.env $REL/`。
 7. changelog 宿主文件（首次才建）：`mkdir -p /srv/radar/shared && cp build-$SHA8/industry/changelog.json /srv/radar/shared/changelog.json`；此后每次发版向该文件头部 inserts 一条 `{date,time,kind:"更新",title,body[]}` 并更新 `latestVersion=$SHA8`（api 按文件 mtime 热加载，无需重启）。
