@@ -5,7 +5,9 @@ name: Check
 
 on:
   push:
-    branches: [main]
+    # migrate/linux is the branch production is built from; without it the push gate never fires
+    # (the only runs so far were pull_request ones stuck in action_required, 0s).
+    branches: [main, migrate/linux]
   pull_request:
   workflow_dispatch:
 

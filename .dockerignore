@@ -17,3 +17,10 @@ apps/web/.react-router
 *.bak-*
 **/*.bak*
 **/*.bak-*
+
+# Build-context diet (K6, 2026-10-22): mirror-fidelity/ and collector output are data,
+# not image content. Measured before: 328MB context (mirror-fidelity 182MB + collectors 95MB).
+mirror-fidelity/
+scripts/collectors/out/
+scripts/collectors/logs/
+scripts/collectors/state/
