@@ -34,7 +34,12 @@ COPY . .
 RUN npm run build -w @aihot/web && npm prune --omit=dev --no-audit --no-fund
 
 FROM base
-ENV NODE_ENV=production
+# Release provenance (K2): the commit is baked in at build time and never hand-copied into .env.
+# /api/health echoes this value, so it can no longer claim a different release than the image.
+ARG AIHOT_RELEASE=dev
+ENV NODE_ENV=production \
+    AIHOT_RELEASE=${AIHOT_RELEASE}
+LABEL org.opencontainers.image.revision=${AIHOT_RELEASE}
 COPY --from=build --chown=node:node /app /app
 RUN mkdir -p /data && chown node:node /data
 USER node

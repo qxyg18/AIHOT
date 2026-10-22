@@ -28,9 +28,9 @@
 2. `git archive HEAD -o /tmp/aihot-$SHA8.tar && gzip /tmp/aihot-$SHA8.tar` → `scp` 到服务器 `/srv/radar/build-$SHA8.tar.gz`。
 3. 服务器：`mkdir -p /srv/radar/build-$SHA8 && tar xzf build-$SHA8.tar.gz -C build-$SHA8`。
 4. 构建（内存紧，串行；大陆网络走镜像源。**必须 http:// 协议**：该机代理/解析器对 TLS 做中间人，容器内 https 镜像源一律证书校验失败；http 腾讯源实测 1s 拉完 10.2MB）：
-   `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build --build-arg APT_MIRROR=http://mirrors.cloud.tencent.com --build-arg NPM_REGISTRY=http://registry.npmmirror.com`（deb.debian.org 从上海机器不可达，不传 APT_MIRROR 会在 apt 层卡死；2026-10-21 实测）。
+   `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build --build-arg AIHOT_RELEASE=$SHA8 --build-arg APT_MIRROR=http://mirrors.cloud.tencent.com --build-arg NPM_REGISTRY=http://registry.npmmirror.com`（deb.debian.org 从上海机器不可达，不传 APT_MIRROR 会在 apt 层卡死；2026-10-21 实测。`AIHOT_RELEASE` 必须现取 `git rev-parse --short HEAD`，禁手写——它是 /api/health 的唯一来源）。
 5. 打 tag：api/worker/web/setup 四镜像 `docker tag aihot-app-<svc>:latest aihot-app-<svc>:$SHA8`。
-6. 新 release 目录：`mkdir -p $REL && cp build-$SHA8/docker-compose.yml $REL/ && cp -r build-$SHA8/deploy $REL/ && cp <现役>/.env $REL/`。
+6. 新 release 目录：`mkdir -p $REL && cp build-$SHA8/docker-compose.yml $REL/ && cp -r build-$SHA8/deploy $REL/ && cp <现役>/.env $REL/`。**复制后必须删除 `.env` 里的 `AIHOT_RELEASE` 行**——版本由镜像 ENV 提供；不删则 env_file 覆盖镜像值，锚继续撒谎（2026-10-22 实测：health 自报 c50bc65，实际镜像 9d7d932c）。
 7. changelog 宿主文件（首次才建）：`mkdir -p /srv/radar/shared && cp build-$SHA8/industry/changelog.json /srv/radar/shared/changelog.json`；此后每次发版向该文件头部 inserts 一条 `{date,time,kind:"更新",title,body[]}` 并更新 `latestVersion=<该条目的日期与时间，形如 2026-10-21T22:00>`（api 按文件 mtime 热加载，无需重启）。**latestVersion 是页面展示的版本时点，不是 commit 锚**；commit 锚记在本 release 的 RELEASE.json `commit`/`commit_full`（2026-10-21 首演实发即为时戳口径，本条按实态校正）。
 8. 落 RELEASE.json（见下）。
 9. 切换：`cd $REL && sudo docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file .env up -d`。
@@ -51,6 +51,7 @@
 ## 验证清单（切换后逐项）
 
 - `sudo docker ps`：api/worker/web 同 tag、healthy；setup exited 0。
+- **版本三值一致**：`curl -s http://127.0.0.1:3000/api/health` 的 `release` = 本次 `$SHA8` = 运行容器镜像 tag。任一不符即本次发版失败（锚不可信，后续对账全部失效）。
 - `sudo docker inspect aihot-db-1 --format '{{.HostConfig.OomScoreAdj}}'` = `-500`，且 `/proc/$(sudo docker inspect -f '{{.State.Pid}}' aihot-db-1)/oom_score_adj` 回读 `-500`（两处都要核：前者是声明值，后者是生效值）。注意 `docker update` 在 Docker 29.x **不支持** `--oom-score-adj`，该值只在容器创建时由 compose 设定，所以这一项只能靠「git 快照带对」+「发版后核」，不能事后补。
 - `curl -s http://127.0.0.1:3000/ | grep <title>`（首页 SSR）。
 - 本排行榜页抽查（对照本次发版的功能面）。
