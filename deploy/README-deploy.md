@@ -32,14 +32,16 @@
 
 维护：本表只登记归因，不承诺修复；清单变化同样须独立归因。二次判据仍是「新增红 0」。
 
-### 构建内存实测与限额（2026-10-22 K6 实测；**不要用 CLI 级限额**）
+逐条 `file:line`、断言原文与归因见 `artifacts/2026-10-22/ym901-k8-build-memory/report.md`（K8/ym901 复核）。根因是**测试运行器未注入测试文件头声明的三个环境变量**（`SOURCE_DISCOVERY_ENABLED`、`SOURCE_PROBE_ENABLED`、`ALLOW_PRIVATE_NETWORK_FETCH`），以及 T7/T8 的共享库残留（`resetState` 不清 `articles`），**均非产品回归、也非随机 flake**（12 条 env + 2 条隔离，确定性复现）；修法是给运行器按文件注入 env / 清池，而不是改断言。
+
+### 构建内存实测与限额（2026-10-22 K6/K8 实测；**不要用 CLI 级限额**）
 
 - **实测峰值**：一次 `--no-cache` 四镜像构建，`docker.service` cgroup `memory.peak` 读到 **1.30GB**（该值自 dockerd 启动累计，含历次构建，故为上限）；构建期间宿主机 available 最低观测 **2.10GB**，全程无 OOM 事件，四镜像构建成功。
 - **`docker build --memory` 无效**：BuildKit 下既不报错也不生效（no-op 构建日志无 `ignoring` 警告，属静默忽略）。
 - **`systemd-run --scope -p MemoryMax=2G` 包 CLI 无效，且有假绿风险**：构建负载在 dockerd 内，scope 内只有客户端。实测 scope 峰值仅 **44.9MB**，同期真实峰值 1.30GB —— 限额看似生效、实则不约束构建。**禁止**以此申报「已加限额」。
-- **buildx 容器驱动可真正限额**：`docker buildx create --driver docker-container --driver-opt memory=2g --driver-opt memory-swap=2g` 后 builder 容器 `HostConfig.Memory=2147483648`（实测）。但本机到 Docker Hub 不通（拉 `node:24-trixie-slim` 报 `dial tcp … i/o timeout`），该路径在本机不可用，除非先配好可用的 registry mirror。
-- 因此服务器构建的现行控制是**前置内存闸**（见步骤 4）；真正的限额随构建迁到 CI（K7）一并解决。
-- 受控隔离实验（2026-10-22）：128M 限额容器内分配 400MB → `docker events` 记录 `oom` 命中该容器；四个生产容器同期全程 healthy。说明 cgroup 级 OOM 只杀本 cgroup 内进程；但**服务器构建无有效 cgroup 隔离**，不能把这条结论套用到「构建 OOM 不伤生产」。
+- **buildx 容器驱动可真正限额（2026-10-22 K8/ym901 实测已跑通）**：给 builder 配 buildkitd 的 registry mirror 后，「本机到 Docker Hub 不通」不再是阻塞（K6 当时未配 mirror，拉 `node:24-trixie-slim` 超时）：`/tmp/k8-buildkitd.toml` 写 `[registry."docker.io"]` 与 `mirrors = ["mirror.ccs.tencentyun.com"]`，再 `sudo docker buildx create --name k8cap2g --driver docker-container --driver-opt image=moby/buildkit:buildx-stable-1 --driver-opt memory=2g --driver-opt memory-swap=2g --buildkitd-config /tmp/k8-buildkitd.toml`；builder 容器 `HostConfig.Memory=2147483648`、cgroup `memory.max=2147483648`（实测），`Restart=unless-stopped`。在该 builder 上跑冷构建（无缓存，含 apt + npm ci + next build）：`memory.peak=1,224,417,280 B`（**1.14 GiB，占 2 GiB 上限 57%**），23 步全 DONE、0 error；采样 143 次，四生产容器全程 healthy，宿主最小 available 1.58 GiB。compose v5.3.1 支持 `--builder k8cap2g`，暖构建 `exit=0`。
+- 因此服务器构建的现行控制是**两层**：步骤 4 的前置内存闸（快速失败）+ 硬隔离构建 `--builder k8cap2g`（限额落在 buildkit 容器 cgroup，超限只杀构建）。K7 仍可把构建迁 CI；迁移完成前，服务器侧并非「无有效 cgroup 隔离」。
+- 受控隔离实验（2026-10-22）：128M 限额容器内分配 400MB → `docker events` 记录 `oom` 命中该容器；四个生产容器同期全程 healthy。说明 cgroup 级 OOM 只杀本 cgroup 内进程。**默认 daemon builder 无有效 cgroup 隔离**，该结论不能套用到它；用 `k8cap2g` 时限额在 buildkit 容器 cgroup 上，本次实测峰值仅占上限 57%（未做 OOM 负控，余量结论不外推到更低上限）。
 
 ## 步骤
 
@@ -49,7 +51,7 @@
 2. `git archive HEAD -o /tmp/aihot-$SHA8.tar && gzip /tmp/aihot-$SHA8.tar` → `scp` 到服务器 `/srv/radar/build-$SHA8.tar.gz`。
 3. 服务器：`mkdir -p /srv/radar/build-$SHA8 && tar xzf build-$SHA8.tar.gz -C build-$SHA8`。
 4. 构建（内存紧，串行；大陆网络走镜像源。**必须 http:// 协议**：该机代理/解析器对 TLS 做中间人，容器内 https 镜像源一律证书校验失败；http 腾讯源实测 1s 拉完 10.2MB）：
-   `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build --build-arg AIHOT_RELEASE=$SHA8 --build-arg APT_MIRROR=http://mirrors.cloud.tencent.com --build-arg NPM_REGISTRY=http://registry.npmmirror.com`（deb.debian.org 从上海机器不可达，不传 APT_MIRROR 会在 apt 层卡死；2026-10-21 实测。`AIHOT_RELEASE` 必须现取 `git rev-parse --short HEAD`，禁手写——它是 /api/health 的唯一来源）。**构建前先过内存闸**：`[ "$(free -m | awk '/^Mem:/{print $7}')" -ge 1800 ] || { echo "available<1800MB，禁止在服务器构建（实测峰值 1.30GB）"; exit 1; }`。不用 `--memory`，也不要用 `systemd-run` 包 CLI——两者都不约束真正的构建负载，理由见上节「构建内存实测与限额」。
+   `cd /srv/radar/build-$SHA8 && COMPOSE_PARALLEL_LIMIT=1 sudo -E docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file /srv/radar/releases/<现役>/.env build --build-arg AIHOT_RELEASE=$SHA8 --build-arg APT_MIRROR=http://mirrors.cloud.tencent.com --build-arg NPM_REGISTRY=http://registry.npmmirror.com`（deb.debian.org 从上海机器不可达，不传 APT_MIRROR 会在 apt 层卡死；2026-10-21 实测。`AIHOT_RELEASE` 必须现取 `git rev-parse --short HEAD`，禁手写——它是 /api/health 的唯一来源）。**构建前先过内存闸**：`[ "$(free -m | awk '/^Mem:/{print $7}')" -ge 1800 ] || { echo "available<1800MB，禁止在服务器构建（实测峰值 1.14GiB；docker.service 累计口径 1.30GB）"; exit 1; }`。不用 `--memory`，也不要用 `systemd-run` 包 CLI——两者都不约束真正的构建负载，理由见上节「构建内存实测与限额」。**要硬隔离时在 `build` 后加 `--builder k8cap2g`**（builder 未就绪先用上节命令创建；重启后先 `sudo docker buildx inspect --bootstrap k8cap2g`）。
 5. 打 tag：api/worker/web/setup 四镜像 `docker tag aihot-app-<svc>:latest aihot-app-<svc>:$SHA8`。
 6. 新 release 目录：`mkdir -p $REL && cp build-$SHA8/docker-compose.yml $REL/ && cp -r build-$SHA8/deploy $REL/ && cp <现役>/.env $REL/`。**复制后必须删除 `.env` 里的 `AIHOT_RELEASE` 行**——版本由镜像 ENV 提供；不删则 env_file 覆盖镜像值，锚继续撒谎（2026-10-22 实测：health 自报 c50bc65，实际镜像 9d7d932c）。
 7. changelog 宿主文件（首次才建）：`mkdir -p /srv/radar/shared && cp build-$SHA8/industry/changelog.json /srv/radar/shared/changelog.json`；此后每次发版向该文件头部 inserts 一条 `{date,time,kind:"更新",title,body[]}` 并更新 `latestVersion=<该条目的日期与时间，形如 2026-10-21T22:00>`（api 按文件 mtime 热加载，无需重启）。**latestVersion 是页面展示的版本时点，不是 commit 锚**；commit 锚记在本 release 的 RELEASE.json `commit`/`commit_full`（2026-10-21 首演实发即为时戳口径，本条按实态校正）。
