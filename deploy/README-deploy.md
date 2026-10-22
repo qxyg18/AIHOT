@@ -17,12 +17,14 @@
 既有红与已知 flake，非发版面回归，发版闸按「全绿或全部落在清单内」判定：
 
 - admission 族（先于 2026-10-21 发版面存在，1299463 复测实证）：admission-activation-round R1/R4、admission-jobs 发现轮/探测轮、source-admission R2/R5/R7-R11+R13/robots 单元（'unknown'≠'pass' 断言族）。
-- 负载/顺序型 flake：analyze-shutdown SIGTERM×3、translate-shutdown SIGTERM×2、translate 用例族、capability-routing insights-selection T7/T8、embeddings（文件级，单独复跑绿）。
+- 负载/顺序型 flake：analyze-shutdown SIGTERM×3、translate-shutdown SIGTERM×2、translate 用例族、backfill-scripts AC2-T7/T8（旧行误写 capability-routing insights-selection，按 ym898 审计 P3-1 校正；红项实际在 `tests/backfill-scripts.test.ts`）、embeddings（文件级，单独复跑绿）。
 - 维护纪律：清单增删须有独立归因证据（如父提交复测），随发版在 RELEASE.json gates 同步当前清单状态。
 
 #### CI 基线（GitHub Actions，2026-10-22）
 
-首次真正执行（此前 5 次全部 `action_required`/0s）。与生产同 commit 的 run 是 **39753561184**（head `862bba0`，`migrate/linux`）：`docker` job 通过；`check` job 在 Backend tests 失败，红项 **14 条，全部落在上列基线族内，新增红 0**（前一次 run 39750730540 / head `5812174` 的 14 条名单与之完全相同，两次互证不是偶然 flake）：
+首次真正执行。**口径分两层**（ym898 收口复核 P1-4 校正）：①原仓 `qxyg18/AIHOT`（= `origin`）此前从未跑到——近 100 次 `action_required` 计数实测 = 0，现有 9 次 `migrate/linux` push 运行全部真实执行；②卡面「5 次 `action_required`/0s」实为 **`upstream` 仓 `KKKKhazix/AIHOT` 的 pull_request 首批准未批**（`codex/github-daily-ranking` ×4、`feat/import-body-translations` ×1 等，upstream 近 100 次 `action_required` 计数 = 8）。两件事不矛盾，但不能混为一谈。
+
+与生产同 commit 的 run 是 **39753561184**（head `862bba0`，`migrate/linux`）：`docker` job 通过；`check` job 在 Backend tests 失败，红项 **14 条，全部落在上列基线族内，新增红 0**。三次运行互证，红项名单**逐条完全相同**（`gh run view <id> --log-failed` 独立抽取后 `diff` 为空）：39753561184 / 39750730540 / 39815442083，均为 `fail 14`（前两次的 pass/skipped 分别为 515/0 与 514/1，故总数同为 529）。
 
 | 归因组 | 用例 | 失败面 |
 |---|---|---|
@@ -36,12 +38,12 @@
 
 ### 构建内存实测与限额（2026-10-22 K6/K8 实测；**不要用 CLI 级限额**）
 
-- **实测峰值**：一次 `--no-cache` 四镜像构建，`docker.service` cgroup `memory.peak` 读到 **1.30GB**（该值自 dockerd 启动累计，含历次构建，故为上限）；构建期间宿主机 available 最低观测 **2.10GB**，全程无 OOM 事件，四镜像构建成功。
+- **实测峰值**：一次 `--no-cache` 四镜像构建，`docker.service` cgroup `memory.peak` 读到 **1,364,770,816 B（1,301.6 MiB / 1.271 GiB / 1.365 GB）**（该值自 dockerd 启动累计，含历次构建，故为上限）；**构建后**快照宿主机 available = 2,112 MB（构建期间无逐秒采样落盘，故不能称「构建期间最低观测」），全程无 OOM 事件，四镜像构建成功。
 - **`docker build --memory` 无效**：BuildKit 下既不报错也不生效（no-op 构建日志无 `ignoring` 警告，属静默忽略）。
-- **`systemd-run --scope -p MemoryMax=2G` 包 CLI 无效，且有假绿风险**：构建负载在 dockerd 内，scope 内只有客户端。实测 scope 峰值仅 **44.9MB**，同期真实峰值 1.30GB —— 限额看似生效、实则不约束构建。**禁止**以此申报「已加限额」。
+- **`systemd-run --scope -p MemoryMax=2G` 包 CLI 无效，且有假绿风险**：构建负载在 dockerd 内，scope 内只有客户端。实测 scope 峰值仅 **44.9MB**，同期真实峰值 1,364,770,816 B（1.271 GiB） —— 限额看似生效、实则不约束构建。**禁止**以此申报「已加限额」。
 - **buildx 容器驱动可真正限额（2026-10-22 K8/ym901 实测已跑通）**：K6 的结论写的是「除非先配好可用的 registry mirror」；K8 补齐这个前提后跑通，不是推翻 K6。`/tmp/k8-buildkitd.toml` 写 `[registry."docker.io"]` 与 `mirrors = ["mirror.ccs.tencentyun.com"]`，再 `sudo docker buildx create --name k8cap2g --driver docker-container --driver-opt image=moby/buildkit:buildx-stable-1 --driver-opt memory=2g --driver-opt memory-swap=2g --buildkitd-config /tmp/k8-buildkitd.toml`；builder 容器 `HostConfig.Memory=2147483648`、cgroup `memory.max=2147483648`（实测），`Restart=unless-stopped`。在该 builder 上跑冷构建（无缓存，含 apt + npm ci + next build）：`memory.peak=1,224,417,280 B`（**1,167.7 MiB = 1.1403 GiB，占 2 GiB 上限 57.0%**），23 个 DONE 行（19 个步骤 #1–#19，#4 多次 DONE）、0 error；1 Hz 采样 235 次（构建窗口约 87 次）五个生产容器（web/api/worker/db/cloudflared）全程 healthy，宿主最小 available 1,582.2 MiB。compose v5.3.1 的 `build --builder k8cap2g --dry-run` 已实测通过，真实 buildx 暖构建 `exit=0`。
-- 因此服务器构建的现行控制是**两层**：步骤 4 的前置内存闸（快速失败）+ 硬隔离构建 `--builder k8cap2g`（限额落在 buildkit 容器 cgroup，超限只杀构建）。K7 仍可把构建迁 CI；迁移完成前，服务器侧并非「无有效 cgroup 隔离」。
-- 受控隔离实验（2026-10-22）：128M 限额容器内分配 400MB → `docker events` 记录 `oom` 命中该容器；四个生产容器同期全程 healthy。说明 cgroup 级 OOM 只杀本 cgroup 内进程。**默认 daemon builder 无有效 cgroup 隔离**，该结论不能套用到它；用 `k8cap2g` 时限额在 buildkit 容器 cgroup 上，本次实测峰值仅占上限 57%（未做 OOM 负控，余量结论不外推到更低上限）。
+- 因此服务器构建的现行控制是**两层，但硬隔离层尚未在真实发版中启用过**：步骤 4 的前置内存闸（快速失败，已生效）+ **可选的**硬隔离构建 `--builder k8cap2g`（限额落在 buildkit 容器 cgroup，超限只杀构建；`--dry-run` 已验参、暖构建 `exit=0`，但**从未在真实 compose 发版构建中跑过**，首次使用须按验证清单核对镜像 tag）。K7 仍可把构建迁 CI；迁移完成前，默认发版构建仍是 dockerd 内无独立 cgroup 的构建，cgroup 硬隔离是可选路径而非默认路径。
+- 受控隔离实验（2026-10-22）：128M 限额容器内分配 400MB → `docker events` 记录 `oom` 命中该容器；同期四个应用容器（web/api/worker/db）全程 healthy（`cloudflared` 无 healthcheck，不计入该计数）。说明 cgroup 级 OOM 只杀本 cgroup 内进程。**默认 daemon builder 无有效 cgroup 隔离**，该结论不能套用到它；用 `k8cap2g` 时限额在 buildkit 容器 cgroup 上，本次实测峰值仅占上限 57%（未做 OOM 负控，余量结论不外推到更低上限）。
 
 ## 步骤
 
