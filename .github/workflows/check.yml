@@ -92,6 +92,11 @@ jobs:
           sed -i 's/^COLLECT_ENABLED=.*/COLLECT_ENABLED=false/; s/^MODEL_CALLS_ENABLED=.*/MODEL_CALLS_ENABLED=false/' .env
           # The smoke check reaches the site by its compose service name.
           echo "MCP_ALLOWED_HOSTS=web" >> .env
+          # The base compose mounts ${AIHOT_SECRETS_DIR:-D:/secrets/aihot}; that Windows default is
+          # an invalid volume spec on a Linux runner, so the container never gets created. Point it
+          # at an empty in-workspace directory instead (model calls are off in CI, nothing reads it).
+          mkdir -p .ci-secrets
+          echo "AIHOT_SECRETS_DIR=$PWD/.ci-secrets" >> .env
       - name: Build and start with docker compose
         run: docker compose up -d --build
       - name: Smoke check
