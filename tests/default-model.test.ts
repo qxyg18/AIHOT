@@ -8,8 +8,8 @@ import { closeDb, sql } from "@aihot/backend/db";
 
 // ym241 counts mimoUsable evaluations inside modelFor (the lazy short-circuit card). The mock must
 // register before editorial/models is loaded, so the editorial imports below are dynamic. Module
-// mocking needs --experimental-test-module-mocks; under the plain `npm test` invocation the
-// counting test skips itself, and the mock is a pass-through wrapper, so behavior is unchanged.
+// mocking needs --experimental-test-module-mocks, which scripts/run-invariant-tests.ts passes by
+// default; the mock is a pass-through wrapper, so behavior is unchanged.
 let mimoUsableCalls = 0;
 const mockHarness = mock as unknown as {
   module?: (specifier: string, options: { exports: Record<string, unknown> }) => void;
