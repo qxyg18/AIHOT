@@ -67,16 +67,20 @@
 {
   "commit": "$SHA8", "commit_full": "<full sha>", "built_at": "...", "released_at": "...",
   "images": {"api": "aihot-app-api:$SHA8", "worker": "...", "web": "...", "setup": "..."},
+  "image_ids": {"api": "sha256:...", "worker": "...", "web": "...", "setup": "..."},
   "gates": {"typecheck_test": "<结果摘要+基线红对照结论>", "migration_ledger": "<核验结论>"},
   "changelog_entry": "<本次向 /srv/radar/shared/changelog.json 追加的条目 title>",
   "rollback": "cd <旧release目录> && docker compose ... up -d（或 docker tag 指回旧 tag 后 up -d）"
 }
 ```
 
+`image_ids` 为构建后实测 `sudo docker image inspect aihot-app-<svc>:$SHA8 --format '{{.Id}}'` 的值（K2 审计 P2-2 / ym956：tag 可被重建漂移——23:51 并行构建即把 `:latest` 指向新 Id——把镜像 Id 写实进发布事实，对账才有不可漂移锚）。
+
 ## 验证清单（切换后逐项）
 
 - `sudo docker ps`：api/worker/web 同 tag、healthy；setup exited 0。
 - **版本三值一致**：`curl -s http://127.0.0.1:3000/api/health` 的 `release` = 本次 `$SHA8` = 运行容器镜像 tag。任一不符即本次发版失败（锚不可信，后续对账全部失效）。
+- **镜像 Id 对账**：`sudo docker inspect aihot-api-1 --format '{{.Image}}'` 与本 release `RELEASE.json` 的 `image_ids.api` 一致（K2 审计 P2-2 / ym956）。
 - `sudo docker inspect aihot-db-1 --format '{{.HostConfig.OomScoreAdj}}'` = `-500`，且 `/proc/$(sudo docker inspect -f '{{.State.Pid}}' aihot-db-1)/oom_score_adj` 回读 `-500`（两处都要核：前者是声明值，后者是生效值）。注意 `docker update` 在 Docker 29.x **不支持** `--oom-score-adj`，该值只在容器创建时由 compose 设定，所以这一项只能靠「git 快照带对」+「发版后核」，不能事后补。
 - `curl -s http://127.0.0.1:3000/ | grep <title>`（首页 SSR）。
 - 本排行榜页抽查（对照本次发版的功能面）。
@@ -86,6 +90,8 @@
 ## 回滚
 
 `cd <旧 release> && sudo docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml --env-file .env up -d`。镜像层回滚锚：旧 tag 常驻服务器（docker images 清理时至少保留上一代）。changelog 回滚不必做（条目面向事实，失败发版可补「下线」条目说明）。
+
+**`.env.bak-*` 还原后必须删锚行**：备份文件内仍保留 `AIHOT_RELEASE=<旧值>`（2026-10-22 实测 3 个 `.bak` 全含，其中 k2verify 备份系有意保留原值的回滚锚），`cp` 还原后必须再执行 `sed -i '/^AIHOT_RELEASE=/d' .env` 并核 `grep '^AIHOT_RELEASE=' .env` 无输出，否则 health 重新自报假锚——正是 K2 要消除的失真形态（K2 审计 P2-3 / ym956）。
 
 ## 停机窗口口径
 
