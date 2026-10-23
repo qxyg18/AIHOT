@@ -167,9 +167,14 @@ async function citationEntities(ids: string[]): Promise<Map<string, CitationEnti
   }
   const missing = ids.filter((id) => (out.get(id) ?? []).length === 0);
   if (missing.length > 0) {
+    // ym41（48h 审计 M1）：兜底实时匹配与主查询同闸——非公开/已撤文章不进匹配，否则标注表暂空
+    // 的窗口里撤文与隔离源仍会照附标签进日报。闸在 SQL 里：这些文章连读都不读。
     const texts = await sql<{ id: string; title: string; excerpt: string; body: string }[]>`
-      SELECT id, title, coalesce(excerpt, '') AS excerpt, left(coalesce(body_text, ''), 600) AS body
-      FROM articles WHERE id = ANY(${missing}::text[])`;
+      SELECT a.id, a.title, coalesce(a.excerpt, '') AS excerpt, left(coalesce(a.body_text, ''), 600) AS body
+      FROM articles a
+      WHERE a.id = ANY(${missing}::text[])
+        AND EXISTS (SELECT 1 FROM publications p JOIN sources s ON s.id = p.source_id
+                    WHERE p.article_id = a.id AND p.visibility = 'public' AND s.participation_mode = 'editorial')`;
     const terms = entityTerms();
     for (const t of texts) {
       const hits = matchEntities(`${t.title} ${t.excerpt} ${t.body}`, terms)
