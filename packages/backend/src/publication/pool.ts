@@ -55,6 +55,10 @@ export async function withSearchCapacity<T>(fn: (db: Db) => Promise<T>): Promise
 export function searchTerms(q: string): string[] {
   return q
     .toLowerCase()
+    // "多模态RAG" means 多模态 and rag: split where Han meets a Latin word. Digits alone stay attached,
+    // so "10月" is still one term rather than 10 and 月.
+    .replace(/(\p{Script=Han})(?=[a-z])/gu, "$1 ")
+    .replace(/([a-z][a-z0-9]*)(?=\p{Script=Han})/gu, "$1 ")
     .split(/\s+/)
     .map((t) => t.trim())
     .filter(Boolean)
@@ -73,13 +77,19 @@ export function directMatchCondition(terms: string[]) {
  * the start of a body whose full text may be shown, as the API documents it ("title / Chinese
  * title / Chinese summary / body"). Results stay in time order.
  */
+/** A plain Latin or digit term must start a word in the body: "rag" is not inside "storage". */
+function bodyMatch(t: string) {
+  const like = sql`ps.body LIKE ${"%" + t + "%"}`;
+  return /^[a-z0-9]+$/.test(t) ? sql`${like} AND ps.body ~ ${"(^|[^a-z0-9])" + t}` : like;
+}
+
 export function publicMatchCondition(terms: string[]) {
   if (terms.length === 0) return sql``;
   // Keep the body lookup correlated to the time-ordered candidates. Without OFFSET 0, PostgreSQL
   // may hash every matching body in pool_search before serving even the first 40 recent items.
   return terms.reduce(
     (acc, t) => sql`${acc} AND (p.search_text LIKE ${"%" + t + "%"} OR EXISTS (
-      SELECT 1 FROM pool_search ps WHERE ps.article_id = p.article_id AND ps.body LIKE ${"%" + t + "%"} OFFSET 0))`,
+      SELECT 1 FROM pool_search ps WHERE ps.article_id = p.article_id AND ${bodyMatch(t)} OFFSET 0))`,
     sql``,
   );
 }
