@@ -67,6 +67,8 @@ test("A 主表加列后 DELETE 仍工作：publications/analyses 归档按列名
   }
 });
 
+// 依赖测试 A：共享样本由 A 的 DELETE 链路删除后才进留底表。单独跑 B 会因样本未删而假红，
+// 用 --test-name-pattern 单跑时须先跑 A（node --test 的默认串行执行已保证顺序）。
 test("B 删文章时人工审核草稿进留底表（0060 前 CASCADE 会直接带走）", async () => {
   const [row] = await sql<{ n: number }[]>`
     SELECT count(*)::int AS n FROM entity_signal_drafts_archived
