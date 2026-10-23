@@ -15,7 +15,7 @@
 
 | 来源 | 内容 |
 |---|---|
-| `internal-signal` | 站内声量引擎：近 90 天文章（标题+摘要+正文全文）实体标注计数；首店/快闪事件按标题事件词过滤 |
+| `internal-signal` | 站内声量引擎：近 90 天文章（标题+摘要+正文全文）实体标注计数，窗口按发布时间口径 `coalesce(published_at,discovered_at)`（ym842 统一，d-ym160-window-field 拍板乙；此前按入库时间线 `timeline_at`，rd7 既有差异，对拍现势零差异）；首店/快闪事件按标题事件词过滤 |
 | `manual-supplement` | 人工补录通道：业绩/门店数/社媒指数/客流层级，`database/seeds/lb-brands-2026-10.json` 与 `lb-malls-2026-10.json`，改文件后下一轮刷新生效 |
 | `dailyhot` | 热搜哨兵（可选）：自部署 [DailyHotApi](https://github.com/imsyy/DailyHotApi) 实例，`DAILYHOT_API_BASE` 环境变量注入后激活，未配置时停用不报错 |
 | `winshang-monthly`（预留） | 赢商人气榜：公开面实测不可抓（m 站数据栏目为文章流、大数据子域不可达）。机器客流源缺席期间商场榜客流维由人工客流层级种子以「人工种子」档参排（rd4 起不降级直榜），机器源接入后自动升档覆盖种子值 |

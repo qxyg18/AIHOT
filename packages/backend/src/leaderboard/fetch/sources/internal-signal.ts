@@ -51,10 +51,12 @@ export const internalSignal: Fetcher = {
     }
     // rd7：全文级标注面（article_entities）替代标题扫描——按文聚合标注实体，再逐文计数。
     // ym160：恢复 ym99 公开闸（read.ts:434 同款）——仅公开可见性×采编参与源的文章计入声量/事件统计。
+    // ym842：窗口字段统一发布时间口径 coalesce(published_at,discovered_at)（d-ym160-window-field 拍板乙，
+    // entitytags/read.ts 角标同款；与入库时间线 timeline_at 的差值=入库滞后，对拍现势零差异）。
     const annotated = await sql<{ article_id: string; title: string; entity_type: string; entity_slug: string }[]>`
       SELECT ae.article_id, a.title, ae.entity_type, ae.entity_slug
       FROM article_entities ae JOIN articles a ON a.id = ae.article_id
-      WHERE a.timeline_at >= now() - (${WINDOW_DAYS} || ' days')::interval
+      WHERE coalesce(a.published_at, a.discovered_at) >= now() - (${WINDOW_DAYS} || ' days')::interval
         AND EXISTS (
           SELECT 1 FROM publications p JOIN sources s ON s.id = p.source_id
           WHERE p.article_id = a.id AND p.visibility = 'public' AND s.participation_mode = 'editorial'
