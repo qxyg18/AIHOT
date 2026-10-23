@@ -1,4 +1,4 @@
-// ym41（48h 审计 M1）：日报实体标签的兜底实时匹配必须与主查询同闸（public × editorial）。
+// yn41（48h 审计 M1）：日报实体标签的兜底实时匹配必须与主查询同闸（public × editorial）。
 // 主查询按 publications×sources 联表带闸，兜底分支原先是 articles 裸查——标注表暂空的窗口里，
 // 源不属编辑口径（hot_signal / isolated）的文章会绕过闸拿到实体标签，与文章页口径不一致。
 //
@@ -13,9 +13,9 @@ import { loadReport } from "@aihot/backend/publication/reports";
 import { tag } from "./setup.ts";
 
 const T = tag();
-const SRC_ED = `ym41-ed-${T}`;
-const SRC_HOT = `ym41-hot-${T}`;
-const SRC_ISO = `ym41-iso-${T}`;
+const SRC_ED = `yn41-ed-${T}`;
+const SRC_HOT = `yn41-hot-${T}`;
+const SRC_ISO = `yn41-iso-${T}`;
 const REPORT_KEY = `2098-11-${String(10 + Math.floor(Math.random() * 19))}`;
 // 种子词库里的真实品牌：兜底实时匹配需要能命中的词。
 const BRAND_WORD = "巴拉巴拉";
@@ -32,7 +32,7 @@ async function article(opts: {
   const id = `${T}a${n}`;
   const at = new Date(Date.now() - n * 60_000);
   await sql`INSERT INTO articles (id, source_id, identity_key, url, title, excerpt, body_text, discovered_at, timeline_at)
-            VALUES (${id}, ${opts.sourceId}, ${`ym41-${T}-${n}`}, ${`https://example.com/${T}/${n}`}, ${opts.title}, ${opts.title}, ${opts.title}, ${at}, ${at})`;
+            VALUES (${id}, ${opts.sourceId}, ${`yn41-${T}-${n}`}, ${`https://example.com/${T}/${n}`}, ${opts.title}, ${opts.title}, ${opts.title}, ${at}, ${at})`;
   if (opts.withPublication ?? true) {
     // eligible=true：日报条目可用性判据是 public × eligible，与实体闸正交，但同批 id 要先过这一关。
     await sql`INSERT INTO publications (article_id, title, source_id, channel, url, discovered_at, timeline_at, visibility, eligible, sort_at)
@@ -65,9 +65,9 @@ async function entitiesByItem(ids: Array<[string, string]>): Promise<Map<string,
 
 before(async () => {
   await sql`INSERT INTO sources (id, name, kind, tier, participation_mode, next_fetch_at)
-            VALUES (${SRC_ED}, 'ym41 editorial', 'rss', 'T1', 'editorial', '2100-01-01'),
-                   (${SRC_HOT}, 'ym41 hot signal', 'rss', 'T1', 'hot_signal', '2100-01-01'),
-                   (${SRC_ISO}, 'ym41 isolated', 'rss', 'T1', 'isolated', '2100-01-01')`;
+            VALUES (${SRC_ED}, 'yn41 editorial', 'rss', 'T1', 'editorial', '2100-01-01'),
+                   (${SRC_HOT}, 'yn41 hot signal', 'rss', 'T1', 'hot_signal', '2100-01-01'),
+                   (${SRC_ISO}, 'yn41 isolated', 'rss', 'T1', 'isolated', '2100-01-01')`;
 });
 
 after(async () => {
