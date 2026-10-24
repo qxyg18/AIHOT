@@ -100,6 +100,7 @@ test("every prompt in the pack renders, and the site's name replaces AIHOT's", (
     const source = readFileSync(new URL(file, dir), "utf8");
     const text = promptText(file.slice(0, -3), values);
     assert.ok(!/\{\{/.test(text), file);
+    assert.ok(text.length > 0, `${file}: no prompt may render empty`);
     // A section fragment is inserted into another prompt and may be a single line by design
     // (report-period-no-sections); only a prompt that carries values must render into real text.
     if (source.includes("{{")) assert.ok(text.length > 20, file);
