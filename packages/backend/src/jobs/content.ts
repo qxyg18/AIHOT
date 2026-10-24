@@ -79,14 +79,20 @@ export async function queueProcessing(articleId: string, opts: { step?: Step; at
   const r = await route(articleId, db);
   if (!r) return null;
   const step = opts.step ?? r.step;
-  await db`UPDATE articles SET processing_queued_at = now() WHERE id = ${articleId}`;
+  // An explicit attemptTag starts/overwrites the in-flight paid identity; without one the article's
+  // stored identity carries over, so extraction's articleId-only handoff and receipt releases stay
+  // on the same paid request ("manual:…" re-evaluations are never silently re-billed under a new tag).
+  const [queued] = await db<{ attempt_tag: string | null }[]>`
+    UPDATE articles SET processing_queued_at = now(), processing_attempt_tag = ${opts.attemptTag ?? sql`processing_attempt_tag`}
+    WHERE id = ${articleId} RETURNING processing_attempt_tag`;
+  const attemptTag = opts.attemptTag ?? queued?.attempt_tag ?? undefined;
   if (step === "extract") return enqueue(QUEUES.extractBody, { articleId }, { singletonKey: articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
   if (r.signal && !opts.attemptTag) {
     return enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: r.historical ? PRIORITY.history : PRIORITY.liveSignal }, opts.db);
   }
-  const tagged = !!opts.attemptTag;
-  return enqueue(QUEUES.analyze, tagged ? { articleId, attemptTag: opts.attemptTag } : { articleId },
-    { singletonKey: tagged ? `manual:analyze:${articleId}:${opts.attemptTag}` : articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
+  const tagged = !!attemptTag;
+  return enqueue(QUEUES.analyze, tagged ? { articleId, attemptTag } : { articleId },
+    { singletonKey: tagged ? `manual:analyze:${articleId}:${attemptTag}` : articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
 }
 
 /**
@@ -189,16 +195,25 @@ export async function registerContentJobs(boss: PgBoss, concurrency = Number(pro
   await boss.work<{ articleId: string; attemptTag?: string }>(QUEUES.analyze, { localConcurrency: concurrency, pollingIntervalSeconds: 2 }, async ([job]) => {
     if (!job) return;
     const { articleId, attemptTag } = job.data;
-    try {
-      const result = await processArticle(articleId, { attemptTag });
-      if (result.state !== "unknown-receipt") {
-        await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL WHERE id = ${articleId}`;
-      }
-      return result;
-    } catch (error) {
-      return afterFailure(articleId, error);
-    }
+    return runArticleJob(articleId, { attemptTag });
   });
+}
+
+/**
+ * One analyze-job attempt: the processing pass plus the worker's failure contract (attempts bookkeeping
+ * on success, afterFailure's retry/wait/failed states on error). The queue handler and the atomicity
+ * tests share this so a business-level caller sees the same contract the worker applies.
+ */
+export async function runArticleJob(articleId: string, opts: { attemptTag?: string } = {}): Promise<{ state: string }> {
+  try {
+    const result = await processArticle(articleId, opts);
+    if (result.state !== "unknown-receipt") {
+      await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL WHERE id = ${articleId}`;
+    }
+    return result;
+  } catch (error) {
+    return afterFailure(articleId, error);
+  }
 }
 
 /**

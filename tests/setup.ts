@@ -13,6 +13,18 @@ const database = new URL(process.env.DATABASE_URL ?? "postgres://unset/unset").p
 if (!/_(test|ci)$/.test(database)) {
   throw new Error(`Invariant tests write rows: point DATABASE_URL at a throwaway database named *_test or *_ci (got "${database}")`);
 }
+// The admission rounds read their valves from the environment at import time (config.ts), and the
+// -off siblings assert the default-off process — so the valves cannot be set for the whole run.
+// The per-file process turns them on here, before any module imports config, keyed by file name.
+const testArg = process.argv.find((a) => /admission-(activation-round|jobs)\.test\.ts$/.test(a) || /source-admission\.test\.ts$/.test(a));
+if (/admission-activation-round\.test\.ts$/.test(testArg ?? "")) process.env.SOURCE_PROBE_ENABLED = "true";
+if (/admission-jobs\.test\.ts$/.test(testArg ?? "")) {
+  process.env.SOURCE_PROBE_ENABLED = "true";
+  process.env.SOURCE_DISCOVERY_ENABLED = "true";
+}
+if (/^(admission-jobs|source-admission)\.test\.ts$/.test(testArg ?? "")) {
+  process.env.ALLOW_PRIVATE_NETWORK_FETCH = "true"; // local HTTP stubs on 127.0.0.1 stand in for the official site
+}
 process.env.AIHOT_CREDENTIALS_DIR = "/nonexistent-test-credentials";
 process.env.SESSION_SECRET ??= "test-session-secret-0123456789";
 process.env.IMG_PROXY_SIGN_SECRET ??= "test-img-secret-0123456789";

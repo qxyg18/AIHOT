@@ -77,6 +77,10 @@ function fullContent(r: FeedRow, aihot: string): string | null {
     if (x.quoted?.text) {
       html += `<blockquote><p>引用 @${escapeXml(x.quoted.handle)}：</p>${textToHtml(x.quoted.translation ?? x.quoted.text)}${x.quoted.url ? `<p><a href="${escapeXml(x.quoted.url)}">${escapeXml(x.quoted.url)}</a></p>` : ""}</blockquote>`;
     }
+  } else if (x) {
+    // An image-only post's media IS its content: full RSS carries the images directly.
+    const images = ((r.x_post?.media ?? []) as Array<{ kind?: string; url?: string }>).filter((m) => m.kind === "image" && m.url);
+    if (images.length) html = images.map((m) => `<p><img src="${escapeXml(m.url!)}" alt=""></p>`).join("");
   } else if (r.body_html) {
     html = r.language !== "zh" && r.tr_html && r.tr_complete ? r.tr_html : r.body_html;
   }

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { closeDb, sql } from "@aihot/backend/db";
 import { upsertMaterial } from "@aihot/backend/content/materials";
-import { processArticle } from "@aihot/backend/jobs/content";
+import { processArticle, runArticleJob } from "@aihot/backend/jobs/content";
 import { stopBoss } from "@aihot/backend/jobs/queue";
 
 const sourceId = `analysis-consistency-${tag()}`;
@@ -66,7 +66,7 @@ test("a failed analysis commit rolls back its judgement and receipt completion; 
     BEGIN IF NEW.processing_state = 'analyzed' THEN RAISE EXCEPTION 'injected analysis commit failure'; END IF; RETURN NEW; END $$`);
   await sql.unsafe("CREATE TRIGGER reject_analysis_completion BEFORE UPDATE ON articles FOR EACH ROW EXECUTE FUNCTION reject_analysis_completion()");
   try {
-    assert.equal((await processArticle(articleId)).state, "retrying");
+    assert.equal((await runArticleJob(articleId)).state, "retrying");
   } finally {
     await sql.unsafe("DROP TRIGGER reject_analysis_completion ON articles");
     await sql.unsafe("DROP FUNCTION reject_analysis_completion()");
@@ -80,7 +80,7 @@ test("a failed analysis commit rolls back its judgement and receipt completion; 
   assert.match(failed!.processing_error, /injected analysis commit failure/);
   assert.equal((await sql`SELECT 1 FROM publications WHERE article_id=${articleId}`).length, 0);
   const hits = provider.hits();
-  assert.equal((await processArticle(articleId)).state, "pass");
+  assert.equal((await runArticleJob(articleId)).state, "pass");
   assert.equal(provider.hits(), hits, "retry commits the persisted responses without buying them again");
   assert.equal((await sql`SELECT 1 FROM analyses WHERE article_id=${articleId}`).length, 1);
   const completed = await sql`SELECT id,status FROM receipts WHERE subject=${subject} ORDER BY id`;

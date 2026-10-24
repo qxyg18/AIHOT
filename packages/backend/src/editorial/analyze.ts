@@ -509,8 +509,13 @@ export function normalizeAnalysis(run: AnalysisRun) {
   const summaryZh = (run.writing?.summaryZh ?? "").trim();
   // Only a PASS publishes: the prefilter's UNKNOWN keeps its material on record for a later
   // judgement but never reaches the pool, and a PASS without a usable Chinese title and summary
-  // cannot be published yet: it waits.
-  const relevance = label === "BLOCK" ? "block" : (label === "UNKNOWN" || (run.writing && (!titleZh || !summaryZh))) ? "unknown" : "pass";
+  // cannot be published yet: it waits. A missing prefilter (awaitsMaterial's evidence wait) is
+  // likewise "unknown", never a pass. A verbatim original post is the exception on both counts:
+  // it preserves the author's own text instead of model-written copy, so past a BLOCK it is
+  // publishable as-is, Chinese summary or not.
+  const relevance = label === "BLOCK" ? "block"
+    : run.writing?.kind === "verbatim" ? "pass"
+    : (label == null || label === "UNKNOWN" || (run.writing && (!titleZh || !summaryZh))) ? "unknown" : "pass";
   // Selected when the two scores add up to twice the tier threshold; the mean, floored,
   // is the score shown (it never decides a half point on its own).
   const values = run.scores && !run.scores.refused ? run.scores.values : null;
@@ -586,8 +591,11 @@ export async function analyzeArticle(articleId: string, opts: StepOpts = {}): Pr
         ${out.score}, ${out.selected}, ${tx.json(detail as never)})
       RETURNING id`;
     for (const id of receiptIds) await completeReceipt(tx, id);
+    // A verbatim original post preserves the author's own text: model-written zh replies from an
+    // earlier era must not resurface next to it on any public output.
+    if (w?.kind === "verbatim") await tx`DELETE FROM translations WHERE article_id = ${articleId} AND lang = 'zh'`;
     if (!stale) {
-      await tx`UPDATE articles SET processing_state = ${out.relevance === "block" ? "blocked" : "analyzed"}, processing_error = NULL WHERE id = ${articleId}`;
+      await tx`UPDATE articles SET processing_state = ${out.relevance === "block" ? "blocked" : "analyzed"}, processing_error = NULL, processing_attempt_tag = NULL WHERE id = ${articleId}`;
     }
     return { analysisId: row!.id, stale };
   });

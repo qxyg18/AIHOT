@@ -4,6 +4,7 @@ import TurndownService from "turndown";
 import { sql } from "../db.ts";
 import { proxyBodyImages } from "../media/imgproxy.ts";
 import { textToHtml } from "../content/sanitize.ts";
+import { originalPostCopy } from "../content/posts.ts";
 import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, toItemSummary, xView, type ItemRow } from "./items.ts";
 import { itemUrl } from "./links.ts";
 import { hasItemPage } from "./rules.ts";
@@ -83,12 +84,16 @@ export async function loadItemDetail(id: string, now = new Date()): Promise<Deta
   let outline: OutlineEntry[] = [];
   if (row.channel === "x") {
     const text = String(row.x_post?.text ?? row.body_text ?? "");
-    body = {
-      zh: summary.x?.translation ? textToHtml(summary.x.translation) : null,
+    // An original post serves the author's own text: historical model-written zh replies must not
+    // resurface beside it, and an image-only, translation-less post has no body section at all.
+    const preserved = !!originalPostCopy(row.x_post, row.url);
+    const translation = preserved ? null : summary.x?.translation;
+    body = text || translation ? {
+      zh: translation ? textToHtml(translation) : null,
       original: text ? textToHtml(text) : null,
-      zhKind: summary.x?.translation ? "translation" : null,
+      zhKind: translation ? "translation" : null,
       complete: true,
-    };
+    } : null;
   } else if (row.body_mode === "full" && row.body_html) {
     const isZh = row.language === "zh" || (/[一-鿿]/.test(row.body_text?.slice(0, 400) ?? "") && row.language !== "en");
     const original = proxyBodyImages(row.body_html);
@@ -149,7 +154,10 @@ export function markdownAvailable(row: {
   visibility: string; source_mode: string; summary: string | null; body_mode: string; body_html?: string | null; channel: string; x_post: Record<string, any> | null;
 }): boolean {
   if (row.visibility !== "public" || !hasItemPage({ visibility: row.visibility, sourceMode: row.source_mode })) return false;
-  return !!row.summary || (row.channel === "x" && !!row.x_post?.text) || (row.body_mode === "full" && !!row.body_html);
+  // An X post with any displayable body (text, media, quoted text) exports its post card, even
+  // when the text is empty and there is no model summary — the media and address are the content.
+  const hasPostBody = row.channel === "x" && !!(row.x_post?.text || row.x_post?.media?.length || row.x_post?.quoted?.text);
+  return !!row.summary || hasPostBody || (row.body_mode === "full" && !!row.body_html);
 }
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-" });
@@ -172,6 +180,11 @@ export async function exportMarkdown(id: string): Promise<{ filename: string; bo
     const q = row.x_post.quoted as { handle?: string; text?: string; url?: string } | null | undefined;
     if (q?.text) lines.push(`## 引用 @${q.handle ?? ""}`, "", ...String(q.text).split("\n").map((l) => `> ${l}`), "", ...(q.url ? [q.url, ""] : []));
     if (q?.text && row.quoted_zh) lines.push("### 引用中文译文", "", ...row.quoted_zh.split("\n").map((l) => `> ${l}`), "");
+  } else if (row.channel === "x") {
+    // An image-only post exports its media as plain markdown image links, loadable outside the site.
+    for (const m of (row.x_post?.media ?? []) as Array<{ kind?: string; url?: string }>) {
+      if (m.kind === "image" && m.url) lines.push(`![](${m.url})`, "");
+    }
   } else if (row.body_mode === "full" && row.body_html) {
     const isZh = row.language === "zh";
     if (!isZh && row.tr_html && row.tr_complete) lines.push("## 正文 · 中文译文", "", turndown.turndown(row.tr_html), "");
