@@ -4,30 +4,38 @@
 // (any zero stops it).
 import { credential } from "../config.ts";
 import { guardedFetch } from "../lib/http-fetch.ts";
-import { assertPageContent, contentDocument, UnavailablePageError } from "../lib/page-content.ts";
-import { assertAccepted, paidRequest } from "./receipts.ts";
+import { paidRequest, ProviderRejectedError } from "./receipts.ts";
 
 /** A source address read through Jina: this prefix, then the page's own address. */
 export const JINA_PREFIX = "https://r.jina.ai/";
 
-/** Jina's answer starts with header lines (Title, URL Source, Published Time); the page follows this line. */
-const CONTENT = "\nMarkdown Content:\n";
+export interface JinaPage {
+  title: string | null;
+  url: string | null;
+  publishedTime: string | null;
+  markdown: string;
+}
+
+export function parseJinaText(text: string): JinaPage {
+  const header = text.split(/\nMarkdown Content:\n/)[0] ?? "";
+  const body = text.includes("\nMarkdown Content:\n") ? text.split(/\nMarkdown Content:\n/).slice(1).join("\nMarkdown Content:\n") : text;
+  const field = (name: string) => new RegExp(`^${name}:\\s*(.+)$`, "m").exec(header)?.[1]?.trim() ?? null;
+  return { title: field("Title"), url: field("URL Source"), publishedTime: field("Published Time"), markdown: body.trim() };
+}
 
 export function jinaAuthHeaders(key: string | null): Record<string, string> {
   return key ? { authorization: `Bearer ${key}` } : {};
 }
 
 /**
- * Reads a page through Jina: `raw` is the whole answer, `markdown` the page after its header lines.
- * The receipt key is the target URL plus the day, so a same-day retry of an article's body or detail
- * reuses it. A listing is read afresh on every fetch (`perRead`): with the day key every later fetch saw
- * the morning's page. Each such read has a receipt of its own, so after one whose outcome is unknown the
- * next fetch pays for a new read instead of waiting on it.
+ * Reads a page through Jina. The receipt key is the target URL plus the day, so a same-day retry of an
+ * article's body or detail reuses it. A listing is read afresh on every fetch (`perRead`): with the day
+ * key each listing was read once a day and every later fetch saw the morning's page.
  */
 export async function jinaRead(
   targetUrl: string,
   opts: { purpose: string; subject: string; format?: "markdown" | "html"; cacheToleranceSeconds?: number; perRead?: boolean },
-): Promise<{ markdown: string; raw: string; receiptId: number }> {
+): Promise<JinaPage & { receiptId: number; raw: string }> {
   const key = credential("collectors", "JINA_API_KEY");
   // Kill switch: JINA_FREE_TIER=false restores the old "no key, no fallback" behaviour without a revert.
   if (!key && process.env.JINA_FREE_TIER === "false") throw new Error("JINA_API_KEY is not configured");
@@ -44,6 +52,10 @@ export async function jinaRead(
         timeoutMs: 60_000,
         maxBytes: 6 * 1024 * 1024,
       });
+      if (res.status === 401 || res.status === 402 || res.status === 403 || res.status === 422 || res.status === 400) {
+        throw new ProviderRejectedError(`jina HTTP ${res.status}`, res.status, false);
+      }
+      if (res.status === 429 || res.status >= 500) throw new ProviderRejectedError(`jina HTTP ${res.status}`, res.status, true);
       const text = res.text();
       // Billed in tokens when a key is configured, estimated at about ¥0.36 per million (a recharge-pack
       // price). The anonymous tier is free, so it records no cost; without the usage header nothing is
@@ -54,16 +66,5 @@ export async function jinaRead(
     },
   );
   const raw = String((receipt.response as { text?: string })?.text ?? "");
-  const at = raw.indexOf(CONTENT);
-  const markdown = (at < 0 ? raw : raw.slice(at + CONTENT.length)).trim();
-  // The renderer has been paid even when the target failed. Validate after saving its receipt,
-  // and only read protocol warnings before Markdown Content (an article may quote the same words).
-  if (opts.format === "html") contentDocument(raw);
-  else {
-    const header = at < 0 ? "" : raw.slice(0, at);
-    const failure = /^Warning:.*(?:Target URL returned error [45]\d\d\b|requiring CAPTCHA).*$/im.exec(header);
-    if (failure) throw new UnavailablePageError(failure[0]);
-    assertPageContent(/^Title:\s*(.*)$/im.exec(header)?.[1] ?? "", markdown);
-  }
-  return { markdown, raw, receiptId: receipt.receiptId };
+  return { ...parseJinaText(raw), receiptId: receipt.receiptId, raw };
 }
