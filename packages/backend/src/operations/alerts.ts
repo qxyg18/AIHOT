@@ -310,12 +310,13 @@ async function providerFindings(now: number, open: AlertState): Promise<Finding[
     refused.set(key, summary);
   }
   for (const [key, p] of refused) {
-    const unused = p.models && !PROVIDERS[p.service]?.stops && !(await stepsOnService(p.service, p.models)).length;
+    // "later" is upstream's quiet level; this product has no later-day assembly, so a later finding
+    // would notify nobody. Everything that must reach the owner stays at today.
     out.push({
       key,
-      level: unused ? "later" : "today",
-      title: unused ? `${providerName(p.service)} 的旧模型限制尚未验证` : `${providerName(p.service)} 拒绝调用，需要核对账号或额度`,
-      impact: unused ? "当前处理步骤未使用这些受限模型；旧限制仍未验证" : await providerStops(p.service, p.models),
+      level: "today",
+      title: `${providerName(p.service)} 拒绝调用，需要核对账号或额度`,
+      impact: await providerStops(p.service, p.models),
       heals: "需先恢复访问，再确认失败任务已接续",
       action: `去${providerConsole(p.service)}看余额、套餐和消费上限，恢复访问后核实一次成功调用，并从后台接续失败任务；都正常的话，发起一次维护查原因`,
       detail: `${p.models ? `模型 ${[...p.models].join("、")}；` : ""}最近一次成功后被拒 ${p.n} 次，尚未取得后续成功调用：${p.last}`,
@@ -328,7 +329,7 @@ async function providerFindings(now: number, open: AlertState): Promise<Finding[
   for (const c of capped) {
     out.push({
       key: `budget.day.${c.service}`,
-      level: "later",
+      level: "today",
       title: `${providerName(c.service)} 过去 24 小时的调用额度用完了`,
       impact: `${await providerStops(c.service)}，直到额度随时间腾出来`,
       heals: "会，额度按 24 小时滚动恢复",
