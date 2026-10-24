@@ -88,6 +88,10 @@ export function migrationPlan(text: string): MigrationPlan {
   // on it fails the migration instead of disappearing with it. Whether its data may go is settled before
   // the change, and the release running while it applies no longer reads or writes it.
   if (new RegExp(`^drop table if exists ${RELATION}$`, "i").test(sql)) return { kind: "transaction" };
+  // Seed-style idempotent inserts (radar channel/budget rows): ordinary row writes inside one
+  // transaction; they take no strong locks and re-run safely through ON CONFLICT DO NOTHING.
+  // Values tuples may span lines and repeat; idempotence requires a trailing ON CONFLICT ... DO NOTHING.
+  if (new RegExp(`^insert into ${RELATION} (?:[(][^;]*[)] )?values [^;]* on conflict .* do nothing$`, "i").test(sql)) return { kind: "transaction" };
   if (!singleAction(tokens)) throw new Error("use one ALTER TABLE action per statement");
   // Only these per-table vacuum triggers: catalog changes under SHARE UPDATE EXCLUSIVE, without
   // disabling maintenance, changing its resource limits or broadening the storage-parameter syntax.
