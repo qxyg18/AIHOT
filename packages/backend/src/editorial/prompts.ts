@@ -16,10 +16,15 @@ const TOKEN = /\{\{(>\s*)?([A-Za-z][\w.-]*)\s*\}\}/g;
 
 const files = new Map<string, string>();
 
+/** Line endings are a checkout artifact, not wording, so identity hashes must not see them (yn124). */
+export function normalizeEol(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
+}
+
 function raw(name: string): string {
   let text = files.get(name);
   if (text === undefined) {
-    text = readFileSync(path.join(DIR, `${name}.md`), "utf8");
+    text = normalizeEol(readFileSync(path.join(DIR, `${name}.md`), "utf8"));
     files.set(name, text);
   }
   return text;
