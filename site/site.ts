@@ -3,6 +3,7 @@
 // 域名不在这里：部署时用环境变量 SITE_URL 设置。
 
 import type { Founder } from "@aihot/contracts/site-config";
+import { SITE as INDUSTRY_SITE } from "@aihot/industry/site";
 
 /**
  * 日报、周报、月报什么时候出（北京时间，HH:mm）：日报收这个时间之前的 24 小时，周报在每个自然周之后的周一出，
@@ -19,15 +20,12 @@ export const EDITION_WHEN = {
 };
 
 export const SITE = {
-  /** 站名：导航、页面标题、分享图、RSS、MCP、后台都用它。 */
-  name: "MyHOT",
-  /**
-   * 行业词：拼进默认说法里，比如“AI 日报”“AI 动态”。
-   * 改成“法律”“HR”“黄金”之类，页面上就会变成“法律日报”“法律动态”。
-   */
-  subject: "AI",
-  /** 首页的完整标题（浏览器标签、搜索结果）。 */
-  homeTitle: "MyHOT — AI 行业动态 · 每日精选与日报",
+  // 行业身份 13 键（name/subject/homeTitle/description/tagline/locale/defaultUrl/
+  // mcpPrefix/contactEmail/footerNote/icp/organization/crawlerName）以 @aihot/industry/site
+  // 的童装雷达身份为准（yn176 承 ym955 审计 r3 移交）；industry 包不反向依赖本包。
+  ...INDUSTRY_SITE,
+
+  // ---- 以下为上游独有键，原样保留 ----
   /** 主题目录页（/topics）的标题。 */
   topicsTitle: "AI 主题：公司与模型、技术方向、内容形态的最新动态",
   /** 反馈表单输入框里的示例。 */
@@ -36,50 +34,28 @@ export const SITE = {
   feedbackLead: "发现 bug、想要的功能、看不顺眼的地方，都可以告诉我们。",
   /** 反馈表单邮箱框里的提示。 */
   feedbackEmailHint: "留下邮箱，我们可以回信联系你",
-  /** 一句话介绍：搜索引擎、分享卡片、RSS、llms.txt 会用。 */
-  description: `从一批 AI 信源里挑出值得看的动态，把同一件事的多篇报道归到一起，${EDITION_WHEN.daily} 出一份日报。`,
   /** llms.txt 里一句话介绍下面的一段详细介绍（选填）。 */
   llmsIntro: null as string | null,
-  /** 一行小字：分享图、海报下方。 */
-  tagline: "值得关注的 AI 动态",
   /** 搜索引擎读到的关键词（首页结构化数据）。 */
   keywords: ["AI 资讯", "AI 新闻", "AI 日报", "AI 行业动态"] as string[],
   /** 网站开始收录的年份（结构化数据的时间范围，选填）。 */
   since: null as string | null,
-  /** 界面语言（HTML lang、og:locale）。 */
-  locale: "zh-CN",
-  /** 默认域名，只在没设置 SITE_URL 时使用。 */
-  defaultUrl: "http://localhost:3000",
   /** 标准图标（favicon.ico、icon.png、icon-192.png、apple-icon.png、logo.svg）以外也放在网站根目录的图标，site/brand/ 里的文件名（选填）；manifest.webmanifest 或外站引用了它们时用。 */
   rootIcons: [] as string[],
-  /**
-   * MCP 工具名的前缀（小写字母、数字、下划线），工具会叫 myhot_get_latest、myhot_search……
-   * 已经有人接入后就不要再改。
-   */
-  mcpPrefix: "myhot",
   /**
    * 公开接口（MCP、OpenAPI、llms.txt）的版本号，只升不降。
    * 改了接口里已有的字段或含义时升主版本，并在部署说明里写清。
    */
   interfaceVersion: "4.0.0",
-  /** 对外联系邮箱（选填）：llms.txt 和给 Agent 的使用说明里会写。 */
-  contactEmail: null as string | null,
-  /** 关于页底部的一行小字（选填）。 */
-  footerNote: "由 AIHOT 开源框架驱动",
-  /** 中国大陆网站的 ICP 备案号（选填），填了就显示在侧栏底部和“我的”页底部，并链接到工信部备案系统。 */
-  icp: null as string | null,
   /** 中国大陆网站的公安备案信息（选填），填了显示在侧栏底部和“我的”页底部。 */
   psb: null as string | null,
   /** 源码的 GitHub 仓库地址（选填），填了就在侧栏底部和“我的”页底部显示“GitHub 开源”。 */
   github: null as string | null,
-  /** 结构化数据里的网站运营者（搜索引擎用）。 */
-  organization: {
-    name: "MyHOT",
-    /** 创始人（选填）。 */
-    founder: null as Founder | null,
-  },
-  /** 抓取信源时报上的名字和版本（User-Agent 里用），不要冒用别的站。 */
-  crawlerName: "MyHOTBot/1.0",
+
+  // 行业身份覆盖（yn176 承 ym955 审计 r3 移交）：同键以 @aihot/industry/site 的童装雷达身份为准
+  // （name/subject/homeTitle/description/tagline/locale/defaultUrl/mcpPrefix/contactEmail/footerNote/
+  // icp/organization/crawlerName），上游独有的键原样保留。industry/site.ts 不反向依赖本包，无循环 import。
+  ...INDUSTRY_SITE,
 } as const;
 
 /** 使用规则和隐私说明两页（正文在 pages/ 里）。 */
