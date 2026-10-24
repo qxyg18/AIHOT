@@ -13,10 +13,17 @@ let count = 0;
 for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
   if (applied.has(file)) continue;
   const text = readFileSync(path.join(dir, file), "utf8");
-  await sql.begin(async (tx) => {
-    await tx.unsafe(text);
-    await tx`INSERT INTO schema_migrations (name) VALUES (${file})`;
-  });
+  // CREATE INDEX CONCURRENTLY cannot run inside a transaction block (upstream runner splits these
+  // into a non-transactional plan); apply such files outside sql.begin, recording them after.
+  if (/create index concurrently/i.test(text)) {
+    await sql.unsafe(text);
+    await sql`INSERT INTO schema_migrations (name) VALUES (${file}) ON CONFLICT DO NOTHING`;
+  } else {
+    await sql.begin(async (tx) => {
+      await tx.unsafe(text);
+      await tx`INSERT INTO schema_migrations (name) VALUES (${file})`;
+    });
+  }
   console.log(`applied ${file}`);
   count += 1;
 }
