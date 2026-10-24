@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./pages/*": "./pages/*",
+    "./brand/*": "./brand/*",
     "./*": "./*.ts"
   }
 }
