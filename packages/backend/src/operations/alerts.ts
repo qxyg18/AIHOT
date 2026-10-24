@@ -7,6 +7,10 @@
 import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { sql } from "../db.ts";
 import { beijingDay, beijingStamp, duration, formatAlert, formatRecovery, sendAlert, type Finding, type Level } from "../notify/feishu.ts";
+import { closeAgentWake, wakeAgent } from "../notify/agent.ts";
+import { serverModules } from "../modules.ts";
+import { stepsOnService } from "../editorial/models.ts";
+import { providerAccessRefused } from "../providers/receipts.ts";
 import { backupConfigured } from "./backup.ts";
 import { envPositiveNumber } from "./env-number.ts";
 import { zhipuCircuitState } from "../providers/zhipu.ts";
@@ -19,8 +23,9 @@ const modelsOn = () => process.env.MODEL_CALLS_ENABLED !== "false";
 /** How long the site may go without a new article before it counts as stalled (small source lists are quieter). */
 const QUIET_MS = envPositiveNumber("ALERT_QUIET_MINUTES", 360) * 60_000;
 
-/** Everything wrong right now, with its level. */
-export async function collectFindings(now = Date.now()): Promise<Finding[]> {
+/** Everything wrong right now, with its level. `open` is the announced state: a refusal incident whose
+ *  service key predates per-model keys freezes its unresolved model scope from it (see providerFindings). */
+export async function collectFindings(now = Date.now(), open: AlertState = {}): Promise<Finding[]> {
   const out: Finding[] = [];
 
   // ---- Readers affected now ----------------------------------------------------------------------
@@ -86,7 +91,7 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
   }
 
   // ---- Money, and things only the owner can do --------------------------------------------------
-  out.push(...(await providerFindings()));
+  out.push(...(await providerFindings(now, open)));
 
   // Content-group pushes the Feishu webhook refused (a removed bot, a changed address); nothing resends them.
   const [refused] = await sql<{ n: number; target: string | null; response: string | null }[]>`
@@ -231,41 +236,89 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
     }
   }
 
+  out.push(...(await moduleAlerts(now)));
   return out;
 }
 
-const MODEL_STOPS = "用到这家模型的步骤停了（看后台“模型与评测”），新内容可能进不了精选";
-const PROVIDERS: Record<string, { name: string; stops: string; where: string }> = {
+/** What the site's modules find. */
+async function moduleAlerts(now: number): Promise<Finding[]> {
+  const out: Finding[] = [];
+  for (const m of serverModules()) if (m.alerts) out.push(...(await m.alerts(now)));
+  return out;
+}
+
+/** A model service's own sentence would be wrong for one refused model: what stops is the steps on it. */
+async function modelStops(service: string, models?: ReadonlySet<string>): Promise<string> {
+  const steps = await stepsOnService(service, models);
+  return steps.length ? `${steps.join("、")}可能受影响` : "当前没有处理步骤使用这家模型服务";
+}
+/** `stops` is for the services that are not models; a model service's follows from the steps that use it. */
+const PROVIDERS: Record<string, { name: string; where: string; stops?: string }> = {
   llm: { name: "默认模型服务", stops: "新文章的精选、摘要、归组和日报停了", where: "模型服务商的控制台" },
-  zhipu: { name: "智谱", stops: MODEL_STOPS, where: "智谱开放平台" },
-  dashscope: { name: "阿里云百炼", stops: MODEL_STOPS, where: "阿里云百炼控制台" },
-  deepseek: { name: "DeepSeek", stops: MODEL_STOPS, where: "DeepSeek 开放平台" },
-  mimo: { name: "小米 MiMo", stops: MODEL_STOPS, where: "小米 MiMo 开放平台" },
+  zhipu: { name: "智谱", where: "智谱开放平台" },
+  dashscope: { name: "阿里云百炼", where: "阿里云百炼控制台" },
+  deepseek: { name: "DeepSeek", where: "DeepSeek 开放平台" },
+  mimo: { name: "小米 MiMo", where: "小米 MiMo 开放平台" },
   socialdata: { name: "SocialData", stops: "X（推特）上的新内容收不到", where: "SocialData 后台" },
   jina: { name: "Jina", stops: "部分文章取不到正文", where: "Jina 后台" },
   dajiala: { name: "极致了（Dajiala）", stops: "公众号新文章收不到", where: "极致了后台" },
 };
 export const providerName = (service: string) => PROVIDERS[service]?.name ?? service;
-export const providerStops = (service: string) => PROVIDERS[service]?.stops ?? "相关功能停了";
+export const providerStops = async (service: string, models?: ReadonlySet<string>): Promise<string> => {
+  const p = PROVIDERS[service];
+  return p ? (p.stops ?? modelStops(service, models)) : "相关功能停了";
+};
 export const providerConsole = (service: string) => PROVIDERS[service]?.where ?? `${service} 后台`;
 
-/** Paid services that refuse us (no balance, a dead key), and daily budgets used up. */
-async function providerFindings(): Promise<Finding[]> {
+const REFUSED_PREFIX = "provider.refused.";
+
+/** Paid services that refuse us (no balance, a dead key), and daily budgets used up. A refusal is
+ *  tracked per model so a switched-away model's accepted handoff is not reused for the new one. */
+async function providerFindings(now: number, open: AlertState): Promise<Finding[]> {
   const out: Finding[] = [];
-  const refused = await sql<{ service: string; n: number; last: string }[]>`
-    SELECT service, count(*)::int AS n, (array_agg(left(error, 200) ORDER BY started_at DESC))[1] AS last FROM receipt_attempts
-    WHERE status = 'failed' AND started_at > now() - interval '1 hour'
-      AND error ~* '(HTTP 40[123]\\M|insufficient|balance|arrear|good standing|欠费|余额)'
-    GROUP BY 1 HAVING count(*) >= 3`;
-  for (const p of refused) {
+  const ongoing = Object.keys(open).filter((key) => key.startsWith(REFUSED_PREFIX)).map((key) => key.slice(REFUSED_PREFIX.length).split(":")[0]!);
+  const failures = await sql<{ service: string; model: string | null; error: string; n: number; latest: Date }[]>`
+    SELECT service, model, error, count(*)::int AS n, max(started_at) AS latest FROM receipt_attempts a
+    WHERE status = 'failed' AND (started_at > ${new Date(now - 3600_000)} OR service = ANY(${ongoing})) AND error IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM receipt_attempts good WHERE good.service = a.service AND good.model IS NOT DISTINCT FROM a.model AND good.status = 'received' AND good.started_at > a.started_at)
+    GROUP BY service, model, error ORDER BY latest DESC`;
+  const models = new Map<string, { service: string; model: string | null; n: number; last: string; latest: number }>();
+  for (const p of failures) {
+    if (!providerAccessRefused(p.service, p.error)) continue;
+    const key = `${REFUSED_PREFIX}${p.service}${p.model === null ? "" : `:${encodeURIComponent(p.model)}`}`;
+    const summary = models.get(key) ?? { service: p.service, model: p.model, n: 0, last: p.error.slice(0, 200), latest: p.latest.getTime() };
+    summary.n += p.n;
+    models.set(key, summary);
+  }
+  // Earlier versions combined every model under a service key without saving its scope. Freeze the
+  // unresolved models once for those existing events; their old timestamps cannot establish that scope.
+  for (const [key, incident] of Object.entries(open)) {
+    if (!key.startsWith(REFUSED_PREFIX) || key.includes(":") || incident.refusedModels) continue;
+    const service = key.slice(REFUSED_PREFIX.length);
+    incident.refusedModels = [...models.values()].filter((p) => p.service === service).map((p) => p.model);
+  }
+  const refused = new Map<string, { service: string; n: number; last: string; models?: Set<string> }>();
+  for (const [modelKey, p] of models) {
+    const legacyKey = `${REFUSED_PREFIX}${p.service}`;
+    const legacy = open[legacyKey];
+    const key = legacy?.refusedModels?.includes(p.model) ? legacyKey : modelKey;
+    if (!open[key] && p.latest <= now - 3600_000) continue;
+    const summary = refused.get(key) ?? { service: p.service, n: 0, last: p.last, models: new Set<string>() };
+    summary.n += p.n;
+    if (p.model === null) summary.models = undefined;
+    else summary.models?.add(p.model);
+    refused.set(key, summary);
+  }
+  for (const [key, p] of refused) {
+    const unused = p.models && !PROVIDERS[p.service]?.stops && !(await stepsOnService(p.service, p.models)).length;
     out.push({
-      key: `provider.refused.${p.service}`,
-      level: "today",
-      title: `${providerName(p.service)} 拒绝服务，可能欠费或账号失效`,
-      impact: providerStops(p.service),
-      heals: "不会",
-      action: `去${providerConsole(p.service)}看余额和账号状态；充值或恢复后系统会自动继续`,
-      detail: `最近 1 小时被拒 ${p.n} 次：${p.last}`,
+      key,
+      level: unused ? "later" : "today",
+      title: unused ? `${providerName(p.service)} 的旧模型限制尚未验证` : `${providerName(p.service)} 拒绝调用，需要核对账号或额度`,
+      impact: unused ? "当前处理步骤未使用这些受限模型；旧限制仍未验证" : await providerStops(p.service, p.models),
+      heals: "需先恢复访问，再确认失败任务已接续",
+      action: `去${providerConsole(p.service)}看余额、套餐和消费上限，恢复访问后核实一次成功调用，并从后台接续失败任务；都正常的话，发起一次维护查原因`,
+      detail: `${p.models ? `模型 ${[...p.models].join("、")}；` : ""}最近一次成功后被拒 ${p.n} 次，尚未取得后续成功调用：${p.last}`,
     });
   }
   const capped = await sql<{ service: string; per_day: number; used: number }[]>`
@@ -275,9 +328,9 @@ async function providerFindings(): Promise<Finding[]> {
   for (const c of capped) {
     out.push({
       key: `budget.day.${c.service}`,
-      level: "today",
+      level: "later",
       title: `${providerName(c.service)} 过去 24 小时的调用额度用完了`,
-      impact: `${providerStops(c.service)}，直到额度随时间腾出来`,
+      impact: `${await providerStops(c.service)}，直到额度随时间腾出来`,
       heals: "会，额度按 24 小时滚动恢复",
       action: "这次不用处理；如果经常出现，再决定要不要调高额度",
       detail: `24 小时内 ${c.used} 次，上限 ${c.per_day}（budgets 表）`,
@@ -341,37 +394,57 @@ async function freeChannelDigest(now: number): Promise<Finding | null> {
 }
 
 interface AlertState {
-  [key: string]: { title: string; level?: Level; since: string; sentAt: string };
+  [key: string]: {
+    title: string; level?: Level; since: string; sentAt?: string;
+    /** Set once the owner's alert for this occurrence was recorded: the wake may be (re)sent. */
+    handoff?: true;
+    /** Frozen scope of a legacy service-level refusal: the models it already covered. */
+    refusedModels?: (string | null)[];
+  };
 }
 
-/** Every 10 minutes: new problems and recoveries of the now/today levels go out; digest items wait for 09:00. */
+/** Every 10 minutes: new problems and recoveries of the now/today levels go out; digest items wait for 09:00.
+ *  later findings are followed quietly and never wake the agent. */
 export async function checkAlerts(now = Date.now()) {
-  const found = (await collectFindings(now)).filter((f) => f.level !== "digest");
   const [row] = await sql<{ value: AlertState }[]>`SELECT value FROM settings WHERE key = 'alerts.state'`;
   const state: AlertState = { ...(row?.value ?? {}) };
+  const found = (await collectFindings(now, state)).filter((f) => f.level !== "digest");
   const sent: string[] = [];
   for (const f of found) {
-    const level = f.level as Exclude<Level, "digest">;
-    const open = state[f.key]?.level ? state[f.key] : undefined;
-    if (open && now - Date.parse(open.sentAt) <= REPEAT_MS[level]) continue;
+    const open = state[f.key];
+    if (f.level === "later") {
+      // Switching before the first check changes the impact, not whether access has recovered: hold the
+      // handoff so a model that comes back as a first alert is not purchased twice.
+      if (f.key.startsWith(REFUSED_PREFIX) && !open) state[f.key] = { title: f.title, since: new Date(now).toISOString(), handoff: true };
+      continue;
+    }
+    if (open?.sentAt && now - Date.parse(open.sentAt) <= REPEAT_MS[f.level as Exclude<Level, "digest">]) continue;
     const since = open ? new Date(open.since) : (f.since ?? new Date(now));
-    const msg = formatAlert(f, since, now, !!open);
+    const msg = formatAlert(f, since, now, !!open?.sentAt);
     await sendAlert(msg.title, msg.lines);
-    state[f.key] = { title: f.title, level, since: since.toISOString(), sentAt: new Date(now).toISOString() };
+    state[f.key] = {
+      ...open, title: f.title, level: f.level, since: since.toISOString(), sentAt: new Date(now).toISOString(),
+      ...(!open || open.handoff ? { handoff: true as const } : {}),
+    };
     sent.push(f.key);
   }
   for (const key of Object.keys(state)) {
     if (found.some((f) => f.key === key)) continue;
-    // Entries without a level predate this scheme (2026-09-29) and close without a message.
-    if (state[key]!.level) {
-      const msg = formatRecovery(state[key]!.title, new Date(state[key]!.since), now);
+    const open = state[key]!;
+    // Entries without a level (and without a handoff) predate this scheme (2026-09-29) and close silently.
+    if (open.level || open.handoff) {
+      const msg = formatRecovery(open.title, new Date(open.since), now);
       await sendAlert(msg.title, msg.lines);
       sent.push(`${key}:recovered`);
     }
+    await closeAgentWake(key);
     delete state[key];
   }
   await sql`INSERT INTO settings (key, value, updated_by) VALUES ('alerts.state', ${sql.json(state as never)}, 'alerts')
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+  // Revisit every open incident: a crash between saving the owner's alert and dispatching cannot lose it.
+  // The durable handoff deduplicates by occurrence, independently from the hourly owner reminders.
+  for (const f of found) if (f.level !== "later" && state[f.key]) await wakeAgent({ ...f, since: new Date(state[f.key]!.since) }, now, !!state[f.key]!.handoff);
   return { open: Object.keys(state), sent };
 }
 

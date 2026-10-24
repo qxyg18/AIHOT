@@ -4,7 +4,7 @@
 import "./setup.ts";
 
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,12 +12,14 @@ import { after, before, test } from "node:test";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import { closeDb, sql } from "@aihot/backend/db";
+import { config } from "@aihot/backend/config";
 import { SESSION_COOKIE } from "@aihot/backend/admin/auth";
 import { sha256 } from "@aihot/backend/lib/ids";
 import { registerAdmin } from "../apps/api/src/routes/admin.ts";
 
 const T = `t06c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const CSRF = `csrf-${T}`;
+const APP = { id: `app-${T}`, secret: `secret-${T}` };
 const DIR = mkdtempSync(join(tmpdir(), "t06c-"));
 
 const preexistingUserIds = new Set<number>();
@@ -30,8 +32,16 @@ async function sessionFor(email: string): Promise<{ token: string; userId: numbe
   const userId = u!.id;
   if (!preexistingUserIds.has(userId)) createdUserIds.push(userId);
   const token = randomBytes(32).toString("base64url");
-  await sql`INSERT INTO admin_sessions (id_hash, user_id, csrf_token, expires_at, user_agent)
-            VALUES (${sha256(token)}, ${userId}, ${CSRF}, ${new Date(Date.now() + 3_600_000)}, null)`;
+  // A stored session is accepted only while its sign-in binding still verifies (fail-closed), so the
+  // rows are signed with the Feishu claims form completeLogin uses.
+  const claims = { appId: APP.id, unionId: `t06c-${userId}`, email: null };
+  Object.assign(process.env, { FEISHU_LOGIN_APP_ID: APP.id, FEISHU_LOGIN_APP_SECRET: APP.secret });
+  if (!config.adminUnionIds.includes(claims.unionId)) config.adminUnionIds.push(claims.unionId);
+  const binding = createHmac("sha256", process.env.SESSION_SECRET!)
+    .update(JSON.stringify(["admin-session-v1", "feishu", claims])).digest("hex");
+  await sql`INSERT INTO admin_sessions (id_hash, user_id, csrf_token, expires_at, user_agent, auth_method, auth_binding, auth_claims)
+            VALUES (${sha256(token)}, ${userId}, ${CSRF}, ${new Date(Date.now() + 3_600_000)}, null,
+                    'feishu', ${binding}, ${sql.json(claims as never)})`;
   return { token, userId, principal: `admin:${userId}` };
 }
 

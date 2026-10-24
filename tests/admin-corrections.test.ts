@@ -140,7 +140,10 @@ test("a rejected SEO correction leaves both the decision and public indexing unc
 
 test("bad admin input is a client error and never starts processing", async () => {
   const token = `admin-session-${T}`;
-  const [user] = await sql`INSERT INTO admin_users (display_name) VALUES ('Review') RETURNING id`;
+  // The operate routes need admin:operate; the legacy operator address carries the compat default, so
+  // this test exercises input validation rather than the capability gate.
+  const [user] = await sql`INSERT INTO admin_users (email, display_name) VALUES ('admin@local', 'Review')
+                           ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id`;
   const claims = { appId: "test-session-app", unionId: "test-session-user", email: null };
   process.env.FEISHU_LOGIN_APP_ID = claims.appId;
   process.env.FEISHU_LOGIN_APP_SECRET = "test-app-secret";

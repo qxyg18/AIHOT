@@ -97,8 +97,12 @@ test("every prompt in the pack renders, and the site's name replaces AIHOT's", (
   const names = new Set(files.flatMap((f) => [...readFileSync(new URL(f, dir), "utf8").matchAll(/\{\{\s*([A-Za-z][\w.-]*)\s*\}\}/g)].map((m) => m[1]!)));
   const values = Object.fromEntries([...names].map((n) => [n, "x"]));
   for (const file of files) {
+    const source = readFileSync(new URL(file, dir), "utf8");
     const text = promptText(file.slice(0, -3), values);
-    assert.ok(text.length > 20 && !/\{\{/.test(text), file);
+    assert.ok(!/\{\{/.test(text), file);
+    // A section fragment is inserted into another prompt and may be a single line by design
+    // (report-period-no-sections); only a prompt that carries values must render into real text.
+    if (source.includes("{{")) assert.ok(text.length > 20, file);
   }
   assert.ok(PREFILTER_SYSTEM.startsWith(`为${SITE.name}做宽召回的童装零售相关性预筛`));
 });
