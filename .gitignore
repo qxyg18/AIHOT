@@ -14,3 +14,17 @@ apps/web/.react-router/
 # Font package unpacked to regenerate the report nameplates (docs/customize.md)
 package/
 fontsource-noto-sans-sc-*.tgz
+
+# Working-tree hygiene (ym767): editor/deploy backups never ship; collector runtime
+# artifacts and mirrors live only on the machines that produce them.
+*.bak
+*.bak-*
+__pycache__/
+scripts/collectors/logs/
+scripts/collectors/out/
+scripts/collectors/state/
+scripts/mirror/_work/
+scripts/mirror/data/
+mirror/data/
+mirror-fidelity/
+.test-*.log

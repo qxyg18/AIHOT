@@ -183,7 +183,10 @@ export async function translateArticle(articleId: string): Promise<TranslateResu
     for (const id of new Set(receiptIds)) await rejectReceivedResponse(id, `unusable translation: ${reason}`);
     return result({ status: "failed", reason });
   };
-  if (!row.selected || row.visibility !== "public" || row.body_mode !== "full") return result({ status: "skipped", reason: "not a selected full-text item" });
+  if (row.visibility !== "public" || row.body_mode !== "full") return result({ status: "skipped", reason: "not a full-text public item" });
+  // 2026-10-01 owner order: a visible foreign body must be readable in Chinese whether or not the
+  // item is 精选 — selected stays the only gate for the cheaper summary channel (body_mode summary
+  // shows no body, so those still skip inside translateArticle).
 
   if (row.channel === "x") {
     const text = String(row.x_post?.text ?? row.body_text ?? "").trim();
@@ -347,7 +350,7 @@ export async function translatePending(opts: { limit?: number; budgetMs?: number
       CASE WHEN p.channel='x' THEN coalesce(a.x_post->>'text',a.body_text) ELSE a.body_text END AS text
     FROM publications p JOIN articles a ON a.id = p.article_id
     LEFT JOIN translations tr ON tr.article_id = p.article_id AND tr.lang = 'zh'
-    WHERE p.selected AND p.visibility = 'public' AND p.body_mode = 'full'
+    WHERE p.visibility = 'public' AND p.body_mode = 'full' AND coalesce(a.language, '') <> 'zh'
       AND (p.channel='x' OR a.body_html IS NOT NULL)
       AND (p.discovered_at > now() - interval '3 days'
            OR EXISTS (SELECT 1 FROM article_revisions r WHERE r.article_id = a.id AND r.revision = a.revision AND r.revision > 1

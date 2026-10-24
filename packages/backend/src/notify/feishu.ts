@@ -1,10 +1,10 @@
 // Feishu delivery. Two separate apps: the login app (admin OAuth) and the message app (internal
 // feedback chat, operations alert chat, image upload). Content groups use custom bot webhooks.
 // Alerts and feedback never go to content groups, and content never goes to internal chats.
-// Everything outward is off unless explicitly enabled (development and tests stay silent).
+// Everything outward is off unless explicitly enabled (development and parallel runs stay silent).
 import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { beijingStamp } from "@aihot/contracts/time";
+import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { config, credential } from "../config.ts";
 import { sql } from "../db.ts";
 
@@ -31,18 +31,12 @@ async function tenantToken(): Promise<string> {
   return tokenCache.token;
 }
 
-/** Feishu's answers that the picture itself is unacceptable (bad image, too large, empty): trying again cannot help. */
-const IMAGE_REFUSED = new Set([234001, 234006, 234010, 234011]);
-
-class ImageRefusedError extends Error {}
-
 async function uploadImage(data: Buffer, filename: string): Promise<string> {
   const form = new FormData();
   form.set("image_type", "message");
   form.set("image", new Blob([new Uint8Array(data)]), filename);
   const res = await fetch(`${API}/im/v1/images`, { method: "POST", headers: { authorization: `Bearer ${await tenantToken()}` }, body: form, signal: AbortSignal.timeout(30_000) });
   const json = (await res.json()) as { code: number; data?: { image_key: string }; msg?: string };
-  if (IMAGE_REFUSED.has(json.code)) throw new ImageRefusedError(`feishu upload: ${json.msg}`);
   if (json.code !== 0 || !json.data) throw new Error(`feishu upload: ${json.msg}`);
   return json.data.image_key;
 }
@@ -59,12 +53,11 @@ async function sendToChat(chatId: string, msgType: "text" | "post" | "interactiv
   return json.data?.message_id ?? "";
 }
 
-// Operations alerts
+// ---- Operations alerts ------------------------------------------------------------------------------
 // Read by the site owner, not an engineer (operations/alerts.ts): what readers see, whether it heals,
-// and what the owner must do.
+// what the owner must do, and a last line of detail for the AI or engineer it is forwarded to.
 
-/** How urgent: readers affected now, money or the owner's hands today, or a follow-up that can wait. */
-export type Level = "now" | "today" | "later";
+export type Level = "now" | "today" | "digest" | "later";
 
 export interface Finding {
   key: string;
@@ -75,18 +68,24 @@ export interface Finding {
   impact?: string;
   /** Whether it heals by itself. */
   heals?: string;
-  /** What has to be done. */
+  /** What the owner has to do ("转给 AI" when it is engineering work). */
   action?: string;
-  /** Facts for whoever looks into it: the 09:00 digest lists them, an alert to the owner never carries them. */
+  /** For the AI or engineer the owner forwards it to. */
   detail?: string;
   /** When the problem began, when known; otherwise when it was first seen. */
   since?: Date;
-  /** New evidence after a dated closure reopens a source follow-up under the same key. */
-  observedAt?: Date;
 }
 
-const MARK: Record<Exclude<Level, "later">, string> = { now: "🔴", today: "🟠" };
+const MARK: Record<Exclude<Level, "digest">, string> = { now: "🔴", today: "🟠", later: "⚪" };
 
+/** "9月29日" in Beijing time. */
+export function beijingDay(at: Date | string | number): string {
+  const [, m, d] = beijingDate(at).split("-").map(Number);
+  return `${m}月${d}日`;
+}
+
+/** "9月29日 13:40" in Beijing time. */
+export const beijingStamp = (at: Date | string | number) => `${beijingDay(at)} ${beijingTime(at)}`;
 
 export function duration(ms: number): string {
   const min = Math.max(1, Math.round(ms / 60_000));
@@ -97,9 +96,9 @@ export function duration(ms: number): string {
 
 /** The message for an open problem: first notice or a repeat. */
 export function formatAlert(f: Finding, since: Date, now: number, repeat = false): { title: string; lines: string[] } {
-  const level = f.level === "later" ? "today" : f.level;
+  const level = f.level === "digest" ? "today" : f.level;
   const lasting = now - since.getTime() >= 60_000 ? `（已持续 ${duration(now - since.getTime())}）` : "";
-  const lines = [f.impact && `影响：${f.impact}`, f.heals && `会自己好吗：${f.heals}`, f.action && `你需要：${f.action}`];
+  const lines = [f.impact && `影响：${f.impact}`, f.heals && `会自己好吗：${f.heals}`, f.action && `你需要：${f.action}`, f.detail && `给 AI 的细节：${f.detail}`];
   return { title: `${MARK[level]} ${repeat ? "仍未恢复：" : ""}${f.title}${lasting}`, lines: lines.filter((l): l is string => !!l) };
 }
 
@@ -146,9 +145,8 @@ async function screenshotFor(fb: { id: number; screenshot_key: string | null; cr
     await unlink(file).catch(() => {});
     return { imageKey, note: null };
   } catch (error) {
-    // The forwarding sweep tries again; after a day, or at once when Feishu refuses the picture itself,
-    // the text goes without it.
-    if (!(error instanceof ImageRefusedError) && Date.now() - fb.created_at.getTime() < SCREENSHOT_GIVE_UP_MS) throw error;
+    // The forwarding sweep tries again; after a day the text goes without it.
+    if (Date.now() - fb.created_at.getTime() < SCREENSHOT_GIVE_UP_MS) throw error;
     await sql`UPDATE feedback SET screenshot_key = 'gone:upload' WHERE id = ${fb.id}`;
     await unlink(file).catch(() => {});
     return { imageKey: null, note: "（截图未能上传，已删除）" };
@@ -185,8 +183,8 @@ export async function forwardFeedbackToFeishu(id: number): Promise<"sent" | "dis
   }
 }
 
-/** Custom-bot webhook for content groups (selected cards and other pushes). */
-export async function postWebhook(url: string, card: unknown): Promise<{ status: "sent" | "failed" | "unknown"; body: string }> {
+/** Custom-bot webhook for content groups (selected cards, reset pushes). */
+export async function postWebhook(url: string, card: unknown): Promise<{ ok: boolean; status: number; body: string }> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -194,14 +192,12 @@ export async function postWebhook(url: string, card: unknown): Promise<{ status:
     signal: AbortSignal.timeout(15_000),
   });
   const body = await res.text();
-  // A successful HTTP transport is not an acknowledgement: proxies can return HTML or empty JSON.
-  let status: "sent" | "failed" | "unknown" = res.status >= 400 && res.status < 500 ? "failed" : "unknown";
+  let ok = res.ok;
   try {
-    const json = JSON.parse(body) as { code?: number; StatusCode?: number } | null;
-    const code = json?.code ?? json?.StatusCode;
-    if (res.ok && typeof code === "number") status = code === 0 ? "sent" : "failed";
+    const json = JSON.parse(body) as { code?: number; StatusCode?: number };
+    ok = ok && (json.code === 0 || json.StatusCode === 0);
   } catch {
     // non-JSON body
   }
-  return { status, body: body.slice(0, 500) };
+  return { ok, status: res.status, body: body.slice(0, 500) };
 }

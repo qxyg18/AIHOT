@@ -5,7 +5,7 @@ import type { SourceRow } from "./types.ts";
 
 // Rules applied in collect.ts to every kind read through collectSource.
 const PUBLISHER = ["publisherRole", "publisherUrlPrefixes", "publisherRequiresDiscovery"];
-const COLLECTED = [...PUBLISHER, "_aihot", "allowUrlPrefixes", "denyUrlPrefixes", "ingestNoiseFilter", "itemUrlPrefixRewrite", "sortByPublishedAt", "detail", "fetchPublicContent", "publishedAfter", "acceptLanguage"];
+const COLLECTED = [...PUBLISHER, "_aihot", "allowUrlPrefixes", "denyUrlPrefixes", "ingestNoiseFilter", "ingestIncludeFilter", "itemUrlPrefixRewrite", "sortByPublishedAt", "detail", "fetchPublicContent", "publishedAfter", "acceptLanguage"];
 
 const KEYS: Record<SourceRow["kind"], string[]> = {
   rss: [...COLLECTED, "feedUrl", "summaryIsBody", "preserveUrlFragment", "allowCategories", "denyCategories", "publishedAtUtcOffset"],
@@ -28,6 +28,7 @@ const KEYS: Record<SourceRow["kind"], string[]> = {
 const NESTED: Record<string, string[]> = {
   _aihot: ["initialBackfillLimit", "initialBackfillMonths"],
   ingestNoiseFilter: ["dropMarkers", "dropMarkersTitleOnly", "keepIfMatches"],
+  ingestIncludeFilter: ["any", "fields"],
   itemUrlPrefixRewrite: ["from", "to"],
   requireBoolean: ["path", "equals"],
   minNumeric: ["path", "min"],
@@ -79,6 +80,15 @@ export function unsupportedConfig(kind: SourceRow["kind"], config: Record<string
     else if (NESTED[key] && value && typeof value === "object") {
       for (const sub of Object.keys(value)) if (!NESTED[key]!.includes(sub)) out.push(`${key}.${sub}`);
       if (key === "detail" && "preserve" in value && !preserveRules((value as { preserve: unknown }).preserve)) out.push("detail.preserve");
+      // The include gate reads only the frozen listing fields, and its word/field lists are
+      // arrays; anything else is a typo or type error the run must name, not crash on at collect time.
+      if (key === "ingestIncludeFilter") {
+        const any = (value as { any?: unknown }).any;
+        if (any !== undefined && !Array.isArray(any)) out.push(`ingestIncludeFilter.any=${String(any)}`);
+        const fields = (value as { fields?: unknown }).fields;
+        if (fields !== undefined && !Array.isArray(fields)) out.push(`ingestIncludeFilter.fields=${String(fields)}`);
+        if (Array.isArray(fields)) for (const f of fields) if (f !== "title" && f !== "excerpt") out.push(`ingestIncludeFilter.fields=${String(f)}`);
+      }
     }
   }
   return out;

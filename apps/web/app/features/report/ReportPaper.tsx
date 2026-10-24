@@ -5,32 +5,29 @@
 // Rules are hairlines in two weights: line-strong closes the masthead and underlines a page's heading
 // and the neighbours; line parts stories, columns and list rows. Nothing is set in solid ink. Stories
 // sit in rows of two whose rules run across the page, each story as tall as its neighbour.
-import { IntentLink } from "../../components/ui/IntentLink";
-import { useState, type ReactNode } from "react";
+import { SITE, withSubject } from "@aihot/industry/site";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { REPORT_NAMES, type ReportCitation, type ReportDetail, type ReportNavigationEntry } from "@aihot/contracts/site";
-import { REPORTS, SITE, subjectAfter, withSubject } from "@aihot/site";
+import type { ReportCitation, ReportDetail, ReportNavigationEntry } from "@aihot/contracts/site";
+import { LB_SOURCE_TIER_LABELS, type LbSourceTier } from "@aihot/contracts/leaderboard";
+import { shortSourceName } from "../../lib/format";
 import { Badge } from "../../components/ui/Badge";
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight } from "../../components/icons";
 import { Kicker } from "../../components/ui/Kicker";
-import type { OutlineEntry } from "../../components/ui/OutlineSheet";
 import { SourceAvatar } from "../../components/ui/SourceAvatar";
 import { Halftone } from "./Halftone";
 import { Nameplate } from "./Nameplate";
 import { IssueDots } from "./IssueDots";
-import { monthDay } from "@aihot/contracts/time";
-import { EDITION, MOTTO, dateLine, dateMark, headline, metricItems, neighbourLabel, reportPath, shortDay } from "./format";
+import { EDITION, KIND_LABEL, MOTTO, dateLine, dateMark, headline, issueNumber, metricItems, neighbourLabel, reportPath, shortDay } from "./format";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const keyOf = (c: ReportCitation) => c.itemId ?? c.title;
 const anchorOf = (c: ReportCitation) => (c.itemId ? `r-${c.itemId}` : null);
 const LINK = "inline-flex min-h-7 items-center gap-0.5 font-medium transition-colors hover:text-accent";
-/** What comes before `noun` at the end of `phrase` ("往期 AI " of "往期 AI 周报"), so the kind's name is its own text. */
-const before = (phrase: string, noun: string) => phrase.slice(0, -noun.length);
 
-function Masthead({ report, index, quiet }: { report: ReportDetail; index: ReportNavigationEntry[]; quiet: boolean }) {
+function Masthead({ report, index }: { report: ReportDetail; index: ReportNavigationEntry[] }) {
+  const issue = issueNumber(index, report.key);
   const mark = dateMark(report.kind, report.key);
-  const label = REPORT_NAMES[report.kind];
   return (
     <header className="pt-5 lg:pt-0">
       <div className="flex items-center justify-between gap-4 text-[12px] text-ink-4">
@@ -41,43 +38,38 @@ function Masthead({ report, index, quiet }: { report: ReportDetail; index: Repor
 
       <div className="flex items-stretch justify-between gap-5 py-6 @[880px]:gap-10 @[880px]:py-8">
         <div className="flex min-w-0 flex-col justify-center">
-          <h1 id="report-start" className="scroll-mt-[calc(var(--bar-h)+1.5rem)]">
+          <h1 id="report-start">
             <span className="sr-only">
-              {before(withSubject(label), label)}{label} · {dateLine(report.kind, report.key)}
+              {withSubject(KIND_LABEL[report.kind])} · {dateLine(report.kind, report.key)}
             </span>
-            <Nameplate which={report.kind} className="block h-[44px] w-auto @[520px]:h-[58px] @[880px]:h-[74px] @[1040px]:h-[84px]" />
+            <Nameplate which={report.kind} className="block h-[54px] w-auto @[520px]:h-[74px] @[880px]:h-[98px] @[1040px]:h-[112px]" />
           </h1>
-          <p className="mt-3 text-[11.5px] tracking-[0.36em] text-ink-4 @[880px]:mt-4 @[880px]:text-[12.5px]">{REPORTS.imprint}</p>
+          <p className="mt-3 text-[11.5px] tracking-[0.36em] text-ink-4 @[880px]:mt-4 @[880px]:text-[12.5px]">{SITE.name.toUpperCase()}</p>
         </div>
         {/* 报眼: the box beside the nameplate, as a Chinese daily sets it: the issue and the date in the
             nameplate's dots, and on wider paper the issue calendar beside them. */}
         <div className="flex shrink-0 items-stretch well rounded-panel">
           <div className="flex w-[112px] flex-col items-center justify-center px-2 py-3 text-center @[880px]:w-[150px] @[880px]:py-4">
-            <span className="text-[11px] tracking-[0.2em] text-ink-4">第 {report.issueNumber} 期</span>
+            {issue && <span className="text-[11px] tracking-[0.2em] text-ink-4">第 {issue} 期</span>}
             <Halftone seed={`${report.kind}-${report.key}-date`} className="num mt-2 whitespace-nowrap text-[44px] font-black leading-[0.95] tracking-[-0.04em] text-ink @[880px]:text-[64px]">
               {mark.figure}
             </Halftone>
             <span className="mt-2 text-[11.5px] text-ink-2">{mark.top}</span>
             <span className="text-[11.5px] text-ink-4">{mark.bottom}</span>
           </div>
-          <IssueDots kind={report.kind} reportKey={report.key} issueNumber={report.issueNumber} index={index} className="hidden w-[176px] border-l border-line px-4 py-4 @[760px]:block @[880px]:w-[196px]" />
+          <IssueDots kind={report.kind} reportKey={report.key} index={index} className="hidden w-[176px] border-l border-line px-4 py-4 @[760px]:block @[880px]:w-[196px]" />
         </div>
       </div>
 
-      {/* A quiet day has no figures to set and nothing to read through: the masthead just closes. */}
-      {quiet ? (
-        <div aria-hidden="true" className="border-t border-line-strong" />
-      ) : (
-        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1.5 border-y border-line-strong py-3">
-          {metricItems(report.metrics).map((m) => (
-            <span key={m.unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-              <span className="num text-[22px] font-bold leading-none tracking-[-0.02em] text-ink @[880px]:text-[24px]">{m.value}</span>
-              <span className="text-[12px] text-ink-4">{m.unit}</span>
-            </span>
-          ))}
-          <span className="ml-auto whitespace-nowrap text-[12px] text-ink-4">约 {report.readingMinutes} 分钟读完</span>
-        </div>
-      )}
+      <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1.5 border-y border-line-strong py-3">
+        {metricItems(report.metrics).map((m) => (
+          <span key={m.unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="num text-[22px] font-bold leading-none tracking-[-0.02em] text-ink @[880px]:text-[24px]">{m.value}</span>
+            <span className="text-[12px] text-ink-4">{m.unit}</span>
+          </span>
+        ))}
+        <span className="ml-auto whitespace-nowrap text-[12px] text-ink-4">约 {report.readingMinutes} 分钟读完</span>
+      </div>
     </header>
   );
 }
@@ -87,7 +79,7 @@ function Source({ c, size = 16 }: { c: ReportCitation; size?: number }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
       <SourceAvatar name={c.sourceName} iconUrl={c.sourceIconUrl} iconSrcSet={c.sourceIconSrcSet} size={size} />
-      <span className="truncate">{c.sourceName}</span>
+      <span className="truncate">{shortSourceName(c.sourceName)}</span>
       {c.firstParty && <Badge tone="accent">一手</Badge>}
     </span>
   );
@@ -99,77 +91,121 @@ function Source({ c, size = 16 }: { c: ReportCitation; size?: number }) {
  */
 function Original({ c, className = "" }: { c: ReportCitation; className?: string }) {
   return (
-    <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`阅读${c.sourceName}原文：${c.title}（新标签页）`} className={`${LINK} text-[12.5px] text-ink-3 ${className}`}>
+    <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`阅读${shortSourceName(c.sourceName)}原文：${c.title}（新标签页）`} className={`${LINK} text-[12.5px] text-ink-3 ${className}`}>
       原文 <IconArrowUpRight size={12} />
     </a>
   );
 }
 
-/**
- * Under a daily entry: the event's other developments, or other reports of the launch it stands for.
- * Titles only, each to its page; a withdrawn one stays, struck through.
- */
-function Related({ items, className = "" }: { items: ReportCitation[]; className?: string }) {
+// 置信级角标（ym44）：复用商场榜口径（机器源＞研报提取＞人工种子＞推断填充）。日报条目的信息只有两档成色：
+// 官方一手直发=机器源档，媒体与公众号转述整理=研报提取档；人工种子/推断填充档日报不产生，留作口径对齐。
+const CONFIDENCE_DOT: Record<LbSourceTier, string> = { machine: "bg-ok", report: "bg-accent", seed: "bg-amber", infer: "bg-ink-4" };
+
+function confidenceTier(c: ReportCitation): LbSourceTier {
+  return c.firstParty ? "machine" : "report";
+}
+
+function ConfidenceChip({ tier }: { tier: LbSourceTier }) {
   return (
-    <ul className={`space-y-1.5 ${className}`}>
-      {items.slice(0, 4).map((r) => (
-        <li key={keyOf(r)} className="flex gap-2.5 text-[13.5px] leading-[1.65]">
-          <span className="mt-[9px] size-1 shrink-0 rounded-full bg-ink-4" aria-hidden="true" />
-          <span className="min-w-0">
-            {r.available && r.itemId ? (
-              <IntentLink viewTransition to={`/items/${r.itemId}`} className="text-ink-2 transition-colors hover:text-accent">
-                {r.title}
-              </IntentLink>
-            ) : (
-              <span title={WITHDRAWN_NOTE} className="text-ink-4 line-through">{r.title}</span>
-            )}
-            {r.available && <span className="ml-2 text-[12px] text-ink-4">{r.sourceName}</span>}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <small className="inline-flex items-center gap-1 text-[10.5px] leading-[16px] text-ink-4">
+      <span className={`size-[5px] shrink-0 rounded-full ${CONFIDENCE_DOT[tier]}`} aria-hidden="true" />
+      {LB_SOURCE_TIER_LABELS[tier]}
+    </small>
   );
 }
 
-/** How many more sources reported the entry's event, and whether an earlier daily covered it. */
-function Coverage({ c }: { c: ReportCitation }) {
+/** 主编点评（ym44）：头条的一句「对渠道生意的含义」，版面上跟在故事正文之后。 */
+function EditorNote({ text }: { text: string }) {
   return (
-    <>
-      {!!c.otherSources && <span className="shrink-0 text-ink-4">另外 {c.otherSources} 家也报道了</span>}
-      {c.followUp && <Badge title={`${monthDay(c.followUp)}的日报报道过这件事，这里是新进展`}>跟进</Badge>}
-    </>
+    <p className="mt-3 border-l-2 border-accent/40 pl-3 text-[14px] leading-[1.8] text-ink-2">
+      <span className="mr-1.5 font-semibold text-accent">编辑点评</span>
+      {text}
+    </p>
+  );
+}
+
+/** 有用/没用（ym44）：每条一次，记住选择；落库走 /api/site/report-feedback，攒两周后回顾配额。 */
+function FeedbackButtons({ itemId, kind, reportKey }: { itemId: string; kind: ReportDetail["kind"]; reportKey: string }) {
+  const [choice, setChoice] = useState<boolean | null>(null);
+  useEffect(() => {
+    const saved = window.localStorage.getItem(`report-fb:${itemId}`);
+    if (saved !== null) setChoice(saved === "1");
+  }, [itemId]);
+  const send = async (useful: boolean) => {
+    if (choice !== null) return;
+    setChoice(useful);
+    try {
+      const res = await fetch("/api/site/report-feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ itemId, useful, kind, key: reportKey }),
+      });
+      if (!res.ok && res.status !== 204) throw new Error(String(res.status));
+      window.localStorage.setItem(`report-fb:${itemId}`, useful ? "1" : "0");
+    } catch {
+      setChoice(null); // 没存上就还原，让读者还能再点。
+    }
+  };
+  if (choice !== null) return <span className="text-[12px] text-ink-4">已反馈，谢谢</span>;
+  return (
+    <span className="inline-flex items-center gap-2.5 text-[12px] text-ink-4">
+      这条对你
+      <button type="button" onClick={() => send(true)} className="font-medium text-ink-3 transition-colors hover:text-accent">
+        有用
+      </button>
+      <button type="button" onClick={() => send(false)} className="font-medium text-ink-3 transition-colors hover:text-accent">
+        没用
+      </button>
+    </span>
   );
 }
 
 /** One story: source, headline, at most four lines of summary, and the original at the foot. */
-function Story({ c, dated, className = "" }: { c: ReportCitation; dated: boolean; className?: string }) {
+function Story({ c, dated, kind, reportKey, soWhat, className = "" }: { c: ReportCitation; dated: boolean; kind: ReportDetail["kind"]; reportKey: string; soWhat?: string; className: string }) {
   return (
-    <article id={anchorOf(c) ?? undefined} className={`flex min-w-0 scroll-mt-[calc(var(--bar-h)+1.5rem)] flex-col py-6 ${className}`}>
+    <article id={anchorOf(c) ?? undefined} className={`flex min-w-0 scroll-mt-6 flex-col py-6 ${className}`}>
       <div className="flex items-center gap-2 text-[12px] text-ink-3">
         <Source c={c} />
-        {c.available && <Coverage c={c} />}
+        {c.available && <ConfidenceChip tier={confidenceTier(c)} />}
         {dated && c.publishedAt && <span className="num ml-auto shrink-0 text-ink-4">{shortDay(c.publishedAt)}</span>}
       </div>
       {c.available ? (
         <>
-          <h3 className="mt-3 text-[19px] font-bold leading-[1.5] tracking-[-0.01em] text-ink [text-wrap:pretty] @[880px]:text-[20px]">
+          <h3 className="mt-3 text-[19px] font-bold leading-[1.5] tracking-[-0.01em] text-ink [overflow-wrap:anywhere] [text-wrap:pretty] @[880px]:text-[20px]">
             {c.itemId ? (
-              <IntentLink viewTransition to={`/items/${c.itemId}`} className="transition-colors hover:text-accent">
+              <Link to={`/items/${c.itemId}`} prefetch="intent" className="transition-colors hover:text-accent">
                 {c.title}
-              </IntentLink>
+              </Link>
             ) : (
               c.title
             )}
           </h3>
-          {c.summary && <p className="mt-2 line-clamp-4 text-[15px] leading-[1.85] text-ink-2 @[560px]:text-justify">{c.summary}</p>}
-          {!!c.related?.length && <Related items={c.related} className="mt-3" />}
-          <div className="mt-auto pt-3">
+          {c.summary && <p className="mt-2 line-clamp-4 text-[15px] leading-[1.85] text-ink-2 [overflow-wrap:anywhere] @[560px]:text-justify">{c.summary}</p>}
+          {/* ym132-②：条目实体标签——article_entities 标注（品牌→渠道→商场序，≤3），点击到实体页。 */}
+          {c.entities && c.entities.length > 0 && (
+            <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-[1.6] text-ink-4">
+              <span>相关实体</span>
+              {c.entities.map((e) => (
+                <Link
+                  key={`${e.type}-${e.slug}`}
+                  to={`/entity/${e.type}/${e.slug}`}
+                  prefetch="intent"
+                  className="rounded-full border border-line px-2 py-0.5 text-[11.5px] text-ink-3 transition-colors hover:border-ink-4 hover:text-accent"
+                >
+                  {e.name}
+                </Link>
+              ))}
+            </p>
+          )}
+          {soWhat && <EditorNote text={soWhat} />}
+          <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3">
             <Original c={c} />
+            {c.itemId && <FeedbackButtons itemId={c.itemId} kind={kind} reportKey={reportKey} />}
           </div>
         </>
       ) : (
         <p className="mt-3 text-[14px] leading-relaxed text-ink-4">
-          <span className="line-through">{c.title}</span> · {WITHDRAWN_NOTE}
+          <span className="line-through">{c.title}</span> · 该内容已按来源方要求下架或调整展示方式。
         </p>
       )}
     </article>
@@ -201,16 +237,11 @@ interface Page {
   items: ReportCitation[];
 }
 
-/**
- * The story an issue leads with: the item it names.
- * Only a public item leads: a withdrawn one stays in its page, marked.
- */
+/** A daily without an editors' lead leads with its first highlight (else its first story). */
 function leadStoryOf(report: ReportDetail): ReportCitation | null {
-  if (!report.leadItemId) return null;
-  return report.sections.flatMap((s) => s.items).find((c) => c.itemId === report.leadItemId && c.available) ?? null;
+  if (report.lead || report.kind !== "daily") return null;
+  return report.highlights[0] ?? report.sections.find((s) => s.items.length > 0)?.items[0] ?? null;
 }
-
-const WITHDRAWN_NOTE = "该内容已按来源方要求下架或调整展示方式。";
 
 /**
  * Sections as pages. A story cited twice appears once, and
@@ -254,31 +285,17 @@ function LeadPicture({ cover, onError, priority = false, className = "" }: { cov
   );
 }
 
-/**
- * A weekly's or monthly's overview. Such an issue leading with an event sets the event on its front
- * page as a daily does, so the overview opens the issue above it.
- */
-function Overview({ text }: { text: string }) {
-  return (
-    <section aria-label="本期导读" className="border-b border-line py-7 @[880px]:py-9">
-      <Kicker>本期导读</Kicker>
-      <p className="mt-4 max-w-[46em] text-[16.5px] leading-[1.9] text-ink-2 @[560px]:text-justify @[880px]:text-[17.5px]">{text}</p>
-    </section>
-  );
-}
-
 /** The front page: the lead beside a column of today's highlights and the index of pages. */
 function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; pages: Page[]; leadStory: ReportCitation | null; count: number }) {
   const daily = report.kind === "daily";
-  // A weekly or monthly leading with an event: the event's own summary; its overview stands above (Overview).
-  const byEvent = daily || !!leadStory;
+  const soWhatOf = new Map(report.soWhats.map((s) => [s.itemId, s.soWhat]));
   // A picture that fails to load is dropped, and the lead is set as if it had none.
   const [broken, setBroken] = useState<string | null>(null);
   const cover = report.cover && report.cover.url !== broken ? report.cover : null;
   // A landscape picture opens the lead above its headline; a squarer one sits beside the paragraph.
   const wide = !cover?.width || !cover.height || cover.width / cover.height >= 1.25;
   const title = report.lead?.title ?? leadStory?.title ?? headline(report.kind, report.key, count);
-  const dek = daily || !leadStory ? (report.lead?.leadParagraph ?? leadStory?.summary ?? report.overview) : leadStory.summary;
+  const dek = report.lead?.leadParagraph ?? leadStory?.summary ?? report.overview;
   const highlights = report.highlights.filter((h) => !leadStory || keyOf(h) !== keyOf(leadStory)).slice(0, 3);
   const inPage = new Set(pages.flatMap((p) => p.items.map((c) => c.itemId)).filter(Boolean));
   const period = daily ? "今日" : report.kind === "weekly" ? "本周" : "本月";
@@ -286,33 +303,33 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
 
   return (
     <section aria-label="头版" className="grid @[880px]:grid-cols-[minmax(0,1fr)_300px] @[1040px]:grid-cols-[minmax(0,1fr)_340px]">
-      {/* On a phone the headline comes before a landscape picture, so the first screen carries the news. */}
-      <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className="flex min-w-0 scroll-mt-[calc(var(--bar-h)+1.5rem)] flex-col py-7 @[880px]:border-r @[880px]:border-line @[880px]:py-10 @[880px]:pr-10">
-        <Kicker>{byEvent ? "头条" : "本期导读"}</Kicker>
-        {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} priority className="order-2 mt-5 @[560px]:order-1" />}
-        <h2 className="order-1 mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[560px]:order-2 @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
+      <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className="min-w-0 scroll-mt-6 py-7 @[880px]:border-r @[880px]:border-line @[880px]:py-10 @[880px]:pr-10">
+        <Kicker>{daily ? "头条" : "本期导读"}</Kicker>
+        {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} priority className="mt-5" />}
+        <h2 className="mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
           {leadStory?.itemId ? (
-            <IntentLink viewTransition to={`/items/${leadStory.itemId}`} className="transition-colors hover:text-accent">
+            <Link to={`/items/${leadStory.itemId}`} prefetch="intent" className="transition-colors hover:text-accent">
               {title}
-            </IntentLink>
+            </Link>
           ) : (
             title
           )}
         </h2>
         {dek && (
-          <div className={cover && !wide ? "order-3 mt-6 grid gap-6 @[640px]:grid-cols-[minmax(0,1fr)_minmax(0,38%)] @[880px]:mt-7" : "order-3"}>
+          <div className={cover && !wide ? "mt-6 grid gap-6 @[640px]:grid-cols-[minmax(0,1fr)_minmax(0,38%)] @[880px]:mt-7" : ""}>
             <p className={`text-[16.5px] leading-[1.9] text-ink-2 @[880px]:text-[17.5px] ${cover && !wide ? "" : "mt-6 @[560px]:text-justify @[880px]:mt-7"}`}>{dek}</p>
             {cover && !wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} />}
           </div>
         )}
+        {leadStory?.itemId && soWhatOf.get(leadStory.itemId) && <EditorNote text={soWhatOf.get(leadStory.itemId)!} />}
         {leadStory && (
-          <div className="order-4 mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-3">
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-3">
             <Source c={leadStory} size={18} />
-            <Coverage c={leadStory} />
+            {leadStory.available && <ConfidenceChip tier={confidenceTier(leadStory)} />}
             <Original c={leadStory} />
+            {leadStory.itemId && <FeedbackButtons itemId={leadStory.itemId} kind={report.kind} reportKey={report.key} />}
           </div>
         )}
-        {!!leadStory?.related?.length && <Related items={leadStory.related} className="order-5 mt-5 border-t border-line pt-4" />}
       </div>
 
       <aside className="min-w-0 border-t border-line py-7 @[880px]:border-t-0 @[880px]:py-10 @[880px]:pl-8">
@@ -323,24 +340,19 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
               {highlights.map((h, i) => {
                 const anchor = anchorOf(h);
                 const to = anchor && inPage.has(h.itemId) ? `#${anchor}` : h.itemId ? `/items/${h.itemId}` : h.sourceUrl;
-                if (!h.available) {
-                  return (
-                    <li key={keyOf(h)} className="flex gap-3.5 border-b border-line py-4">
-                      <span className="num w-6 shrink-0 text-[26px] font-black leading-[0.95] tracking-[-0.03em] text-ink-4">{i + 1}</span>
-                      <span className="min-w-0 text-[13.5px] leading-[1.55] text-ink-4">
-                        <span className="line-through">{h.title}</span>
-                        <span className="mt-1 block text-[12px]">{WITHDRAWN_NOTE}</span>
-                      </span>
-                    </li>
-                  );
-                }
                 return (
                   <li key={keyOf(h)}>
-                    <Link to={to} viewTransition={to.startsWith("/")} className="group flex gap-3.5 border-b border-line py-4">
+                    <Link to={to} className="group flex gap-3.5 border-b border-line py-4">
                       <span className="num w-6 shrink-0 text-[26px] font-black leading-[0.95] tracking-[-0.03em] text-accent">{i + 1}</span>
                       <span className="min-w-0">
                         <span className="block text-[15px] font-bold leading-[1.55] text-ink transition-colors group-hover:text-accent">{h.title}</span>
-                        <span className="mt-1.5 block truncate text-[12px] text-ink-4">{h.sourceName}</span>
+                        <span className="mt-1.5 block truncate text-[12px] text-ink-4">{shortSourceName(h.sourceName)}</span>
+                        {h.itemId && soWhatOf.get(h.itemId) && (
+                          <span className="mt-1 block border-l-2 border-accent/40 pl-2.5 text-[12px] leading-[1.6] text-ink-3">
+                            <span className="mr-1 font-semibold text-accent">点评</span>
+                            {soWhatOf.get(h.itemId)}
+                          </span>
+                        )}
                       </span>
                     </Link>
                   </li>
@@ -370,26 +382,10 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
   );
 }
 
-/**
- * The front page of a day with nothing new: the lead alone across the page, in the lead's own type,
- * saying so and naming the hours it covers. No highlights, pages or index follow.
- */
-function QuietFront({ lead }: { lead: NonNullable<ReportDetail["lead"]> }) {
-  return (
-    <section aria-label="头版" className="pt-10 @[880px]:pt-16">
-      <Kicker>头版</Kicker>
-      <h2 className="mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
-        {lead.title}
-      </h2>
-      {lead.leadParagraph && <p className="mt-6 max-w-[46em] text-[16.5px] leading-[1.9] text-ink-2 @[880px]:mt-7 @[880px]:text-[17.5px]">{lead.leadParagraph}</p>}
-    </section>
-  );
-}
-
 /** A page of the report: its number in the accent beside its name. */
 export function SectionPage({ id, no, label, children }: { id: string; no?: number; label: string; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-t`} className="scroll-mt-[calc(var(--bar-h)+1.5rem)] pt-12 @[880px]:pt-16">
+    <section id={id} aria-labelledby={`${id}-t`} className="scroll-mt-6 pt-12 @[880px]:pt-16">
       <header className="flex items-baseline gap-3 border-b border-line-strong pb-3 @[880px]:gap-4">
         {no !== undefined && <span className="num text-[26px] font-black leading-none tracking-[-0.03em] text-accent @[880px]:text-[30px]">{pad(no)}</span>}
         <h2 id={`${id}-t`} className="min-w-0 text-[24px] font-black leading-[1.25] tracking-[-0.02em] text-ink @[880px]:text-[28px]">
@@ -405,7 +401,7 @@ export function SectionPage({ id, no, label, children }: { id: string; no?: numb
 const COLUMNS = "@[760px]:columns-2 @[760px]:gap-x-12 @[760px]:[column-rule:1px_solid_var(--line)]";
 
 function Neighbours({ report, index }: { report: ReportDetail; index: ReportNavigationEntry[] }) {
-  const titleOf = (key: string) => index.find((e) => e.key === key)?.title ?? `${withSubject(REPORT_NAMES[report.kind])} · ${key}`;
+  const titleOf = (key: string) => index.find((e) => e.key === key)?.title ?? `${withSubject(KIND_LABEL[report.kind])} · ${key}`;
   const cell = "group flex min-w-0 flex-col py-6";
   const title = "mt-2.5 line-clamp-2 text-[16px] font-bold leading-[1.5] text-ink transition-colors group-hover:text-accent @[880px]:text-[18px]";
   return (
@@ -437,16 +433,15 @@ function Neighbours({ report, index }: { report: ReportDetail; index: ReportNavi
 function History({ report, index }: { report: ReportDetail; index: ReportNavigationEntry[] }) {
   const others = index.filter((e) => e.key !== report.key).slice(0, 12);
   if (others.length === 0) return null;
-  const label = REPORT_NAMES[report.kind];
   return (
-    <section id="report-history" className="scroll-mt-[calc(var(--bar-h)+1.5rem)] pt-12">
-      <Kicker>{before(subjectAfter("往期", label), label)}{label}</Kicker>
+    <section id="report-history" className="scroll-mt-6 pt-12">
+      <Kicker>往期{withSubject(KIND_LABEL[report.kind])}</Kicker>
       <ul className="mt-3">
         {others.map((e) => (
           <li key={e.key}>
             <Link to={reportPath(report.kind, e.key)} className="group flex items-baseline gap-4 border-b border-line py-3">
               <span className="num w-[76px] shrink-0 text-[12.5px] text-ink-4">{e.key}</span>
-              <span className="min-w-0 flex-1 truncate text-[14px] text-ink-2 transition-colors group-hover:text-accent">{e.title ?? `${SITE.name} ${REPORT_NAMES[report.kind]} · ${e.key}`}</span>
+              <span className="min-w-0 flex-1 truncate text-[14px] text-ink-2 transition-colors group-hover:text-accent">{e.title ?? `${SITE.name} ${KIND_LABEL[report.kind]} · ${e.key}`}</span>
             </Link>
           </li>
         ))}
@@ -455,34 +450,19 @@ function History({ report, index }: { report: ReportDetail; index: ReportNavigat
   );
 }
 
-/** The issue's pages for the phone outline: the front page, each page under its number, then 快讯. */
-export function reportOutline(report: ReportDetail): OutlineEntry[] {
-  const pages = pagesOf(report, leadStoryOf(report));
-  if (pages.length === 0 && report.flashes.length === 0) return [];
-  return [
-    { id: "report-start", text: "头版", level: 2, mark: "" },
-    ...pages.map((p, i) => ({ id: p.id, text: p.label, level: 2, mark: pad(i + 1), note: `${p.items.length} 件` })),
-    ...(report.flashes.length > 0 ? [{ id: "s-flash", text: "快讯", level: 2, mark: pad(pages.length + 1), note: `${report.flashes.length} 条` }] : []),
-  ];
-}
-
 export function ReportPaper({ report, index }: { report: ReportDetail; index: ReportNavigationEntry[] }) {
   const daily = report.kind === "daily";
   const leadStory = leadStoryOf(report);
   const pages = pagesOf(report, leadStory);
   const count = pages.reduce((sum, p) => sum + p.items.length, 0) + (leadStory ? 1 : 0);
-  // Only a daily comes out with nothing in it: a day the editors judged with nothing new (REPORTS.quiet).
-  const quiet = count === 0 && report.flashes.length === 0;
+  const soWhatOf = new Map(report.soWhats.map((s) => [s.itemId, s.soWhat]));
   return (
-    <article className="@container [overflow-wrap:anywhere]">
-      <Masthead report={report} index={index} quiet={quiet} />
-      {quiet ? (
-        report.lead && <QuietFront lead={report.lead} />
+    <article className="@container">
+      <Masthead report={report} index={index} />
+      {count === 0 && report.flashes.length === 0 ? (
+        <p className="py-16 text-center text-[14px] text-ink-4">本期没有入选内容。</p>
       ) : (
-        <>
-          {!daily && leadStory && report.overview && <Overview text={report.overview} />}
-          <FrontPage report={report} pages={pages} leadStory={leadStory} count={count} />
-        </>
+        <FrontPage report={report} pages={pages} leadStory={leadStory} count={count} />
       )}
 
       {pages.map((p, i) => (
@@ -493,7 +473,7 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
               {p.summary}
             </p>
           )}
-          <Rows items={p.items}>{(c, cell) => <Story key={`${p.id}-${keyOf(c)}`} c={c} dated={!daily} className={cell} />}</Rows>
+          <Rows items={p.items}>{(c, cell) => <Story key={`${p.id}-${keyOf(c)}`} c={c} dated={!daily} kind={report.kind} reportKey={report.key} soWhat={c.itemId ? soWhatOf.get(c.itemId) : undefined} className={cell} />}</Rows>
         </SectionPage>
       ))}
 
@@ -504,20 +484,20 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
               <li key={`${keyOf(f)}-${i}`} className="flex break-inside-avoid gap-2.5 border-b border-line py-3 text-[14.5px] leading-[1.65]">
                 <span className="mt-[9px] size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
                 <span className="min-w-0">
-                  {!f.available ? (
-                    <span className="text-ink-4">
-                      <span className="line-through">{f.title}</span>
-                      <span className="ml-2 text-[12px]">{WITHDRAWN_NOTE}</span>
-                    </span>
-                  ) : f.itemId ? (
-                    <Link viewTransition to={`/items/${f.itemId}`} className="text-ink transition-colors hover:text-accent">
+                  {f.itemId ? (
+                    <Link to={`/items/${f.itemId}`} className="text-ink transition-colors hover:text-accent">
                       {f.title}
                     </Link>
                   ) : (
                     <span className="text-ink">{f.title}</span>
                   )}
-                  {f.available && <span className="ml-2 text-[12px] text-ink-4">{f.sourceName}</span>}
-                  {f.available && f.followUp && <Badge className="ml-2 align-[1px]" title={`${monthDay(f.followUp)}的日报报道过这件事，这里是新进展`}>跟进</Badge>}
+                  <span className="ml-2 text-[12px] text-ink-4">{shortSourceName(f.sourceName)}</span>
+                  {f.available && <span className="ml-2 align-middle"><ConfidenceChip tier={confidenceTier(f)} /></span>}
+                  {f.itemId && f.available && (
+                    <span className="mt-1.5 block">
+                      <FeedbackButtons itemId={f.itemId} kind={report.kind} reportKey={report.key} />
+                    </span>
+                  )}
                 </span>
               </li>
             ))}
@@ -530,9 +510,9 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
       <footer className="py-10 text-center">
         <div className="text-[13px] font-semibold tracking-[0.6em] text-ink-4">（本期完）</div>
         <p className="mt-3 text-[12px] text-ink-4">
-          {`${SITE.name} `}{REPORT_NAMES[report.kind]}根据公开报道自动{daily ? "整理" : "汇总"}，每条都附原文 ·{" "}
-          <Link to={daily ? "/daily/archive" : "#report-history"} viewTransition={daily} className="font-medium text-ink-3 transition-colors hover:text-accent">
-            {daily ? "日报合订本" : `往期${REPORT_NAMES[report.kind]}`}
+          {SITE.name} {KIND_LABEL[report.kind]}由编辑系统根据公开来源自动{daily ? "编辑" : "综合"}，每条均附原文 ·{" "}
+          <Link to={daily ? "/daily/archive" : "#report-history"} className="font-medium text-ink-3 transition-colors hover:text-accent">
+            {daily ? "日报合订本" : `往期${KIND_LABEL[report.kind]}`}
           </Link>
         </p>
       </footer>

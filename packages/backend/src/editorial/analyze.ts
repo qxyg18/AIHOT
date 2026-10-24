@@ -106,7 +106,9 @@ export function buildScoreInput(a: AnalyzeInputArticle): string {
 
 // Step outputs
 
-const PrefilterSchema = z.object({
+// ym249：schema 从模块私有转为可导出——逐能力认证（modelwatch.certifyCapability）用同一
+// const 判卷，不复制第二份 schema（复写=口径分叉）。本体零改，仅加 export。
+export const PrefilterSchema = z.object({
   label: z.preprocess((v) => String(v ?? "").trim().toUpperCase(), z.enum(["PASS", "BLOCK", "UNKNOWN"])),
   reason: z.string().max(200).catch(""),
 });
@@ -136,7 +138,7 @@ export const StructureSchema = z.object({
   fact: FactSchema,
 });
 
-const UnderstandSchema = z.object({
+export const UnderstandSchema = z.object({
   itemType: z.enum(ITEM_TYPES),
   authorRole: z.enum(["principal", "observer", "relayer"]).catch("relayer"),
   // The understanding prompt asks for tags; the public ones come from the structure step.
@@ -146,7 +148,7 @@ const UnderstandSchema = z.object({
   summaryZh: z.string().trim().min(1).max(4000),
 });
 
-const SummarizeSchema = z.object({ titleZh: z.string(), summaryZh: z.string(), bodyZh: z.string() });
+export const SummarizeSchema = z.object({ titleZh: z.string(), summaryZh: z.string(), bodyZh: z.string() });
 
 const ZH_COUNT = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
 
@@ -505,8 +507,12 @@ export function normalizeAnalysis(run: AnalysisRun) {
   const label = run.prefilter?.label;
   const titleZh = collapseWhitespace(run.writing?.titleZh ?? "");
   const summaryZh = (run.writing?.summaryZh ?? "").trim();
-  // Original posts can consist entirely of media. Model-written copy still needs a title and summary.
-  const relevance = label === "BLOCK" ? "block" : !run.writing || !titleZh || (!summaryZh && run.writing.kind !== "verbatim") ? "unknown" : "pass";
+  // Only a PASS publishes: the prefilter's UNKNOWN keeps its material on record for a later
+  // judgement but never reaches the pool, and a PASS without a usable Chinese title and summary
+  // cannot be published yet: it waits.
+  const relevance = label === "BLOCK" ? "block" : (label === "UNKNOWN" || (run.writing && (!titleZh || !summaryZh))) ? "unknown" : "pass";
+  // Selected when the two scores add up to twice the tier threshold; the mean, floored,
+  // is the score shown (it never decides a half point on its own).
   const values = run.scores && !run.scores.refused ? run.scores.values : null;
   const score = shownScore(run.scores);
   const threshold = run.scores?.threshold ?? null;
@@ -588,3 +594,64 @@ export async function analyzeArticle(articleId: string, opts: StepOpts = {}): Pr
   const reused = (run.prefilter?.reused ?? true) && (run.scores?.reused ?? true) && (w?.reused ?? true) && (run.structure?.reused ?? true);
   return { analysisId: committed.analysisId, stale: committed.stale, output: out, receiptIds, reused };
 }
+
+// ── ym249：逐能力真实 schema 认证的评测面 ────────────────────────────────────────────────
+// 给 modelwatch.certifyCapability 消费：prompt/温度/maxTokens 取各步真实参数，schema/parse 是
+// 上面的同一 const（不复制第二份口径）；样本为内置固定文本（不从 articles 拉业务数据，
+// 「不复写业务数据」）。understand 文本/图像两份样本分别认证（图像模型只有真图才暴露）。
+
+export interface EvalSpec {
+  /** 样本标识（判卷 payload 归因用）。 */
+  variant: string;
+  system: string;
+  user: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+  schema: z.ZodType;
+  parse?: (content: string) => unknown;
+  json: boolean;
+  temperature: number;
+  maxTokens: number;
+}
+
+/** 固定测试图：1×1 透明 PNG（认证只看「模型能否按 schema 处理带图输入」，内容无关）。 */
+const EVAL_IMAGE_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+const EVAL_ARTICLE = {
+  title: "巴拉巴拉童装十月在杭州龙湖天街开出全国第 100 家门店",
+  body: "国内童装品牌巴拉巴拉宣布其全国第 100 家门店于十月中旬在杭州龙湖滨江天街正式开业。新店位于商场三层儿童业态区，面积约 300 平方米，覆盖全品类童装与儿童生活方式产品。品牌负责人表示，第 100 家门店是一个节点，后续将继续在一二线城市核心商圈布局，同时加密社区型门店。",
+};
+
+export function evalSpecsFor(capability: string): EvalSpec[] {
+  const material = `【标题】\n${EVAL_ARTICLE.title}\n\n【正文】\n${EVAL_ARTICLE.body}`;
+  switch (capability) {
+    case "prefilter":
+      return [{ variant: "text", system: PREFILTER_SYSTEM, user: material, schema: PrefilterSchema, json: true, temperature: 0, maxTokens: 512 }];
+    case "score":
+      return [{
+        variant: "text", system: SCORE_SYSTEM,
+        user: `请按系统规则评估以下单篇材料所代表的事件。只输出 attentionScore。\n\n【发布时间（北京时间）】\n2026-10-04T10:00:00+08:00\n\n【标题】\n${EVAL_ARTICLE.title}\n\n【完整正文】\n${EVAL_ARTICLE.body}`,
+        schema: ScoreSchema, json: true, temperature: 0.2, maxTokens: 1024,
+      }];
+    case "structure":
+      return [{ variant: "text", system: STRUCTURE_SYSTEM, user: material, schema: StructureSchema, json: true, temperature: 0.2, maxTokens: 800 }];
+    case "understand":
+      return [
+        { variant: "text", system: UNDERSTAND_SYSTEM, user: material, schema: UnderstandSchema, json: true, temperature: 0.2, maxTokens: 16_384 },
+        {
+          variant: "image", system: UNDERSTAND_SYSTEM,
+          user: [{ type: "text", text: material }, { type: "image_url", image_url: { url: EVAL_IMAGE_URL } }],
+          schema: UnderstandSchema, json: true, temperature: 0.2, maxTokens: 16_384,
+        },
+      ];
+    case "summarize":
+      return [{
+        variant: "text", system: "",
+        user: `请把下面这篇英文童装行业报道翻译成中文，并输出标题、摘要与正文。报道：${EVAL_ARTICLE.title}。正文节选：Chinese childrenswear brand Balabala opened its 100th store in Hangzhou in October, covering about 300 square meters in the kids' floor of a major shopping mall, with more openings planned in tier-1 and tier-2 cities.`,
+        schema: SummarizeSchema, parse: parseTranslateOutput, json: false, temperature: 0.2, maxTokens: 2048,
+      }];
+    default:
+      return [];
+  }
+}
+
+/** The analysis run was interrupted (shutdown); retry cleanly (upstream jobs/content consumes). */
+export class AnalysisInterruptedError extends Error {}

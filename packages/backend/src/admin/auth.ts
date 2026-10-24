@@ -2,9 +2,9 @@
 // union_ids / emails; opaque sessions stored hashed, and an audit trail for every manual change.
 // Development may impersonate an admin with DEV_AUTH_ROLE=admin; production refuses to start with it.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { audit } from "../audit.ts";
+import { ADMIN_CAPABILITIES, type AdminCapability } from "@aihot/contracts/site";
 import { config, credential } from "../config.ts";
-import { sql } from "../db.ts";
+import { sql, type Db } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
 
 export const SESSION_COOKIE = "aihot_admin";
@@ -23,6 +23,8 @@ export interface AdminPrincipal {
   name: string;
   csrf: string;
   dev: boolean;
+  /** Server-decided capability set (admin_cap_grants); read fresh per request, never from the client. */
+  readonly capabilities: AdminCapability[];
 }
 
 function secret(): string {
@@ -102,6 +104,32 @@ export function parseCookies(header: string | undefined): Record<string, string>
 
 export function cookie(name: string, value: string, maxAgeSeconds: number, secure: boolean): string {
   return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? "; Secure" : ""}`;
+}
+
+/** The G00-verified legacy operator (reserved password-admin address): one row, hub-DB audited. */
+const OPERATOR_COMPAT_EMAIL = "admin@local";
+
+/**
+ * Server-authoritative capabilities for one principal (TZR-20261003 T20, plan §16). Grants are
+ * read fresh on every request, so a revoke applies to live sessions on their next call. A
+ * principal with no grant rows at all (including revoked ones) falls back to the verified legacy
+ * operator compat; once any row exists the principal is strictly grant-managed, and deleting all
+ * its rows merely returns it to that initial state — never to anything wider.
+ */
+async function capabilitiesOf(principal: string, compatOperate: boolean): Promise<AdminCapability[]> {
+  let rows: { capability: string; revoked_at: Date | string | null }[] = [];
+  try {
+    rows = await sql`SELECT capability, revoked_at FROM admin_cap_grants WHERE principal = ${principal}`;
+  } catch {
+    // Grant storage missing or unreadable (0052 not applied yet): treat as no rows — the legacy
+    // operator keeps working, everyone else fails closed.
+  }
+  const caps = new Set<AdminCapability>();
+  if (rows.length === 0 && compatOperate) caps.add("admin:operate");
+  for (const r of rows) {
+    if (!r.revoked_at && (ADMIN_CAPABILITIES as readonly string[]).includes(r.capability)) caps.add(r.capability as AdminCapability);
+  }
+  return [...caps];
 }
 
 /** Where to send the browser to sign in; the signed state also carries where to return. */
@@ -226,18 +254,37 @@ export async function sessionPrincipal(cookieHeader: string | undefined): Promis
       FROM admin_sessions s JOIN admin_users u ON u.id = s.user_id
       WHERE s.id_hash = ${hash} AND s.expires_at > now()`;
     if (row) {
-      if (sessionAuthorized(row)) return { userId: row.user_id, name: row.name ?? row.email ?? `admin:${row.user_id}`, csrf: row.csrf_token, dev: false };
+      if (sessionAuthorized(row)) {
+        return {
+          userId: row.user_id,
+          name: row.name ?? row.email ?? `admin:${row.user_id}`,
+          csrf: row.csrf_token,
+          dev: false,
+          capabilities: await capabilitiesOf(`admin:${row.user_id}`, row.email === OPERATOR_COMPAT_EMAIL),
+        };
+      }
       // A session seen to be invalid is gone for good: restoring the old configuration does not revive it.
       await sql`DELETE FROM admin_sessions WHERE id_hash = ${hash}`;
     }
   }
-  if (config.devAdmin && config.environmentName !== "production") return { userId: null, name: config.devAdmin.displayName, csrf: "dev", dev: true };
+  if (config.devAdmin && config.environmentName !== "production") {
+    return { userId: null, name: config.devAdmin.displayName, csrf: "dev", dev: true,
+             capabilities: await capabilitiesOf(`dev:${config.devAdmin.displayName}`, true) };
+  }
   return null;
 }
 
 export async function endSession(cookieHeader: string | undefined) {
   const token = parseCookies(cookieHeader)[SESSION_COOKIE];
   if (token) await sql`DELETE FROM admin_sessions WHERE id_hash = ${sha256(token)}`;
+}
+
+/** Every manual change: who, when, what, why. `exec` lets a caller (the admission engine) run the
+ *  write inside its own transaction, so a rollback takes the audit row with it. */
+export async function audit(actor: string, action: string, subject: string | null, reason: string | null, before: unknown, after: unknown, requestId?: string, exec: Db = sql) {
+  await exec`INSERT INTO audit_log (actor, action, subject, reason, before, after, request_id)
+            VALUES (${actor}, ${action}, ${subject}, ${reason}, ${before === null || before === undefined ? null : exec.json(before as never)},
+                    ${after === null || after === undefined ? null : exec.json(after as never)}, ${requestId ?? null})`;
 }
 
 export function actorOf(p: AdminPrincipal): string {

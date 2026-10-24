@@ -49,5 +49,41 @@ export function isChannelKey(value: unknown): value is ChannelKey {
   return typeof value === "string" && (CHANNEL_KEYS as readonly string[]).includes(value);
 }
 
+export const LEADERBOARD_PUBLIC_BOARDS = ["brand", "mall"] as const;
+export type LeaderboardBoardKey = (typeof LEADERBOARD_PUBLIC_BOARDS)[number];
+
+export const LEADERBOARD_BOARD_LABELS: Record<LeaderboardBoardKey, string> = {
+  brand: "童装品牌榜",
+  mall: "商业体榜",
+};
+
+/** rd9 子榜：总榜的分层视图身份（URL 段）。品牌按价格带四层，商场按定位三层。 */
+export const LEADERBOARD_SUB_BOARD_KEYS = ["brand-mass", "brand-mid", "brand-uppermid", "brand-premium", "mall-premium", "mall-mainstream", "mall-value"] as const;
+export type LeaderboardSubBoardKey = (typeof LEADERBOARD_SUB_BOARD_KEYS)[number];
+
+export const LEADERBOARD_SUB_BOARD_PARENT: Record<LeaderboardSubBoardKey, LeaderboardBoardKey> = {
+  "brand-mass": "brand",
+  "brand-mid": "brand",
+  "brand-uppermid": "brand",
+  "brand-premium": "brand",
+  "mall-premium": "mall",
+  "mall-mainstream": "mall",
+  "mall-value": "mall",
+};
+
+export function isLeaderboardSubBoardKey(value: unknown): value is LeaderboardSubBoardKey {
+  return typeof value === "string" && (LEADERBOARD_SUB_BOARD_KEYS as readonly string[]).includes(value);
+}
+
+export function leaderboardSubBoardPath(key: LeaderboardSubBoardKey): string {
+  return `/leaderboard/sub/${key}`;
+}
+
+/** 子榜页路径 → 子榜 key；非子榜路径返回 null（BoardTabs 高亮与路由校验共用）。 */
+export function leaderboardSubBoardFromPath(pathname: string): LeaderboardSubBoardKey | null {
+  const match = /^\/leaderboard\/sub\/([a-z-]+)$/.exec(pathname);
+  return match && isLeaderboardSubBoardKey(match[1]) ? match[1] : null;
+}
+
 /** Article ids. Also the local-data import validation pattern. */
 export const ARTICLE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,80}$/;

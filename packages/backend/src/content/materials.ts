@@ -65,6 +65,11 @@ export interface MaterialResult {
   backfill: boolean;
   /** Provenance moved an unanalysed signal into editorial processing, without a material revision. */
   processingNeeded?: boolean;
+  /** Set (true) only when this upsert filled a previously-NULL published_at; absent otherwise —
+   *  `undefined` is the contract the ym253 tests assert ("a second date is not a fill"). */
+  metaDateFilled?: boolean;
+  /** Set only together with metaDateFilled: the fill turned the article historical. */
+  metaHistoricalFlip?: boolean;
 }
 
 // Material first discovered more than this long after its source time is archived by source time,
@@ -267,7 +272,27 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
   }
   await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
            VALUES (${existing!.id}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
-  const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill };
+  await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
+           VALUES (${existing!.id}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
+  // Metadata-only fill (ym253): the article's own source reporting a date for a dateless row takes
+  // it without a revision — no content changed, so no re-analysis; the timeline rule recasts
+  // timeline_at/backfill, and the flip flag tells the caller the report turned historical.
+  const metaDateFilled = existing!.source_id === m.sourceId && existing!.published_at === null && t.publishedAt !== null;
+  const metaHistoricalFlip = metaDateFilled &&
+    isHistorical({ backfill: t.backfill, published_at: t.publishedAt, discovered_at: discoveredAt }) &&
+    !isHistorical({ backfill: existing!.backfill, published_at: existing!.published_at, discovered_at: discoveredAt });
+  if (metaDateFilled) {
+    await db`UPDATE articles
+                SET published_at = ${t.publishedAt}, published_at_claim = ${m.publishedAt ?? null},
+                    timeline_at = ${t.timelineAt}, backfill = ${t.backfill}, backfill_reason = ${t.backfillReason},
+                    updated_at = now()
+              WHERE id = ${existing!.id}`;
+  }
+  // The meta fields are carried only on the fill itself; their absence (undefined) is the
+  // no-fill contract (tests/meta-enrich: "a report does not take the metadata path").
+  const metaFields = metaDateFilled ? { metaDateFilled: true as const, metaHistoricalFlip } : {};
+  const backfillNow = metaDateFilled ? t.backfill : existing!.backfill;
+  const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: backfillNow, ...metaFields };
   // Configuration may have gained a verified publisher since this same discovery channel last
   // saw the URL. Reconcile before accepting any of that channel's material changes.
   if (await reconcileMaterialSource(db, existing!.id, { sourceId: m.sourceId, author: m.author })) {

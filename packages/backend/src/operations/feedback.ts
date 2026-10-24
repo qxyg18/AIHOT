@@ -70,6 +70,17 @@ export async function resetFeedbackSubmissionState(source: string, db: Db = sql)
   await db`DELETE FROM feedback_submission_state WHERE source_hash = ${source}`;
 }
 
+
+const recent = new Map<string, number[]>();
+function rateLimit(source: string, perMinute = 5): void {
+  const now = Date.now();
+  const list = (recent.get(source) ?? []).filter((t) => now - t < 60_000);
+  if (list.length >= perMinute) throw new FeedbackRejected(429, "rate_limited", "提交太频繁，请稍后再试。", 60);
+  list.push(now);
+  recent.set(source, list);
+  if (recent.size > 5000) for (const [k, v] of recent) if (v.every((t) => now - t > 60_000)) recent.delete(k);
+}
+
 export interface FeedbackInput {
   content: string;
   email?: string | null;
@@ -178,6 +189,53 @@ export async function submitFeedback(input: FeedbackInput): Promise<{ id: number
  */
 export function screenshotsForwarded(): boolean {
   return feishuInternalEnabled() && credential("integrations", "FEISHU_INTERNAL_CHAT_ID") !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Item feedback (ym44): a report entry marked 有用/没用 by the reader. Same table, same abuse
+// control, but never forwarded to the internal chat — the marks pile up for the owner's
+// fortnightly quota review and are recognized by their 【条目反馈】 prefix.
+// ---------------------------------------------------------------------------
+
+const REPORT_KIND_PATH: Record<string, string> = { daily: "/daily", weekly: "/weekly", monthly: "/monthly" };
+
+/** True when the report's stored content cites `itemId` anywhere (sections, flashes, themes). */
+function reportCitesItem(content: Record<string, any>, itemId: string): boolean {
+  const items = [
+    ...(content.sections ?? []).flatMap((s: any) => s.items ?? []),
+    ...(content.flashes ?? []),
+    ...(content.themes ?? []).flatMap((t: any) => t.storyRefs ?? []),
+  ];
+  return items.some((i: any) => i?.itemId === itemId);
+}
+
+export interface ItemFeedbackInput {
+  itemId: string;
+  useful: boolean;
+  kind: string;
+  key: string;
+  ip: string;
+  userAgent: string;
+}
+
+export async function submitItemFeedback(input: ItemFeedbackInput): Promise<{ ok: true }> {
+  const itemId = input.itemId.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9:_-]{0,63}$/.test(itemId)) throw new FeedbackRejected(400, "invalid_request", "条目标识不正确。");
+  const kind = input.kind.trim();
+  const key = input.key.trim();
+  const path = REPORT_KIND_PATH[kind];
+  if (!path || !/^\d{4}-\d{2}(-\d{2})?$/.test(key) && !/^\d{4}-W\d{2}$/.test(key)) throw new FeedbackRejected(400, "invalid_request", "刊物标识不正确。");
+  const source = feedbackSourceHash(input.ip, input.userAgent);
+  const [banned] = await sql`SELECT 1 FROM feedback_bans WHERE source_hash = ${source}`;
+  if (banned) throw new FeedbackRejected(403, "forbidden", "暂时无法提交反馈。");
+  rateLimit(`item:${source}`, 30);
+  // The mark only means something for an entry the issue actually ran; anything else is a forged request.
+  const [row] = await sql<{ content: Record<string, any> }[]>`SELECT content FROM reports WHERE kind = ${kind} AND key = ${key}`;
+  if (!row || !reportCitesItem(row.content, itemId)) throw new FeedbackRejected(400, "invalid_request", "该条目不在这一期里。");
+  const label = input.useful ? "有用" : "没用";
+  await sql`INSERT INTO feedback (content, page_url, source_hash, forward_error)
+    VALUES (${`【条目反馈】${label} item=${itemId} report=${kind}:${key}`}, ${`${path}/${key}`}, ${source}, NULL)`;
+  return { ok: true };
 }
 
 /**

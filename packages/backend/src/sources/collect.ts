@@ -9,13 +9,15 @@ import { sha256 } from "../lib/ids.ts";
 import { enqueue, QUEUES, shutdownSignal } from "../jobs/queue.ts";
 import { queueProcessing } from "../jobs/content.ts";
 import { BudgetExceededError, completeReceipt } from "../providers/receipts.ts";
+import { envPositiveNumber } from "../operations/env-number.ts";
 import { fetchRss } from "./rss.ts";
 import { fetchDetail, fetchWebList, isCallToActionTitle, needsTitle, type DetailNeed } from "./web-list.ts";
 import { unsupportedConfig } from "./config-keys.ts";
-import { admitListing, filterPublicationWindow } from "./filters.ts";
+import { admitListing, filterPublicationWindow, noiseFiltered } from "./filters.ts";
 import { fetchJsonList } from "./json-list.ts";
+import { enrichMissingMetadata } from "./metadata.ts";
 import { fetchXSearch, planXShards, readXSearch, shardHandle, shardQuery, selfThreadHandle, SHARDABLE_SQL, tweetToCandidate, type XBacklog } from "./x.ts";
-import { FetchError, type Candidate, type SourceRow } from "./types.ts";
+import { FetchError, type Candidate, type IngestIncludeFilter, type SourceRow } from "./types.ts";
 
 export interface CollectResult {
   sourceId: string;
@@ -24,6 +26,28 @@ export interface CollectResult {
   created: number;
   revised: number;
   error?: string;
+}
+
+/** True when the include gate (ingestIncludeFilter) drops the item: none of `any` appears in the
+ *  chosen frozen listing fields. An unset filter or empty `any` keeps everything (the old behavior).
+ *  The gate runs before the noise filter and is independent of it: keepIfMatches still only lifts
+ *  noise, it never satisfies inclusion. (The noise, URL-prefix, category and rewrite rules live in
+ *  filters.ts admitListing, shared with the admin preview.) */
+export function includeFiltered(c: Candidate, source: SourceRow): boolean {
+  const f = source.config.ingestIncludeFilter as IngestIncludeFilter | undefined;
+  const words = f?.any;
+  if (!words?.length) return false;
+  const fields = f?.fields?.length ? f.fields : (["title", "excerpt"] as const);
+  const hay = fields.map((x) => (x === "title" ? c.title : c.excerpt ?? "").toLowerCase()).join("\n");
+  return !words.some((k) => hay.includes(k.toLowerCase()));
+}
+
+/** What a preview reports: how many items the fetch found, how many the include gate keeps, and how
+ *  many of those the noise filter then drops. Inclusion first, noise second — the same order as the
+ *  collect pipeline. */
+export function previewFilterStats(candidates: Candidate[], source: SourceRow): { found: number; included: number; noiseDropped: number } {
+  const kept = candidates.filter((c) => !includeFiltered(c, source));
+  return { found: candidates.length, included: kept.length, noiseDropped: kept.filter((c) => noiseFiltered(c, source)).length };
 }
 
 export async function loadSource(id: string): Promise<SourceRow | null> {
@@ -325,7 +349,10 @@ export async function collectSource(sourceId: string, opts: { force?: boolean; x
       detail = { pages: x.pages, truncated: x.truncated, backlog: x.backlog.length, backlogPages: x.backlogPages, dropped: x.dropped };
     }
     found = candidates.length;
-    candidates = await listingEntries(source, candidates);
+    // The include gate (ingestIncludeFilter) runs first, before the admitListing rules (URL
+    // prefixes, rewrite, categories, noise) inside listingEntries; upstream's identity-keyed
+    // dedup, sortByPublishedAt and admission windows follow there.
+    candidates = await listingEntries(source, candidates.filter((c) => !includeFiltered(c, source)));
     // Admission of old archive entries and detail recovery both need the same stored identities.
     // A later date correction must still reach material that was already admitted without a date.
     const known = d || (!firstImport && source.kind !== "x_search")
@@ -362,6 +389,20 @@ export async function collectSource(sourceId: string, opts: { force?: boolean; x
     const stored = await store(sourceId, run!.id, candidates, firstImport ? "first-import" : null);
     ({ created, revised } = stored);
     for (const id of await fillScheduledPublications(sourceId)) await queueProcessing(id);
+
+    // The bounded metadata pass (ym253): stored articles an earlier run left without a date get one
+    // date-only detail read each, so a long listing's tail is not stuck dateless forever. URLs this
+    // run's listing surfaced are skipped — the listing's own detail path is their reader, and a
+    // known item must never be read twice.
+    let metaEnrich: { checked: number; enriched: number } | null = null;
+    if (source.kind === "rss" || source.kind === "web_list" || source.kind === "json_list") {
+      const pass = await enrichMissingMetadata({ ...source, cursor: nextCursor }, { skipUrls: candidates.map((c) => c.url) });
+      if (pass.checked > 0) {
+        nextCursor.metaEnrich = pass.progress;
+        metaEnrich = { checked: pass.checked, enriched: pass.enriched };
+        detail = { ...(detail ?? {}), metaEnrich };
+      }
+    }
 
     if (firstImport) nextCursor.initializedAt = new Date().toISOString();
     nextCursor.lastOkAt = new Date().toISOString();
@@ -480,17 +521,21 @@ async function scheduleXShards(): Promise<number> {
 }
 
 /** Every minute: enqueue due sources (enabled, not WeChat/external), oldest due first; X accounts by shard. */
-export async function scheduleDueSources(): Promise<{ enqueued: number; shards: number }> {
+export async function scheduleDueSources(limit = envPositiveNumber("FETCH_SCHEDULE_BATCH", 40)): Promise<{ enqueued: number; shards: number }> {
+  const kinds: string[] = (process.env.COLLECT_KINDS || "rss,web_list,json_list,x_search").split(",");
+  // Listings fetched through Jina Reader are paid; development can leave them out.
+  const skipJina = process.env.COLLECT_SKIP_JINA === "true";
   const rows = await sql<{ id: string }[]>`
     SELECT id FROM sources
-    WHERE enabled AND kind IN ('rss', 'web_list', 'json_list', 'x_search') AND (next_fetch_at IS NULL OR next_fetch_at <= now()) AND NOT (${sharded()})
-    ORDER BY next_fetch_at NULLS FIRST LIMIT 40`;
+    WHERE enabled AND kind IN ${sql(kinds)} AND (next_fetch_at IS NULL OR next_fetch_at <= now()) AND NOT (${sharded()})
+      ${skipJina ? sql`AND config::text NOT LIKE '%r.jina.ai%'` : sql``}
+    ORDER BY next_fetch_at NULLS FIRST LIMIT ${limit}`;
   let enqueued = 0;
   for (const r of rows) {
     if (await enqueue(QUEUES.fetchSource, { sourceId: r.id }, { singletonKey: r.id })) enqueued += 1;
     await sql`UPDATE sources SET next_fetch_at = now() + interval '10 minutes' WHERE id = ${r.id}`;
   }
-  return { enqueued, shards: await scheduleXShards() };
+  return { enqueued, shards: kinds.includes("x_search") ? await scheduleXShards() : 0 };
 }
 
 /** Minutes between reads of a shard: editorial accounts every half hour, hot-signal accounts hourly. */

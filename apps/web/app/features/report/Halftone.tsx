@@ -6,8 +6,6 @@
 // The real text stays in the page (for search, screen readers and before the script runs); the canvas
 // covers it once drawn. Mark the accent part of `children` with data-accent.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { watchAppearance } from "../../lib/local-state";
-import { reducedMotion } from "../../lib/motion";
 
 interface Dot {
   x: number;
@@ -73,7 +71,7 @@ export function Halftone({ seed, className = "", children }: { seed: string; cla
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!host || !label || !canvas || !ctx) return;
-    const still = reducedMotion();
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const hover = matchMedia("(hover: hover) and (pointer: fine)").matches;
     const noise = valueNoise(hashSeed(seed));
     const phase = mulberry32(hashSeed(seed) ^ 0x9e3779b9);
@@ -302,7 +300,9 @@ export function Halftone({ seed, className = "", children }: { seed: string; cla
       paintTint();
       redraw();
     };
-    let unwatch = () => {};
+    const theme = new MutationObserver(recolour);
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = recolour;
 
     document.fonts.ready.then(() => {
       if (disposed || !layout()) return;
@@ -312,7 +312,8 @@ export function Halftone({ seed, className = "", children }: { seed: string; cla
       setDrawn(true);
       redraw();
       resize.observe(host);
-      unwatch = watchAppearance((change) => (change === "font" ? rebuild() : recolour()));
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+      scheme.addEventListener("change", onScheme);
       if (hover && !still) {
         canvas.addEventListener("pointermove", onMove);
         canvas.addEventListener("pointerleave", onLeave);
@@ -323,7 +324,8 @@ export function Halftone({ seed, className = "", children }: { seed: string; cla
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
       resize.disconnect();
-      unwatch();
+      theme.disconnect();
+      scheme.removeEventListener("change", onScheme);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerleave", onLeave);
     };

@@ -31,7 +31,7 @@ export const CATEGORY_GUIDE = CATEGORIES.map((c) => `- ${c.key}（${c.label}）�
 export const isRelease = (category: string | null, tags: readonly string[]) => RELEASE !== null && category === RELEASE.category && tags.includes(RELEASE.tag);
 
 /** Every name the vocabulary knows a company by. */
-export const entityNames = (e: (typeof ENTITIES)[string]) => [e.name, ...e.aliases, ...(e.orgNames ?? []), ...(e.otherNames ?? [])];
+export const entityNames = (e: (typeof ENTITIES)[string]) => [e.name, ...e.aliases, ...((e as { orgNames?: string[] }).orgNames ?? []), ...((e as { otherNames?: string[] }).otherNames ?? [])];
 
 const key = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, "");
 /** Exact entity/alias only: mentions embedded in a sentence are not ownership. */

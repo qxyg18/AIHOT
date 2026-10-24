@@ -1,4 +1,7 @@
 import { config } from "../config.ts";
+
+/** v1 story endpoint link (migrate read layer). */
+export const storyApiUrl = (publicId: string): string => siteUrl(`/api/v1/stories/${publicId}`);
 import { serverModules } from "../modules.ts";
 
 // Absolute links always use the configured address (SITE_URL), never the request Host: a CDN or proxy

@@ -5,39 +5,23 @@ import type { AdminRuns, BeforeJson } from "@aihot/contracts/admin";
 import { sql } from "../db.ts";
 import type { Heartbeat } from "../operations/heartbeat.ts";
 import { audit } from "../audit.ts";
-import { failureGroupSql, requeueFailed } from "../jobs/content.ts";
-import { groupingOverview, waitingSelectedNews } from "../operations/grouping.ts";
-import { serverModules } from "../modules.ts";
+import { Conflict } from "./sources.ts";
+import { failureGroupSql, queueProcessing, requeueFailed } from "../jobs/content.ts";
+import { resourceSnapshot } from "../operations/resources.ts";
 import { awaitingRelease } from "../providers/receipts.ts";
 
 const STALE_HEARTBEAT_MS = 3 * 60_000;
 
 type Runs = BeforeJson<AdminRuns>;
 
-export async function runsOverview(): Promise<Runs> {
-  const currentJobs = (await Promise.all(serverModules().flatMap((m) => m.admin?.currentJobs ? [m.admin.currentJobs()] : []))).flat();
-  const [
-    heartbeats,
-    latest,
-    timeline,
-    queues,
-    failedJobs,
-    lagging,
-    receipts,
-    receiptIssues,
-    deliveries,
-    errors,
-    ingest,
-    grouping,
-    [retrying],
-    modules,
-  ] = await Promise.all([
+export async function runsOverview() {
+  const [heartbeats, latest, timeline, queues, failedJobs, lagging, receipts, receiptIssues, deliveries, errors, ingest, leaderboard, resources, [retrying]] = await Promise.all([
     sql<{ key: string; value: Heartbeat; updated_at: Date }[]>`SELECT key, value, updated_at FROM settings WHERE key LIKE 'heartbeat.%' ORDER BY key`,
-    sql<Runs["jobs"]>`
+    sql`
       WITH current_jobs AS (
         -- Start with live schedules, so each indexed lookup reads one task rather than all history.
         SELECT substring(name FROM 6) AS job FROM pgboss.schedule WHERE name LIKE 'cron.%'
-        UNION SELECT unnest(${currentJobs}::text[])
+      )
       )
       SELECT current_jobs.job, latest.*, counts.failed_24h, counts.runs_24h
       FROM current_jobs
@@ -76,11 +60,14 @@ export async function runsOverview(): Promise<Runs> {
              (array_agg(id ORDER BY discovered_at DESC))[1] AS example
       FROM articles WHERE processing_state = 'failed' AND discovered_at > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 20`,
     sql<Runs["ingest"]>`SELECT client, kind, status, left(error, 200) AS error, summary, created_at FROM ingest_events ORDER BY created_at DESC, id DESC LIMIT 20`,
-    waitingSelectedNews(),
+    sql<{ value: { at: string; sources: Record<string, { ok: boolean; at: string; lastOkAt: string | null; changed?: boolean; rows?: number; error?: string }> } }[]>`
+      SELECT value FROM settings WHERE key = 'leaderboard.fetch'`,
+    // T18 (ym250): the read-only resource snapshot rides the overview to the page — aggregate
+    // spend/supply/pending/process/rewrite pressure in one comparable caliber, nothing acted on.
+    resourceSnapshot(),
     // Articles waiting to retry after a passing provider problem (they are not failed).
     sql<{ n: number; next: Date | null }[]>`
       SELECT count(*)::int AS n, min(processing_retry_at) AS next FROM articles WHERE processing_state = 'new' AND processing_attempts > 0`,
-    Promise.all(serverModules().flatMap((m) => (m.admin?.runs ? [m.admin.runs().then((part) => [m.name, part] as const)] : []))),
   ]);
   const now = Date.now();
   return {
@@ -95,16 +82,78 @@ export async function runsOverview(): Promise<Runs> {
     timeline,
     queues,
     failedJobs,
-    grouping: groupingOverview(grouping, now),
     lagging,
     receipts: { counts: Object.fromEntries(receipts.map((r) => [r.status, r.n])), issues: receiptIssues },
     deliveries,
     errors,
     retrying: { count: retrying?.n ?? 0, next: retrying?.next ?? null },
     ingest,
-    modules: Object.fromEntries(modules),
+    leaderboard: leaderboard[0]
+      ? { at: leaderboard[0].value.at, sources: Object.entries(leaderboard[0].value.sources).map(([key, v]) => ({ key, ...v })).sort((a, b) => Number(a.ok) - Number(b.ok) || a.key.localeCompare(b.key)) }
+      : null,
+    resources,
   };
 }
+
+/**
+ * A receipt whose outcome is unknown is not re-sent by the request that lost it. Releasing it marks it
+ * failed, so the next attempt calls again; an article that stopped on it goes straight back to
+ * processing (one action, not two). Only an unknown receipt is released, once.
+ */
+async function release(id: number, error: string, actor: string, note: string, billed: boolean | null) {
+  const [before] = await sql<{ subject: string | null; purpose: string }[]>`
+    UPDATE receipts SET status = 'failed', error = ${error}, updated_at = now() WHERE id = ${id} AND status = 'unknown' RETURNING subject, purpose`;
+  if (!before) return null;
+  await sql`UPDATE receipt_attempts SET status = 'failed', error = ${error} WHERE receipt_id = ${id} AND status = 'unknown'`;
+  const article = before.purpose === "analyze_article" ? /^article:([^@]+)@/.exec(before.subject ?? "")?.[1] : undefined;
+  let requeued = false;
+  if (article) {
+    const [a] = await sql`UPDATE articles SET processing_state = 'new', processing_attempts = 0, processing_retry_at = NULL, processing_error = NULL
+                          WHERE id = ${article} AND processing_state = 'failed' RETURNING id`;
+    if (a) requeued = !!(await queueProcessing(article, { step: "analyze" }));
+  }
+  await audit(actor, "receipt.release", `receipt:${id}`, note, { status: "unknown" }, { status: "failed", billed, requeued });
+  return { id, status: "failed", subject: before.subject, purpose: before.purpose, requeued };
+}
+
+/** Admin, after checking the provider's console: records whether it was billed and releases it. */
+export async function releaseReceipt(id: number, input: { billed: boolean; note: string }, actor: string) {
+  if (!input.note?.trim()) throw new Error("note is required");
+  const [row] = await sql<{ status: string }[]>`SELECT status FROM receipts WHERE id = ${id}`;
+  if (!row) return null;
+  if (row.status !== "unknown") throw new Conflict("只有结果未知的回执需要人工核对");
+  const error = `人工核对：${input.billed ? "供应商已计费但结果未取回" : "供应商未计费"}。${input.note}`;
+  return release(id, error, actor, input.note, input.billed);
+}
+
+const AUTO_RELEASE_AFTER_MS = 30 * 60_000;
+const AUTO_RELEASE_NOTE = "自动放行：结果未知超过 30 分钟，未核对是否计费";
+
+/**
+ * Every 10 minutes (ops.recover): unknown receipts older than half an hour are released
+ * without checking the provider's bill. A lost answer costs at most one repeat: a request released this
+ * way once and unknown again stays for the admin (the daily ops digest lists it).
+ * ym249: receipts carrying an operation_key (the free-only/autonomous scope) are excluded — their
+ * unknown outcomes wait for the admin instead of an automatic re-send window. Legacy behaviour is
+ * untouched for rows without one.
+ */
+export async function autoReleaseUnknownReceipts(now = Date.now()) {
+  const rows = await sql<{ id: number }[]>`
+    SELECT r.id FROM receipts r
+    WHERE r.status = 'unknown' AND r.updated_at < ${new Date(now - AUTO_RELEASE_AFTER_MS)}
+      AND r.operation_key IS NULL
+      AND NOT EXISTS (SELECT 1 FROM receipt_attempts a WHERE a.receipt_id = r.id AND a.error LIKE ${AUTO_RELEASE_NOTE + "%"})
+    ORDER BY r.id LIMIT 200`;
+  let released = 0;
+  let requeued = 0;
+  for (const r of rows) {
+    const done = await release(r.id, AUTO_RELEASE_NOTE, "ops.recover", "结果未知，自动放行一次", null);
+    if (done) released += 1;
+    if (done?.requeued) requeued += 1;
+  }
+  return { released, requeued };
+}
+
 
 /** Failed articles (one failure group, or all of the last 30 days) back into processing. */
 export async function requeueFailedArticles(input: { group: string | null; reason: string }, actor: string) {
@@ -112,4 +161,23 @@ export async function requeueFailedArticles(input: { group: string | null; reaso
   const result = await requeueFailed(input.group);
   await audit(actor, "processing.requeue", input.group ? `failure:${input.group.slice(0, 80)}` : "failure:all", input.reason, null, result);
   return result;
+}
+
+/** An in-doubt delivery: confirmed as arrived, given up, or sent again after checking the group. */
+export async function resolveDelivery(id: number, input: { outcome: "sent" | "drop" | "resend"; note: string }, actor: string) {
+  if (!input.note?.trim()) throw new Error("note is required");
+  const [before] = await sql<{ status: string }[]>`SELECT status FROM deliveries WHERE id = ${id}`;
+  if (!before) return null;
+  let status: string;
+  if (input.outcome === "sent") {
+    await sql`UPDATE deliveries SET status = 'sent', sent_at = coalesce(sent_at, now()), response = ${`人工确认已送达：${input.note}`}, updated_at = now() WHERE id = ${id}`;
+    status = "sent";
+  } else if (input.outcome === "drop") {
+    await sql`UPDATE deliveries SET status = 'failed', response = ${`人工放弃：${input.note}`}, updated_at = now() WHERE id = ${id}`;
+    status = "failed";
+  } else {
+    const { resendDelivery } = await import("../notify/deliver.ts");
+    status = (await resendDelivery(id)).status;
+  }
+  return { id, status };
 }

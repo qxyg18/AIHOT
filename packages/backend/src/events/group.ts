@@ -229,6 +229,8 @@ export interface GroupResult {
 export interface GroupOptions {
   /** Discussion evidence only (hot_signal sources): attach to a story, never create one. */
   signalOnly?: boolean;
+  /** An explicit regroup: drop the automatic membership and decide again (manual decisions still win). */
+  force?: boolean;
 }
 
 export async function groupArticle(articleId: string, opts: GroupOptions = {}): Promise<GroupResult> {

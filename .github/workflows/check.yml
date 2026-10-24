@@ -5,7 +5,9 @@ name: Check
 
 on:
   push:
-    branches: [main]
+    # migrate/linux is the branch production is built from; without it the push gate never fires
+    # (the only runs so far were pull_request ones stuck in action_required, 0s).
+    branches: [main, migrate/linux]
   pull_request:
   workflow_dispatch:
 
@@ -35,6 +37,8 @@ jobs:
       API_BASE_URL: http://127.0.0.1:3001
       SESSION_SECRET: ci-session-secret-0123456789abcdef
       IMG_PROXY_SIGN_SECRET: ci-img-secret-0123456789abcdef
+      # CI 冒烟与测试按既有语义跑 active（ym671 角色总闸的 fail-closed 行为由测试覆盖）。
+      AIHOT_RUN_ROLE: active
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -107,6 +111,11 @@ jobs:
           sed -i 's/^COLLECT_ENABLED=.*/COLLECT_ENABLED=false/; s/^MODEL_CALLS_ENABLED=.*/MODEL_CALLS_ENABLED=false/' .env
           # The smoke check reaches the site by its compose service name.
           echo "MCP_ALLOWED_HOSTS=web" >> .env
+          # The base compose mounts ${AIHOT_SECRETS_DIR:-D:/secrets/aihot}; that Windows default is
+          # an invalid volume spec on a Linux runner, so the container never gets created. Point it
+          # at an empty in-workspace directory instead (model calls are off in CI, nothing reads it).
+          mkdir -p .ci-secrets
+          echo "AIHOT_SECRETS_DIR=$PWD/.ci-secrets" >> .env
       - name: Build and start with docker compose
         run: docker compose up -d --build
       - name: Smoke check
@@ -114,7 +123,10 @@ jobs:
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:3000/api/health 2>/dev/null && break; sleep 2; done
           docker compose ps
           docker compose run --rm --no-deps --entrypoint node setup scripts/smoke.ts --base http://web:3000
-          docker compose exec -T db psql -U aihot -d aihot -Atc "select count(*) from sources" | grep -qx "$(node -p "require('./industry/sources.json').sources.length")"
+          # Compare against the seed file instead of a hard-coded number: the old `18` rotted when
+          # industry/sources.json changed (it holds 7 today), so the job could never pass.
+          test "$(docker compose exec -T db psql -U aihot -d aihot -Atc 'select count(*) from sources')" \
+            -eq "$(node -p "require('./industry/sources.json').sources.length")"
       - name: Logs
         if: failure()
         run: docker compose logs --tail 80

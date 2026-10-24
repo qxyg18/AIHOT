@@ -235,3 +235,33 @@ test("rereading an exact midnight upgrades day precision without a new revision"
   assert.equal(row!.publication_time, "2026-10-13T07:00:00.000Z");
   assert.equal(row!.revision, 1);
 });
+
+test("a date-only report fills a dateless row without a revision (ym253 metadata path)", async () => {
+  const url = `https://example.com/dateless-${tag()}`;
+  // Stored without a date (its listing carried none): discovered a day ago.
+  const first = await upsertMaterial({ sourceId: SOURCE, url, title: "Dateless", excerpt: "e", via: "fetch" });
+  assert.equal((await state(first.articleId)).revision, 1);
+
+  // The metadata backfill reports the same content with the real date, 30 days old.
+  const res = await upsertMaterial({
+    sourceId: SOURCE, url, title: "Dateless", excerpt: "e",
+    publishedAt: new Date(Date.now() - 30 * 86_400_000), via: "fetch",
+  });
+  assert.equal(res.revised, false);
+  assert.equal(res.metaDateFilled, true, "the fill is reported");
+  assert.equal(res.metaHistoricalFlip, true, "30 days older than discovery turns it historical");
+  const [a] = await sql<{ revision: number; published_at: Date | null; timeline_at: Date; backfill: boolean; backfill_reason: string | null; content_hash: string | null }[]>`
+    SELECT revision, published_at, timeline_at, backfill, backfill_reason, content_hash FROM articles WHERE id = ${first.articleId}`;
+  assert.equal(a!.revision, 1, "no content revision for a date");
+  assert.ok(a!.published_at !== null, "the date is stored");
+  assert.ok(a!.backfill && a!.backfill_reason === "stale-on-discovery", "the timeline rule recasts it as history");
+  assert.ok(Math.abs(a!.timeline_at.getTime() - a!.published_at!.getTime()) < 1000, "a backfill sits at its source time");
+  const history = await sql<{ revision: number }[]>`SELECT revision FROM article_revisions WHERE article_id = ${first.articleId} ORDER BY revision`;
+  assert.deepEqual(history.map((h) => h.revision), [1], "no history row is added");
+
+  // A report that changes nothing else still reports nothing new; the stored date stands.
+  const again = await upsertMaterial({ sourceId: SOURCE, url, title: "Dateless", excerpt: "e", publishedAt: new Date(Date.now() - 29 * 86_400_000), via: "fetch" });
+  assert.equal(again.metaDateFilled, undefined, "a second date is not a fill");
+  assert.equal((await state(first.articleId)).revision, 1, "and it is not a revision either");
+
+});

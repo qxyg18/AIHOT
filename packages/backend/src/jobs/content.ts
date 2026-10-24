@@ -1,17 +1,19 @@
 // Content processing: body extraction when the source needs it → analysis → publish → event grouping.
-// Every article reaches the queues through queueProcessing, which records when it was queued. A failed
-// step records when to try again, and the sweep (content.sweep) is the timer that queues it then; it
-// also queues articles whose job was never created or has waited half an hour. A provider outage makes
-// an article wait and retry with backoff; only a permanent refusal or exhausted retries end in
-// "failed", which the admin re-queues in bulk.
+// Every article reaches the queues through queueProcessing, which records when it was queued, so the
+// safety net only picks up articles nothing is working on and sends those still waiting for a body to
+// extraction first. A provider outage makes an article wait and retry with backoff; only a permanent
+// refusal or exhausted retries end in "failed", which the admin re-queues in bulk.
 import type { PgBoss } from "pg-boss";
+import { CATEGORIES } from "@aihot/industry/taxonomy";
 import { sql, type Db } from "../db.ts";
 import { extractArticleBody, pageFetchable } from "../content/extract.ts";
-import { analyzeArticle } from "../editorial/analyze.ts";
+import { analyzeArticle, AnalysisInterruptedError } from "../editorial/analyze.ts";
+import { ShiftWaitError } from "../editorial/models.ts";
 import { isHistorical } from "../content/materials.ts";
 import { publishArticle } from "../publication/publish.ts";
-import { BudgetExceededError, failedReceiptId, failureKind } from "../providers/receipts.ts";
-import { enqueue, QUEUES, shutdownSignal, work } from "./queue.ts";
+import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptUnknownError } from "../providers/receipts.ts";
+import { ModelOutputError } from "../providers/llm.ts";
+import { ensureQueue, enqueue, QUEUES, shutdownSignal } from "./queue.ts";
 
 /** Minutes to wait after the n-th failed attempt; one more failure after the last ends in "failed". */
 const RETRY_MINUTES = [5, 10, 20, 40, 60, 120, 240, 360];
@@ -19,7 +21,7 @@ const RETRY_MINUTES = [5, 10, 20, 40, 60, 120, 240, 360];
 const MAX_OUTPUT_FAILURES = 3;
 /** Extraction gives up after this many errors and the article is judged on what it has. */
 const MAX_EXTRACT_FAILURES = 3;
-/** An article queued this long ago is queued again, in case its job was lost. */
+/** A queued article whose job left no trace for this long is queued again. */
 const QUEUED_STALE = "30 minutes";
 
 type Step = "extract" | "analyze";
@@ -33,8 +35,8 @@ interface Route {
 
 /**
  * The article's next step: its body first while none is confirmed and the source asks for full text,
- * when there is only a title or a feed summary (the analysis judges the whole article), or when an X
- * post links an X Article (fetched before judging; a discussion post only while it is news, as
+ * when there is only a title or a feed summary (the analysis judges the whole article), or when an
+ * X post links an X Article (fetched before judging; for a discussion post only while it is news, as
  * history adds no heat).
  */
 async function route(articleId: string, db: Db): Promise<Route | null> {
@@ -47,7 +49,7 @@ async function route(articleId: string, db: Db): Promise<Route | null> {
   const signal = row.participation_mode !== "editorial";
   const pending = row.body_status === "pending";
   const wantsBody = row.config.fetchPublicContent === true || !!row.config.detail || row.kind === "web_list";
-  const needsPage = !signal && pageFetchable(row.url, row.kind) && (wantsBody || row.bare);
+  const needsPage = !signal && (wantsBody || (row.bare && pageFetchable(row.url, row.kind)));
   const needsXArticle = row.kind === "x_search" && (!signal || (row.participation_mode === "hot_signal" && !historical));
   return { step: pending && (needsPage || needsXArticle) ? "extract" : "analyze", signal, historical };
 }
@@ -59,9 +61,12 @@ async function route(articleId: string, db: Db): Promise<Route | null> {
  */
 const PRIORITY = { live: 0, liveSignal: -1, history: -2 } as const;
 
-/** A grouping job's place in that order, for repairs and regroups as for the first queueing. */
-export function groupingPriority(a: { signal: boolean; historical: boolean }): number {
-  return a.historical ? PRIORITY.history : a.signal ? PRIORITY.liveSignal : PRIORITY.live;
+/** ym132-⑤：过研报洞见提取的类目=全部编辑类目（taxonomy 六类：统计/渠道/竞品动态/行业/海外/产品）。 */
+const INSIGHT_CATEGORIES: Set<string> = new Set(CATEGORIES.map((c) => c.key));
+
+/** ym132-⑤ 入队闸（导出供构造断言干跑；生产路径见 processArticle 尾段）：pass 且类目在编辑类目内。 */
+export function insightEligible(relevance: string | null | undefined, category: string | null | undefined): boolean {
+  return relevance === "pass" && INSIGHT_CATEGORIES.has(category ?? "");
 }
 
 /**
@@ -74,28 +79,14 @@ export async function queueProcessing(articleId: string, opts: { step?: Step; at
   const r = await route(articleId, db);
   if (!r) return null;
   const step = opts.step ?? r.step;
-  const [queued] = await db<{ processing_attempt_tag: string | null }[]>`
-    UPDATE articles SET processing_queued_at = now(), processing_attempt_tag = coalesce(${opts.attemptTag ?? null}, processing_attempt_tag)
-    WHERE id = ${articleId} RETURNING processing_attempt_tag`;
-  if (!queued) return null;
-  // Extraction and the sweep only carry articleId; retain the current evaluation's paid identity.
-  const attemptTag = queued.processing_attempt_tag ?? undefined;
+  await db`UPDATE articles SET processing_queued_at = now() WHERE id = ${articleId}`;
   if (step === "extract") return enqueue(QUEUES.extractBody, { articleId }, { singletonKey: articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
-  if (r.signal && !attemptTag) {
-    return enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: groupingPriority(r) }, opts.db);
+  if (r.signal && !opts.attemptTag) {
+    return enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: r.historical ? PRIORITY.history : PRIORITY.liveSignal }, opts.db);
   }
-  const tagged = !!attemptTag;
-  return enqueue(QUEUES.analyze, tagged ? { articleId, attemptTag } : { articleId },
-    { singletonKey: tagged ? `manual:analyze:${articleId}:${attemptTag}` : articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
-}
-
-/**
- * Whether processed material goes on to event grouping: an editorial report its analysis passed
- * (history too, which groupArticle settles without founding events), or a discussion post while it is
- * news. Everything else is finished once processed, and its grouping stays pending.
- */
-export function needsGrouping(m: { participationMode: string; historical: boolean; relevance?: string | null }): boolean {
-  return m.participationMode === "editorial" ? m.relevance === "pass" : m.participationMode === "hot_signal" && !m.historical;
+  const tagged = !!opts.attemptTag;
+  return enqueue(QUEUES.analyze, tagged ? { articleId, attemptTag: opts.attemptTag } : { articleId },
+    { singletonKey: tagged ? `manual:analyze:${articleId}:${opts.attemptTag}` : articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
 }
 
 /**
@@ -109,35 +100,19 @@ export async function settleNonEditorial(articleId: string): Promise<{ group: bo
     RETURNING s.participation_mode, a.backfill, a.published_at, a.discovered_at`;
   if (!row) return { group: false };
   await publishArticle(articleId);
-  return { group: needsGrouping({ participationMode: row.participation_mode, historical: isHistorical(row) }) };
+  return { group: row.participation_mode === "hot_signal" && !isHistorical(row) };
 }
 
-async function processingInput(articleId: string) {
-  const [row] = await sql<{ participation_mode: string; revision: number; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
-    SELECT s.participation_mode, a.revision, a.backfill, a.published_at, a.discovered_at FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId}`;
-  return row ? { ...row, historical: isHistorical(row) } : null;
-}
-
-/**
- * The analysis job: the article's current revision through analysis and publication; failures wait,
- * retry or end in "failed" (afterFailure). attemptTag makes an explicit re-evaluation a new (paid)
- * request; the same tag reuses its receipt.
- */
-export async function processArticle(articleId: string, opts: { attemptTag?: string } = {}): Promise<{ state: string; retryAt?: Date }> {
-  const row = await processingInput(articleId);
-  if (!row) return { state: "missing" };
-  try {
-    return await processRevision(articleId, row, opts);
-  } catch (error) {
-    return afterFailure(articleId, row.revision, error);
-  }
-}
-
-async function processRevision(articleId: string, row: NonNullable<Awaited<ReturnType<typeof processingInput>>>, opts: { attemptTag?: string }): Promise<{ state: string }> {
+/** attemptTag makes an explicit re-evaluation a new (paid) request; the same tag reuses its receipt. */
+export async function processArticle(articleId: string, opts: { attemptTag?: string } = {}): Promise<{ state: string }> {
+  const [found] = await sql<{ participation_mode: string; processing_state: string; revision: number; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
+    SELECT s.participation_mode, a.processing_state, a.revision, a.backfill, a.published_at, a.discovered_at FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId}`;
+  if (!found) return { state: "missing" };
+  const row = { ...found, historical: isHistorical(found) };
   if (row.participation_mode !== "editorial") {
     // Normally queued straight for grouping (queueProcessing); an explicit re-evaluation lands here.
     const { group } = await settleNonEditorial(articleId);
-    if (group) await enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: groupingPriority({ signal: true, historical: row.historical }) });
+    if (group) await enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: PRIORITY.liveSignal });
     return { state: "skipped" };
   }
   try {
@@ -150,16 +125,24 @@ async function processRevision(articleId: string, row: NonNullable<Awaited<Retur
     }
     if (result.stale) return { state: "stale" }; // the newer revision has its own job
     await publishArticle(articleId);
-    if (needsGrouping({ participationMode: row.participation_mode, historical: row.historical, relevance: result.output.relevance })) await enqueue(QUEUES.group, { articleId }, { singletonKey: articleId, priority: groupingPriority({ signal: false, historical: row.historical }) });
-    await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL
-              WHERE id = ${articleId} AND revision = ${row.revision}`;
+    // History is archived but founds no event (isHistorical).
+    if (result.output.relevance === "pass" && !row.historical) await enqueue(QUEUES.group, { articleId }, { singletonKey: articleId, priority: PRIORITY.live });
+    // Macro-data reports also feed the insight extraction pass (ka2): viewpoints about
+    // brands/malls/the industry are analysis data, wanted for history too — queued behind live work.
+    // ym40: 原 research 并入 statistics（宏观与数据）；tags 判据（「行业研报」存量覆盖仅 36%）不可靠，取 category 全量，与 item 页展示端同口径。
+    // zw15 (2026-10-01): channel 类里的城市零售报告（客流/空置率/首店）也过提取——逐商场数据点是商场档案的直接素材。
+    // ym132-⑤（命主 2026-10-01 d-ym82 opt-all 拍板）: 提取面放开到全部新闻类目——竞品动态/行业与公司/海外标杆
+    // 同样携带业绩数字与品牌动作，正是实体档案（研报观点+文章信号展示面）的素材；zw15 期间「普通商场动态新闻不扩」
+    // 的成本收缩口径经命主拍板放开。relevance=pass 与 history 后台优先级不变，成本由队列节流消化。
+    if (insightEligible(result.output.relevance, result.output.category)) {
+      await enqueue(QUEUES.insight, { articleId }, { singletonKey: `insight:${articleId}`, priority: PRIORITY.history });
+    }
     return { state: result.output.relevance };
   } catch (error) {
-    if (shutdownSignal.signal.aborted) throw error;
-    if (failureKind(error) === "unknown") {
+    if (error instanceof AnalysisInterruptedError || shutdownSignal.signal.aborted) throw error;
+    if (error instanceof ReceiptUnknownError) {
       // The provider may have billed this request: stop; ops.recover releases it once and requeues the article.
-      await sql`UPDATE articles SET processing_state = 'failed', processing_error = ${`receipt ${failedReceiptId(error)} outcome unknown`}
-                WHERE id = ${articleId} AND revision = ${row.revision}`;
+      await sql`UPDATE articles SET processing_state = 'failed', processing_error = ${`receipt ${error.receiptId} outcome unknown`} WHERE id = ${articleId}`;
       return { state: "unknown-receipt" };
     }
     throw error;
@@ -167,38 +150,55 @@ async function processRevision(articleId: string, row: NonNullable<Awaited<Retur
 }
 
 /** Waits and retries for passing trouble; marks "failed" for refusals and exhausted retries. */
-async function afterFailure(articleId: string, revision: number, error: unknown): Promise<{ state: string; retryAt?: Date }> {
+async function afterFailure(articleId: string, error: unknown): Promise<{ state: string; retryAt?: Date }> {
   // Let pg-boss retry this job after restart, reusing settled receipts. A deploy is not an article
   // failure and must neither consume processing_attempts nor turn an incomplete chain terminal.
-  if (shutdownSignal.signal.aborted) throw error;
+  if (error instanceof AnalysisInterruptedError || shutdownSignal.signal.aborted) throw error;
   const message = String(error instanceof Error ? error.message : error).slice(0, 500);
-  const kind = failureKind(error);
-  if (kind === "busy" || kind === "budget") {
+  if (error instanceof ReceiptBusyError || error instanceof BudgetExceededError) {
     // Not the article's fault: the same request is in flight, or the budget window is full.
     const seconds = error instanceof BudgetExceededError ? error.retryAfterSeconds : 60;
     const retryAt = new Date(Date.now() + seconds * 1000);
-    await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_retry_at = ${retryAt}, processing_queued_at = NULL
-              WHERE id = ${articleId} AND revision = ${revision}`;
+    await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId}`;
     return { state: "waiting", retryAt };
   }
-  const [a] = await sql<{ processing_attempts: number }[]>`SELECT processing_attempts FROM articles WHERE id = ${articleId} AND revision = ${revision}`;
-  if (!a) return { state: "stale" };
-  const attempts = a.processing_attempts + 1;
-  const refused = kind === "refused";
-  const exhausted = attempts > RETRY_MINUTES.length || (kind === "unusable" && attempts >= MAX_OUTPUT_FAILURES);
+  if (error instanceof ShiftWaitError) {
+    // ym434（承 ym431 审计 P1-1）：白天窗禁回落等待信号——窗口/配置面的事，不是文章的错，
+    // 不消耗 processing_attempts；到期由 sweep 重入队，熔断窗过/凭据恢复后自然成功。
+    const retryAt = new Date(Date.now() + error.retryAfterSeconds * 1000);
+    await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId}`;
+    return { state: "waiting", retryAt };
+  }
+  const [a] = await sql<{ processing_attempts: number }[]>`SELECT processing_attempts FROM articles WHERE id = ${articleId}`;
+  const attempts = (a?.processing_attempts ?? 0) + 1;
+  const refused = error instanceof ProviderRejectedError && !error.retryable;
+  const exhausted = attempts > RETRY_MINUTES.length || (error instanceof ModelOutputError && attempts >= MAX_OUTPUT_FAILURES);
   if (refused || exhausted) {
     await sql`UPDATE articles SET processing_state = 'failed', processing_error = ${message}, processing_attempts = ${attempts},
-                processing_retry_at = NULL, processing_queued_at = NULL WHERE id = ${articleId} AND revision = ${revision}`;
+                processing_retry_at = NULL, processing_queued_at = NULL WHERE id = ${articleId}`;
     return { state: "failed" };
   }
   const retryAt = new Date(Date.now() + RETRY_MINUTES[attempts - 1]! * 60_000);
   await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_attempts = ${attempts},
-              processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId} AND revision = ${revision}`;
+              processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId}`;
   return { state: "retrying", retryAt };
 }
 
-export async function registerContentJobs(boss: PgBoss) {
-  await work(boss, QUEUES.analyze, { localConcurrency: 6, pollingIntervalSeconds: 2 }, ({ articleId, attemptTag }) => processArticle(articleId, { attemptTag }));
+export async function registerContentJobs(boss: PgBoss, concurrency = Number(process.env.ANALYZE_CONCURRENCY || 6)) {
+  await ensureQueue(QUEUES.analyze);
+  await boss.work<{ articleId: string; attemptTag?: string }>(QUEUES.analyze, { localConcurrency: concurrency, pollingIntervalSeconds: 2 }, async ([job]) => {
+    if (!job) return;
+    const { articleId, attemptTag } = job.data;
+    try {
+      const result = await processArticle(articleId, { attemptTag });
+      if (result.state !== "unknown-receipt") {
+        await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL WHERE id = ${articleId}`;
+      }
+      return result;
+    } catch (error) {
+      return afterFailure(articleId, error);
+    }
+  });
 }
 
 /**
@@ -206,41 +206,31 @@ export async function registerContentJobs(boss: PgBoss) {
  * on the excerpt it has ("unconfirmed" body, never a wrong one).
  */
 export async function registerExtractionJobs(boss: PgBoss) {
-  await work(boss, QUEUES.extractBody, { localConcurrency: 4, pollingIntervalSeconds: 2 }, async ({ articleId }) => {
-    const [input] = await sql<{ revision: number }[]>`SELECT revision FROM articles WHERE id = ${articleId}`;
-    if (!input) return { state: "missing" };
+  await ensureQueue(QUEUES.extractBody);
+  await boss.work<{ articleId: string }>(QUEUES.extractBody, { localConcurrency: 4, pollingIntervalSeconds: 2 }, async ([job]) => {
+    if (!job) return;
+    const { articleId } = job.data;
     try {
       const state = await extractArticleBody(articleId);
-      // Extraction's failures do not count against the analysis that follows (a new revision starts over anyway).
-      if (state !== "skipped") await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL WHERE id = ${articleId} AND revision = ${input.revision}`;
-      // A newer revision may still need a body after this task's result was discarded.
-      await queueProcessing(articleId);
+      await queueProcessing(articleId, { step: "analyze" });
       return { state };
     } catch (error) {
-      // A deploy is not the article's failure: pg-boss retries this job after the restart, as for analysis.
-      if (shutdownSignal.signal.aborted) throw error;
       const message = String(error instanceof Error ? error.message : error).slice(0, 500);
       const [a] = await sql<{ processing_attempts: number }[]>`
         UPDATE articles SET processing_attempts = processing_attempts + 1, processing_error = ${`extract: ${message}`},
           processing_queued_at = NULL, processing_retry_at = now() + interval '10 minutes'
-        WHERE id = ${articleId} AND revision = ${input.revision} AND body_status <> 'ok' RETURNING processing_attempts`;
-      if (!a) {
-        await queueProcessing(articleId);
-        return { state: "skipped" };
-      }
-      if (a.processing_attempts < MAX_EXTRACT_FAILURES) return { state: "retrying" };
-      await sql`UPDATE articles SET body_status = 'unconfirmed', processing_attempts = 0, processing_retry_at = NULL
-        WHERE id = ${articleId} AND revision = ${input.revision} AND body_status = 'pending'`;
-      await queueProcessing(articleId);
+        WHERE id = ${articleId} RETURNING processing_attempts`;
+      if ((a?.processing_attempts ?? MAX_EXTRACT_FAILURES) < MAX_EXTRACT_FAILURES) return { state: "retrying" };
+      await sql`UPDATE articles SET body_status = 'unconfirmed', processing_attempts = 0, processing_retry_at = NULL WHERE id = ${articleId} AND body_status = 'pending'`;
+      await queueProcessing(articleId, { step: "analyze" });
       return { state: "unconfirmed" };
     }
   });
 }
 
 /**
- * The retry timer (content.sweep): articles waiting for processing whose retry time has come, whose
- * job was never created (a crash between write and enqueue), or whose job has waited half an hour
- * (pg-boss refuses the duplicate while it still exists). Returns the jobs actually created.
+ * Safety net: articles waiting for processing that no queue holds (crash between write and enqueue,
+ * a lost job, a retry that came due). Articles already queued or running are left alone.
  */
 export async function sweepUnprocessed(): Promise<{ enqueued: number }> {
   const rows = await sql<{ id: string }[]>`
@@ -249,27 +239,8 @@ export async function sweepUnprocessed(): Promise<{ enqueued: number }> {
       AND (processing_retry_at IS NULL OR processing_retry_at <= now())
       AND (processing_queued_at IS NULL OR processing_queued_at < now() - ${QUEUED_STALE}::interval)
     ORDER BY discovered_at DESC LIMIT 500`;
-  let enqueued = 0;
-  for (const r of rows) if (await queueProcessing(r.id)) enqueued += 1;
-  return { enqueued };
-}
-
-/**
- * The receipts of an article's analysis: an unknown outcome on any of them stops the article
- * ("failed"). Extraction never does: it retries, then judges the article on what it has.
- */
-const ARTICLE_STEPS = new Set(["prefilter_article", "score_article", "structure_article", "understand_article", "summarize_article", "mend_wording"]);
-
-/**
- * After a receipt is released (operations/recover.ts), the article that stopped on it goes straight
- * back to processing: one action, not two. Returns whether it was queued.
- */
-export async function resumeAfterRelease(receipt: { purpose: string; subject: string | null }, db: Db): Promise<boolean> {
-  const article = ARTICLE_STEPS.has(receipt.purpose) ? /^article:([^@:#]+)/.exec(receipt.subject ?? "")?.[1] : undefined;
-  if (!article) return false;
-  const [a] = await db`UPDATE articles SET processing_state = 'new', processing_attempts = 0, processing_retry_at = NULL, processing_error = NULL
-                        WHERE id = ${article} AND processing_state = 'failed' RETURNING id`;
-  return !!a && !!(await queueProcessing(article, { step: "analyze", db }));
+  for (const r of rows) await queueProcessing(r.id);
+  return { enqueued: rows.length };
 }
 
 /** How the runs page groups failures: the message with ids and numbers masked. */
@@ -278,7 +249,7 @@ export const failureGroupSql = (column = "processing_error") =>
 
 /**
  * Admin: failed articles of the last 30 days back into processing, all or one failure group. The
- * first ones are queued now; the sweep picks up the rest within minutes.
+ * first ones are queued now; the safety net picks up the rest within minutes.
  */
 export async function requeueFailed(group: string | null): Promise<{ requeued: number }> {
   const rows = await sql<{ id: string }[]>`
@@ -288,4 +259,26 @@ export async function requeueFailed(group: string | null): Promise<{ requeued: n
     RETURNING id`;
   for (const r of rows.slice(0, 500)) await queueProcessing(r.id);
   return { requeued: rows.length };
+}
+
+/** A grouping job's place in the serial order (upstream events/group.ts consumes). */
+export function groupingPriority(a: { signal: boolean; historical: boolean }): number {
+  const PRIORITY = { live: 0, liveSignal: -1, history: -2 } as const;
+  return a.historical ? PRIORITY.history : a.signal ? PRIORITY.liveSignal : PRIORITY.live;
+}
+
+/** Requeue an article step whose receipt was released (upstream recover.ts consumes). */
+const RESUME_STEPS = new Set(["prefilter_article", "score_article", "structure_article", "understand_article", "summarize_article", "mend_wording"]);
+
+export async function resumeAfterRelease(receipt: { purpose: string; subject: string | null }, db: Db): Promise<boolean> {
+  const article = RESUME_STEPS.has(receipt.purpose) ? /^article:([^@:#]+)/.exec(receipt.subject ?? "")?.[1] : undefined;
+  if (!article) return false;
+  const [a] = await db`UPDATE articles SET processing_state = 'new', processing_attempts = 0, processing_retry_at = NULL, processing_error = NULL
+                        WHERE id = ${article} AND processing_state = 'failed' RETURNING id`;
+  return !!a && !!(await queueProcessing(article, { step: "analyze", db: db as Db }));
+}
+
+/** Whether a settled article should be queued for grouping (upstream admin/content consumes). */
+export function needsGrouping(m: { participationMode: string; historical: boolean; relevance?: string | null }): boolean {
+  return m.participationMode === "editorial" ? m.relevance === "pass" : m.participationMode === "hot_signal" && !m.historical;
 }

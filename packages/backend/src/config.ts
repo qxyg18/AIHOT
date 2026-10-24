@@ -47,6 +47,10 @@ export const config = {
   privateFeedHosts: (env.PRIVATE_FEED_HOSTS || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
   feishuContentPushEnabled: bool("FEISHU_CONTENT_PUSH_ENABLED", false),
   indexNowSubmitEnabled: bool("INDEXNOW_SUBMIT_ENABLED", false),
+  // Source admission engine valves (ym312/ym257): both default off — the BUILD-disabled state holds
+  // until the activation card turns them on; with a valve off the worker unregisters that schedule.
+  sourceDiscoveryEnabled: bool("SOURCE_DISCOVERY_ENABLED", false),
+  sourceProbeEnabled: bool("SOURCE_PROBE_ENABLED", false),
   /** IndexNow key (32 hex characters); without one nothing is submitted and no key file is served. */
   indexNowKey: /^[0-9a-f]{32}$/.test(env.INDEXNOW_KEY ?? "") ? env.INDEXNOW_KEY! : null,
   /** Optional directory of per-group dotenv files (models.env, collectors.env, …); normally everything is in .env. */
@@ -66,7 +70,10 @@ export const config = {
 
 export type CredentialGroup = "models" | "collectors" | "integrations" | "auth";
 
-const groupCache = new Map<CredentialGroup, Record<string, string>>();
+// ka3: the file is re-read at most once a minute, so a key pasted into <group>.env activates within
+// a minute without a restart (same freshness the admin model switches have).
+const CREDENTIALS_TTL_MS = 60_000;
+const groupCache = new Map<CredentialGroup, { at: number; values: Record<string, string> }>();
 
 /** The file a group is kept in, under AIHOT_CREDENTIALS_DIR: the site's name for it, else <group>.env. */
 function groupFile(group: CredentialGroup): string {
@@ -79,12 +86,12 @@ function groupFile(group: CredentialGroup): string {
  */
 export function credentials(group: CredentialGroup): Record<string, string> {
   const cached = groupCache.get(group);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.at < CREDENTIALS_TTL_MS) return cached.values;
   const file = config.credentialsDir ? path.join(config.credentialsDir, groupFile(group)) : null;
   const parsed: Record<string, string> = file && existsSync(file) ? (parseEnv(readFileSync(file, "utf8")) as Record<string, string>) : {};
   const merged: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) merged[key] = env[key] ?? value;
-  groupCache.set(group, merged);
+  groupCache.set(group, { at: Date.now(), values: merged });
   return merged;
 }
 

@@ -9,3 +9,18 @@ apps/web/.react-router
 .git
 .github
 *.log
+
+# Build hygiene (ym752): backups must never ship in the image. A bare `*.bak*` only
+# matches the build-context root, so the **/ variants are the ones that cover
+# packages/**/src backups (the ym739 image leak).
+*.bak*
+*.bak-*
+**/*.bak*
+**/*.bak-*
+
+# Build-context diet (K6, 2026-10-22): mirror-fidelity/ and collector output are data,
+# not image content. Measured before: 328MB context (mirror-fidelity 182MB + collectors 95MB).
+mirror-fidelity/
+scripts/collectors/out/
+scripts/collectors/logs/
+scripts/collectors/state/

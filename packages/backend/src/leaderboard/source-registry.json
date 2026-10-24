@@ -1,0 +1,213 @@
+{
+  "_note": "两榜来源登记（zw12 改造，2026-10）：童装品牌榜+全国商业体榜。key=指标键（与 lb_snapshots.source_key 一致）；operator=采集端（manual-supplement 种子文件 / internal-signal 站内声量引擎 / dailyhot 热搜哨兵 / winshang-monthly 赢商月度榜·降级未接入）。权重正本在 method/weighted.ts（页面展示与本登记的 usage 字段须与之一致——架构规矩）。",
+  "statuses": {
+    "ranked": "参与排名",
+    "cross_reference": "交叉参考",
+    "observing": "观察中",
+    "reference_only": "仅供参考",
+    "awaiting": "等待成绩"
+  },
+  "groups": [
+    {
+      "key": "brand-revenue-group",
+      "name": "品牌榜 · 业绩",
+      "blurb": "童装业务营收按定稿断点分层锚点计分（3/5/10/20 亿），人工种子打底，待公告抽取批接入。",
+      "sources": [
+        {
+          "key": "brand-revenue",
+          "status": "cross_reference",
+          "name": "童装业务营收",
+          "operator": "manual-supplement",
+          "description": "上市公司童装业务营收概数（亿元）；非上市或童装分部未单列的品牌缺数走「推断填充」（同门店量级带中位数，同带无真值参考则不填充，折价 0.5）。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "种子文件 revenue 字段，公开财报口径概数（人工录入）。",
+          "usage": "业绩维度（50%，命主 2026-10-01 定稿）；按定稿断点分层锚点计分（3/5/10/20 亿→25/50/75/100 分，20 亿及以上封顶）；缺数品牌按同门店量级带中位数填「推断填充」值（成色折价 0.5），门店量级亦缺者该维度计 0 贡献。",
+          "limits": "人工概数·待核实；集团上市但童装分部未单列的品牌不给值；公告自动抽取属后续批。",
+          "license": "内部人工补录"
+        }
+      ]
+    },
+    {
+      "key": "brand-scale-group",
+      "name": "品牌榜 · 规模",
+      "blurb": "门店规模按定稿断点分层锚点计分（200/600/1000 家），人工种子概数档位。",
+      "sources": [
+        {
+          "key": "brand-stores",
+          "status": "cross_reference",
+          "name": "门店规模",
+          "operator": "manual-supplement",
+          "description": "品牌门店数概数档位（家）。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "种子文件 stores 字段，公开报道概数档位（人工录入）。",
+          "usage": "规模维度（30%）；按定稿断点分层锚点计分（200/600 家→25/50 分，600~1000 家段线性至 75，1000 家及以上满值 100；命主 2026-10-01 18:18 看板裁定）；门店量级带同时是缺营收品牌的填充分组键。",
+          "limits": "人工概数·待核实；公告抽取自动更新属后续批。",
+          "license": "内部人工补录"
+        }
+      ]
+    },
+    {
+      "key": "brand-volume-group",
+      "name": "品牌榜 · 媒体声量",
+      "blurb": "站内声量、热搜命中与社媒指数三个口径取均值构成声量维度。",
+      "sources": [
+        {
+          "key": "brand-volume",
+          "status": "ranked",
+          "name": "站内品牌声量",
+          "operator": "internal-signal",
+          "description": "近 90 天站内文章的实体标注计数（标题+摘要+正文全文；同文计 1 次）。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "全文级实体标注匹配（article_entities）；窗口 90 天；零提及也记录（0 分）。",
+          "usage": "声量维度三分之一；窗口提及不足 3 条不计分。",
+          "limits": "站内标注面不含社媒外站；依赖站内信源覆盖（信源扩展见 zw11 批）。",
+          "license": "本站自有数据"
+        },
+        {
+          "key": "brand-hotsearch",
+          "status": "awaiting",
+          "name": "全网热搜哨兵",
+          "fullName": "DailyHotApi 热搜命中",
+          "operator": "dailyhot",
+          "description": "各平台热搜标题中品牌关键词的命中次数（DailyHotApi 自部署实例聚合）。",
+          "logo": null,
+          "officialUrl": "https://github.com/imsyy/DailyHotApi",
+          "what": "微博/知乎/百度/抖音四路热搜标题匹配；未部署实例时本源停用。",
+          "usage": "声量维度三分之一（维度权重 20% 内均分）；哨兵未激活时自动空缺，声量维度取剩余口径均值。",
+          "limits": "热搜命中是瞬时热度信号，不代表品牌长期声量；实例未部署（DAILYHOT_API_BASE 未配置）时不采集。",
+          "license": "MIT · DailyHotApi 自部署实例"
+        },
+        {
+          "key": "brand-social",
+          "status": "awaiting",
+          "name": "社媒指数（人工补录）",
+          "operator": "manual-supplement",
+          "description": "命主人工维护的社媒影响力指数，经种子文件补录。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "种子文件 socialIndex 字段；未补录为空。",
+          "usage": "声量维度三分之一；人工补录通道，编辑种子文件下一轮刷新生效。",
+          "limits": "人工概数口径，页面以覆盖度标签披露；不冒充机器采集。",
+          "license": "内部人工补录"
+        }
+      ]
+    },
+    {
+      "key": "mall-revenue-group",
+      "name": "商业体榜 · 业绩",
+      "blurb": "商场业绩（人工披露通道）按命主 2026-10-03 定稿六档计分（10/20/50/150/200/250 亿）；缺数按同客流档中位数填「推断填充」值，整体缺数时滚给客流。",
+      "sources": [
+        {
+          "key": "mall-revenue",
+          "status": "awaiting",
+          "name": "商业体业绩（人工披露）",
+          "operator": "manual-supplement",
+          "description": "商场销售额/租金等业绩口径的人工补录通道（预留）。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "种子文件预留字段；当前无值。",
+          "usage": "业绩维度（权重以方法页本轮公示为准，命主 2026-10-02 v4.6 定值）；按命主 2026-10-03 v4.7 六档连续插值计分（10/20/50/150/200/250 亿→20/40/60/80/90/100 分，250 亿及以上满分）；缺数按同客流档中位数填「推断填充」值（折价 0.5），整体缺数时按命主条款滚给客流维度。",
+          "limits": "人工披露口径（联商年度值=研报提取档/长图估算=人工档，逐实体角标）；媒体披露事件自动抽取属后续批。",
+          "license": "内部人工补录"
+        }
+      ]
+    },
+    {
+      "key": "mall-footfall-group",
+      "name": "商业体榜 · 客流规模",
+      "blurb": "赢商人气榜为正源；降级期由人工客流层级种子参排（体量复合）。",
+      "sources": [
+        {
+          "key": "winshang-mall",
+          "status": "observing",
+          "name": "赢商人气榜",
+          "fullName": "赢商网购物中心人气榜",
+          "operator": "winshang-monthly",
+          "description": "赢商大数据月度购物中心客流/人气排名。",
+          "logo": null,
+          "officialUrl": "https://www.winshang.com/",
+          "what": "月度榜单页结构实测不可抓（m 站数据栏目为文章流、大数据子域不可达、PC 路径 404），读取器未接入。",
+          "usage": "客流维度主体（权重以方法页本轮公示为准）：档位归一分×0.6 与体量分位分×0.4 复合，无体量者回退档位全额；赢商接入后被机器源替换。",
+          "limits": "赢商大数据需会员登录，公开面无结构化榜单接口；恢复条件=赢商开放可抓数据或命主提供数据导出。",
+          "license": "待确认榜单数据使用边界"
+        },
+        {
+          "key": "mall-footfall",
+          "status": "cross_reference",
+          "name": "客流层级（人工种子）",
+          "operator": "manual-supplement",
+          "description": "全国头部+杭州重点商业体的客流层级（1-10）人工编制种子。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "种子文件 footfallTier 字段；层级=公开常识概数。",
+          "usage": "客流维度主体（权重 25%）：档位归一分×0.6 与体量分位分×0.4 复合，无体量者回退档位全额；赢商接入后被机器源替换。",
+          "limits": "人工概数·待核实；与体量复合计分（体量有值者 0.6/0.4，缺省回退全额），赢商接入后换机器档。",
+          "license": "内部人工补录"
+        }
+      ]
+    },
+    {
+      "key": "mall-media-group",
+      "name": "商业体榜 · 媒体声量",
+      "blurb": "站内文章对商场的实体标注计数（标题+摘要+正文全文）。",
+      "sources": [
+        {
+          "key": "mall-media",
+          "status": "ranked",
+          "name": "商场媒体声量",
+          "operator": "internal-signal",
+          "description": "近 90 天站内文章的实体标注计数（标题+摘要+正文全文；同文计 1 次）。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "全文级实体标注匹配（article_entities）；窗口 90 天。",
+          "usage": "声量维度全量（权重以方法页本轮公示为准）；窗口提及不足 3 条不计分。",
+          "limits": "加权在役（成色折价 1.0）。",
+          "license": "本站自有数据"
+        }
+      ]
+    },
+    {
+      "key": "mall-affinity-group",
+      "name": "商业体榜 · 童装业态亲和",
+      "blurb": "与商场同文共现的童装品牌数（去重）×10 分封顶 100；实测行整体缺席时由类型×定位先验分兜底。",
+      "sources": [
+        {
+          "key": "mall-affinity",
+          "status": "ranked",
+          "name": "童装业态亲和",
+          "operator": "internal-signal",
+          "description": "与商场同文共现的童装品牌数（去重），按品牌数档位计分。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "全文级：窗口 90 天内与该商场同文共现的监控童装品牌去重数（每有一个榜内品牌+10 分）。",
+          "usage": "亲和维度（10%，v4.8 命主 2026-10-03 定稿）；每有一个共现品牌+10 分、10 个及以上满分，不卡提及门槛；缺实测行的商场由「类型×定位」先验分兜底（推断填充档，折价 0.5）。",
+          "limits": "品牌数是确定性计数（不卡提及门槛）；先验只兜底亲和实测行整体缺席（先验角标=推断填充档）。",
+          "license": "本站自有数据"
+        }
+      ]
+    },
+    {
+      "key": "mall-firststore-group",
+      "name": "商业体榜 · 首店快闪（已退出在役维度）",
+      "blurb": "商场相关首店/快闪/开业/入驻事件计数（事件采集保留，维度已退出不参排）。",
+      "sources": [
+        {
+          "key": "mall-firststore",
+          "status": "reference_only",
+          "name": "首店快闪动能",
+          "operator": "internal-signal",
+          "description": "商场相关的首店/快闪/开业/入驻事件计数。",
+          "logo": null,
+          "officialUrl": null,
+          "what": "事件词按标题匹配（开店/新店/首店/开业/入驻/快闪/新品/联名/拓店/进场）；窗口 90 天。",
+          "usage": "首店快闪维已随 v4.6（命主 2026-10-02 定值）退出在役维度体系，不再进维度分、不参与排名；事件词采集面保留（标题匹配开店/首店/开业/入驻/快闪等，窗口 90 天），供后续报道检索与可能的维度恢复评估。",
+          "limits": "已退出在役维度（不参排）；事件词采集面保留。",
+          "license": "本站自有数据"
+        }
+      ]
+    }
+  ]
+}

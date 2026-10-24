@@ -1,8 +1,6 @@
 // Admin sign-in and the /api/admin guard. Public routes never read the session.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ZodError } from "zod";
-import type { AdminMe } from "@aihot/contracts/admin";
-import { DEPLOYMENT, SITE } from "@aihot/site";
+import type { AdminCapability } from "@aihot/contracts/site";
 import { config } from "@aihot/backend/config";
 import {
   completeLogin,
@@ -47,8 +45,15 @@ const loginPage = (returnTo: string, error?: string) => `/admin/login?${new URLS
 
 export type AdminHandler = (req: FastifyRequest, reply: FastifyReply, admin: AdminPrincipal) => Promise<unknown>;
 
-/** Guard for /api/admin/*: a live session (or the development stand-in); writes need the CSRF token. */
-export function adminHandler(fn: AdminHandler) {
+/**
+ * Guard for /api/admin/*: a live session (or the development stand-in), a server-side capability
+ * check, and writes need the CSRF token. The default required capability is admin:operate, so every
+ * existing route keeps its meaning and new unclassified routes deny channel viewers; pass
+ * { cap: "channel:*" } for a channel route and { cap: null } for the session's own view (/me).
+ * Capabilities come only from the session principal — forged headers or bodies never widen them.
+ */
+export function adminHandler(fn: AdminHandler, opts: { cap?: AdminCapability | null } = {}) {
+  const cap = opts.cap === undefined ? "admin:operate" : opts.cap;
   return async (req: FastifyRequest, reply: FastifyReply) => {
     reply.header("Cache-Control", "no-store");
     const admin = await sessionPrincipal(req.headers.cookie);
@@ -56,12 +61,12 @@ export function adminHandler(fn: AdminHandler) {
     if (req.method !== "GET" && req.method !== "HEAD" && req.headers["x-csrf-token"] !== admin.csrf) {
       return sendProblem(req, reply, { status: 403, code: "forbidden", detail: "Missing or stale CSRF token." });
     }
+    if (cap && !admin.capabilities.includes(cap)) {
+      return sendProblem(req, reply, { status: 403, code: "forbidden", detail: "This admin session lacks the required capability." });
+    }
     try {
       return await fn(req, reply, admin);
     } catch (error) {
-      if (error instanceof ZodError) {
-        return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: error.issues.map((issue) => `${issue.path.join(".") || "请求"}: ${issue.message}`).join("; ").slice(0, 300) });
-      }
       if ((error as { statusCode?: number }).statusCode === 400 || error instanceof SyntaxError) {
         return sendProblem(req, reply, { status: 400, code: "invalid_request", detail: String((error as Error).message).slice(0, 300) });
       }
@@ -72,55 +77,42 @@ export function adminHandler(fn: AdminHandler) {
   };
 }
 
-/** Feishu sign-in: the state cookie, then Feishu's authorization page. */
-function feishuRedirect(reply: FastifyReply, returnTo: string) {
-  const { url, stateCookie } = loginRedirect(returnTo);
-  reply.header("Set-Cookie", cookie(STATE_COOKIE, stateCookie, 600, secure())).header("Cache-Control", "no-store");
-  return reply.redirect(url, 302);
-}
-
 export function registerAdminAuth(app: FastifyInstance) {
-  // The web admin sends a signed-out visitor here with ?return=, a reverse proxy with the site's header.
-  // With Feishu as the only way in, sign-in starts there at once; otherwise the sign-in page (in the web
-  // app) offers the ways in.
+  // The sign-in form posts as a plain HTML form.
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 16 * 1024 }, (_req, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(String(body))));
+  });
+
+  // The web admin sends a signed-out visitor here with ?return=; the sign-in page lives in the web app.
   app.get("/api/auth/login", async (req, reply) => {
-    const returnTo = String(
-      (req.query as Record<string, string>).return
-      ?? (DEPLOYMENT.loginReturnHeader ? req.headers[DEPLOYMENT.loginReturnHeader.toLowerCase()] : undefined)
-      ?? "/admin",
-    );
-    if (feishuLoginConfigured() && !config.adminPassword) return feishuRedirect(reply, returnTo);
+    const returnTo = String((req.query as Record<string, string>).return ?? "/admin");
     return reply.header("Cache-Control", "no-store").redirect(loginPage(returnTo), 302);
   });
 
   app.get("/api/auth/options", async (_req, reply) => reply.header("Cache-Control", "no-store").send({ password: !!config.adminPassword, feishu: feishuLoginConfigured() }));
 
-  // The sign-in form posts as a plain HTML form; only this route reads that format.
-  app.register(async (form) => {
-    form.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 16 * 1024 }, (_req, body, done) => {
-      done(null, Object.fromEntries(new URLSearchParams(String(body))));
-    });
-    form.post("/api/auth/password", async (req, reply) => {
-      const b = (req.body ?? {}) as Record<string, string>;
-      const returnTo = String(b.return ?? "/admin");
-      reply.header("Cache-Control", "no-store");
-      if (tooManyAttempts(String(req.ip))) return reply.redirect(loginPage(returnTo, "too-many"), 303);
-      try {
-        const { token, returnTo: target } = await passwordLogin(String(b.password ?? ""), returnTo, req.headers["user-agent"]);
-        reply.header("Set-Cookie", cookie(SESSION_COOKIE, token, SESSION_DAYS * 86400, secure()));
-        return reply.redirect(target, 303);
-      } catch (error) {
-        if (!(error instanceof LoginRejected)) req.log.error({ err: error }, "admin login failed");
-        return reply.redirect(loginPage(returnTo, error instanceof LoginRejected && /ADMIN_PASSWORD/.test(error.message) ? "unset" : "wrong"), 303);
-      }
-    });
+  app.post("/api/auth/password", async (req, reply) => {
+    const b = (req.body ?? {}) as Record<string, string>;
+    const returnTo = String(b.return ?? "/admin");
+    reply.header("Cache-Control", "no-store");
+    if (tooManyAttempts(String(req.ip))) return reply.redirect(loginPage(returnTo, "too-many"), 303);
+    try {
+      const { token, returnTo: target } = await passwordLogin(String(b.password ?? ""), returnTo, req.headers["user-agent"]);
+      reply.header("Set-Cookie", cookie(SESSION_COOKIE, token, SESSION_DAYS * 86400, secure()));
+      return reply.redirect(target, 303);
+    } catch (error) {
+      if (!(error instanceof LoginRejected)) req.log.error({ err: error }, "admin login failed");
+      return reply.redirect(loginPage(returnTo, error instanceof LoginRejected && /ADMIN_PASSWORD/.test(error.message) ? "unset" : "wrong"), 303);
+    }
   });
 
-  // Feishu sign-in (FEISHU_LOGIN_APP_ID / FEISHU_LOGIN_APP_SECRET and an allowlist), from the sign-in page.
+  // Optional Feishu sign-in (FEISHU_LOGIN_APP_ID / FEISHU_LOGIN_APP_SECRET and an allowlist).
   app.get("/api/auth/feishu", async (req, reply) => {
     const returnTo = String((req.query as Record<string, string>).return ?? "/admin");
-    if (!feishuLoginConfigured()) return reply.header("Cache-Control", "no-store").redirect(loginPage(returnTo), 302);
-    return feishuRedirect(reply, returnTo);
+    if (!feishuLoginConfigured()) return reply.redirect(loginPage(returnTo), 302);
+    const { url, stateCookie } = loginRedirect(returnTo);
+    reply.header("Set-Cookie", cookie(STATE_COOKIE, stateCookie, 600, secure())).header("Cache-Control", "no-store");
+    return reply.redirect(url, 302);
   });
 
   // The callback registered in the Feishu open platform: the state cookie comes back here.
@@ -134,7 +126,7 @@ export function registerAdminAuth(app: FastifyInstance) {
     } catch (error) {
       const message = error instanceof LoginRejected ? error.message : "登录失败，请稍后再试";
       if (!(error instanceof LoginRejected)) req.log.error({ err: error }, "admin login failed");
-      return reply.code(403).type("text/html; charset=utf-8").send(`<!doctype html><meta charset="utf-8"><title>登录失败 · ${SITE.name}</title><p style="font:16px system-ui;padding:40px">${message}。<a href="/api/auth/login">重新登录</a></p>`);
+      return reply.code(403).type("text/html; charset=utf-8").send(`<!doctype html><meta charset="utf-8"><title>登录失败</title><p style="font:16px system-ui;padding:40px">${message}。<a href="/admin/login">重新登录</a></p>`);
     }
   });
 
@@ -152,5 +144,7 @@ export function registerAdminAuth(app: FastifyInstance) {
     return reply.redirect("/", 303);
   });
 
-  app.get("/api/admin/me", adminHandler(async (_req, _reply, admin): Promise<AdminMe> => ({ name: admin.name, csrf: admin.csrf, dev: admin.dev })));
+  // Any signed-in principal may read its own view (name/CSRF stay session-level); the capability
+  // list is server-decided, so a channel viewer sees exactly what it was granted and nothing more.
+  app.get("/api/admin/me", adminHandler(async (_req, _reply, admin) => ({ name: admin.name, csrf: admin.csrf, dev: admin.dev, capabilities: admin.capabilities }), { cap: null }));
 }

@@ -20,7 +20,8 @@ import { PresentationMismatch, presentationCounts, rebaseTranslation } from "../
 import { fetchRss } from "../sources/rss.ts";
 import { listingEntries, loadSource } from "../sources/collect.ts";
 import type { SourceRow } from "../sources/types.ts";
-import { computeHotRanking, storedHotRanking } from "../events/hot.ts";
+import { computeHotRanking } from "../events/hot.ts";
+import { latestHotRanking } from "../events/hot-read.ts";
 import { audit, auditHistory, Conflict } from "../audit.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 
@@ -226,7 +227,7 @@ export async function contentChain(id: string): Promise<Chain | null> {
 
 /** Whether the current hot ranking shows the article: as an event's representative or among its reports. */
 async function inHotRanking(id: string, tx: Tx): Promise<boolean> {
-  const ranking = await storedHotRanking(tx);
+  const ranking = await latestHotRanking();
   if (!ranking?.entries.length) return false;
   if (ranking.entries.some((e) => e.representativeItemId === id)) return true;
   const [p] = await tx<{ story_id: number | null }[]>`SELECT story_id FROM publications WHERE article_id = ${id}`;
@@ -427,3 +428,5 @@ async function refreshPresentation(id: string, options: Pick<AdminRerun, "previe
     return applied;
   });
 }
+// Upstream moved story corrections to events/corrections; the admin route surface keeps importing them from here.
+export { detachFromFact, mergeStories } from "../events/corrections.ts";

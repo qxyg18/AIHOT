@@ -216,3 +216,8 @@ export function guardedLookup(hostname: string, options: { all?: boolean; family
     (err: NodeJS.ErrnoException) => callback(err, opts.all ? [] : "", 0),
   );
 }
+
+/** Internal-address predicate (radar url tests consume; upstream splits blocked vs internal). */
+export function isInternalAddress(address: string): boolean {
+  return isBlockedAddress(address);
+}

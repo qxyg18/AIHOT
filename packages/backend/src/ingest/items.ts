@@ -35,9 +35,19 @@ export async function ingestItems(body: { sourceId?: unknown; sourceName?: unkno
     INSERT INTO sources (id, name, kind, config, tier, participation_mode, interval_minutes, enabled, health, tags)
     VALUES (${sourceId.slice(0, 120)}, ${typeof body.sourceName === "string" && body.sourceName.trim() ? body.sourceName.trim().slice(0, 200) : sourceId.slice(0, 120)},
             'external', '{}'::jsonb, 'T2', 'isolated', 1440, true, 'ok', ${["ingest:auto-created"]})
-    ON CONFLICT (id) DO UPDATE SET last_ok_at = now() WHERE sources.enabled
+    ON CONFLICT (id) DO UPDATE SET last_ok_at = CASE WHEN sources.enabled THEN now() ELSE sources.last_ok_at END
     RETURNING id, participation_mode, enabled`;
   if (!source) throw new IngestError(409, "source paused");
+
+  // A disabled source is a paused channel: pushers get 409 instead of a silent store (the
+  // scheduler being disabled on the host machine is not the gate — this one is).
+  if (!source!.enabled) {
+    // ym371: the refusal is auditable from the db too, so channel-reopen observation periods can
+    // reconcile refused push attempts instead of relying on HTTP logs alone. The audit row is
+    // written before the throw; this path performs no business write, so the order is safe.
+    await sql`INSERT INTO ingest_events (client, kind, status, summary) VALUES ('ingest-items', 'items', 'refused-disabled', ${sql.json({ sourceId: source!.id, received: items.length })})`;
+    throw new IngestError(409, `source ${source!.id} is disabled — re-enable it before ingesting`);
+  }
 
   const seen = new Set<string>();
   let created = 0;

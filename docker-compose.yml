@@ -3,30 +3,59 @@
 name: aihot
 
 x-app: &app
-  build: .
-  image: aihot-app
-  restart: unless-stopped
-
-x-backend: &backend
-  <<: *app
+  build:
+    context: .
+    # 本地/开发构建显式落 dev-local（K2 审计 P2-2 / ym956）：Dockerfile 守卫拒绝字面默认值 dev，
+    # 云端发版按手册第 4 步以 CLI --build-arg AIHOT_RELEASE=$SHA8 覆盖本值。
+    args:
+      AIHOT_RELEASE: dev-local
+  # image 名每服务独立（ym531 甲案 jia-fen-tag）：锚内禁再加共享 image 行，防 tag 覆盖竞争复活
   env_file: .env
-  environment: &backend-env
+  restart: unless-stopped
+  # ym670/C1-03：停机宽限 ≥200s 覆盖 queue.ts STOP_TIMEOUT_MS=195s 的 boss 排空
+  # （docker 默认 10s 后 SIGKILL 会截断在途付费调用，留下 outcome unknown 回执）
+  stop_grace_period: 200s
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+  environment: &app-env
     NODE_ENV: production
     DATABASE_URL: postgres://aihot:${POSTGRES_PASSWORD:-aihot}@db:5432/aihot
     AIHOT_DATA_DIR: /data
     API_BASE_URL: http://api:3001
+    LOCAL_ROUTER_URL: http://web:3000
+    # LLM 密钥在仓库外凭据目录（host D:/secrets/aihot），不进 .env/git
+    AIHOT_CREDENTIALS_DIR: /secrets
     # No proxy in front limits pushes to /api/ingest/items: the api does (per client and minute; 0 turns it off).
     INGEST_RATE_LIMIT: ${INGEST_RATE_LIMIT:-10}
   volumes:
     - data:/data
+    # Host side is env-driven so the cloud host can point at /srv/secrets/aihot (C1-06) without
+    # carrying a Linux-invalid D:/ path; local keeps the historical default.
+    - ${AIHOT_SECRETS_DIR:-D:/secrets/aihot}:/secrets:ro
   depends_on:
     db:
       condition: service_healthy
+
+# Probe cadence shared by the app health checks (C1-06): the images ship node:24 with global
+# fetch and no curl/wget, so probes are node one-liners.
+x-hc: &hc
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
 
 services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       POSTGRES_USER: aihot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aihot}
@@ -41,23 +70,29 @@ services:
 
   # Applies the database migrations and seeds the demo sources, then exits.
   setup:
-    <<: *backend
+    <<: *app
+    image: aihot-app-setup
     restart: "no"
     command: ["sh", "-c", "node scripts/migrate.ts && node scripts/seed.ts"]
 
   api:
-    <<: *backend
+    <<: *app
+    image: aihot-app-api
     command: ["node", "apps/api/src/main.ts"]
     environment:
-      <<: *backend-env
+      <<: *app-env
       API_HOST: 0.0.0.0
       API_PORT: "3001"
     depends_on:
       setup:
         condition: service_completed_successfully
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.API_PORT||3001)+'/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
 
   worker:
-    <<: *backend
+    <<: *app
+    image: aihot-app-worker
     command: ["node", "apps/worker/src/main.ts"]
     # Let the worker drain backups and paid calls (STOP_TIMEOUT_MS, 470 s), then close its database.
     # Docker sends SIGTERM to the worker first; after this window it kills the remaining processes.
@@ -65,9 +100,15 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
+    healthcheck:
+      # No HTTP surface to probe; PID 1 must actually be the worker process (a bare liveness
+      # tautology would also pass under a wrong or shell entrypoint).
+      <<: *hc
+      test: ["CMD-SHELL", "grep -q worker /proc/1/cmdline"]
 
   web:
     <<: *app
+    image: aihot-app-web
     command: ["node", "apps/web/server.ts"]
     # SSR reads the API over HTTP; backend credentials and stored files stay in api/worker.
     environment:
@@ -78,11 +119,18 @@ services:
       AIHOT_RELEASE: ${AIHOT_RELEASE:-}
       WEB_HOST: 0.0.0.0
       WEB_PORT: "3000"
+    # Host bind is env-driven so the cloud host can keep the port loopback-only (zero inbound,
+    # C1-06); the public path there is the tunnel, not a published port.
     ports:
-      - "${PORT:-3000}:3000"
+      - "${WEB_BIND:-0.0.0.0}:${PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_started
+    healthcheck:
+      # /api/health is api-owned, so this probe exercises web -> api -> db end to end; a web that
+      # cannot serve its proxied API paths is not healthy for this site.
+      <<: *hc
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.WEB_PORT||3000)+'/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
 
   caddy:
     image: caddy:2-alpine

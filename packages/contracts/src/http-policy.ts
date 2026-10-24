@@ -154,3 +154,18 @@ export function apiOwnedPatterns(): readonly RegExp[] {
 export function isApiOwned(pathname: string): boolean {
   return tables().apiPaths.some((re) => re.test(pathname));
 }
+
+/** Cache-Control for public v1 API reads (migrate radar values). */
+export const V1_CACHE_CONTROL = {
+  items: "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
+  codexResets: "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+  hotTopics: "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+  storyByPublicId: "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+  dailies: "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
+  latestDaily: "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
+  dailyByDate: "public, max-age=300, s-maxage=300, stale-while-revalidate=3600",
+  selectedSnapshot: "public, max-age=300, s-maxage=300, stale-while-revalidate=900",
+  selectedChanges: "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+} as const;
+
+export const RSS_CACHE_CONTROL = "public, max-age=300, s-maxage=300, stale-while-revalidate=900";

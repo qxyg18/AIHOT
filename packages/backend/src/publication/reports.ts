@@ -3,6 +3,7 @@
 import type { ReportCitation, ReportDetail, ReportIndexEntry, ReportNavigationEntry, ReportKind } from "@aihot/contracts/site";
 import { REPORTS, SITE, withSubject } from "@aihot/site";
 import { sql } from "../db.ts";
+import { entityTerms, matchEntities } from "../entitytags/matcher.ts";
 import { cached, type Cached } from "../lib/cache.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { isoWeekRange, monthRange } from "@aihot/contracts/time";
@@ -215,7 +216,7 @@ function sectionSummary(section: Record<string, any>, avail: Map<string, Availab
   return typeof section.summary === "string" && section.summary ? section.summary : null;
 }
 
-function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>): ReportCitation {
+function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>, ents?: Map<string, CitationEntity[]>): ReportCitation {
   const id = raw.itemId ?? null;
   const a = id ? avail.get(id) : undefined;
   if (!stillPublic(raw, avail)) {
@@ -227,6 +228,8 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
   }
   const iconSrcSet = a?.sourceIcon ? proxiedImageSet(a.sourceIcon, "avatar") : null;
   const metadata = citationMetadata(raw, a);
+  // ym132-②：实体标签按条目 id 批取（下架条目走上面的 withdrawn 分支，不会到这里）。
+  const entities = id ? ents?.get(id) : undefined;
   return {
     itemId: id,
     title: String(raw.title ?? ""),
@@ -234,8 +237,9 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
     sourceName: publicSourceName(metadata.sourceName),
     sourceIconUrl: a?.sourceIcon ? proxiedImage(a.sourceIcon, "avatar") : null,
     ...(iconSrcSet ? { sourceIconSrcSet: iconSrcSet } : {}),
-    firstParty: a?.firstParty ?? false,
+    firstParty: raw.firstParty ?? a?.firstParty ?? false,
     available: true,
+    ...(entities && entities.length > 0 ? { entities } : {}),
   };
 }
 
@@ -252,8 +256,8 @@ function citedSources(content: Record<string, any>, kind: "daily" | "periodic", 
  * A cited entry with what a daily entry composed by rule adds: how many other sources reported the
  * event, the event's other developments listed under it (titles only), and the earlier daily it follows.
  */
-function entryCitation(raw: Record<string, any>, avail: Map<string, Availability>): ReportCitation {
-  const citation = citationFrom(raw, avail);
+function entryCitation(raw: Record<string, any>, avail: Map<string, Availability>, ents?: Map<string, CitationEntity[]>): ReportCitation {
+  const citation = citationFrom(raw, avail, ents);
   if (!citation.available) return citation;
   const related: ReportCitation[] = (raw.related ?? []).map((r: Record<string, any>) => ({ ...citationFrom(r, avail), summary: null }));
   return {
@@ -262,6 +266,52 @@ function entryCitation(raw: Record<string, any>, avail: Map<string, Availability
     ...(related.length ? { related } : {}),
     ...(typeof raw.followUp === "string" ? { followUp: raw.followUp } : {}),
   };
+}
+
+export type CitationEntity = { type: "brand" | "channel" | "mall" | "mall-chain"; slug: string; name: string };
+
+const ENTITY_ORDER: Record<CitationEntity["type"], number> = { brand: 0, channel: 1, mall: 2, "mall-chain": 3 };
+
+/** ym132-②：日报条目的实体标签——article_entities 标注，与文章页同公开闸（ym95：撤文/隔离源的
+ *  标签不外泄）；排序镜像文章页（品牌→渠道→商场），每条约 3 个，防综述型条目 chip 淹没版面。
+ *  表优先、实时匹配兜底（与 articleEntities 同法）：日报引用的正是当天新文，等下周标注轮会把
+ *  「有报道无标签」拖成常态——实时命中让 freshness 与文章页一致。 */
+async function citationEntities(ids: string[]): Promise<Map<string, CitationEntity[]>> {
+  const out = new Map<string, CitationEntity[]>();
+  if (ids.length === 0) return out;
+  const rows = await sql<{ id: string; type: CitationEntity["type"]; slug: string; name: string }[]>`
+    SELECT e.article_id AS id, e.entity_type AS type, e.entity_slug AS slug, e.entity_name AS name
+    FROM article_entities e
+    JOIN publications p ON p.article_id = e.article_id
+    JOIN sources s ON s.id = p.source_id
+    WHERE e.article_id = ANY(${ids}::text[]) AND e.entity_slug <> '__none__'
+      AND p.visibility = 'public' AND s.participation_mode = 'editorial'
+    ORDER BY e.article_id, (CASE e.entity_type WHEN 'brand' THEN 0 WHEN 'channel' THEN 1 WHEN 'mall' THEN 2 ELSE 3 END), e.entity_slug`;
+  for (const r of rows) {
+    const list = out.get(r.id) ?? [];
+    if (list.length < 3) list.push({ type: r.type, slug: r.slug, name: r.name });
+    out.set(r.id, list);
+  }
+  const missing = ids.filter((id) => (out.get(id) ?? []).length === 0);
+  if (missing.length > 0) {
+    // yn41（48h 审计 M1）：兜底实时匹配与主查询同闸——非公开/已撤文章不进匹配，否则标注表暂空
+    // 的窗口里撤文与隔离源仍会照附标签进日报。闸在 SQL 里：这些文章连读都不读。
+    const texts = await sql<{ id: string; title: string; excerpt: string; body: string }[]>`
+      SELECT a.id, a.title, coalesce(a.excerpt, '') AS excerpt, left(coalesce(a.body_text, ''), 600) AS body
+      FROM articles a
+      WHERE a.id = ANY(${missing}::text[])
+        AND EXISTS (SELECT 1 FROM publications p JOIN sources s ON s.id = p.source_id
+                    WHERE p.article_id = a.id AND p.visibility = 'public' AND s.participation_mode = 'editorial')`;
+    const terms = entityTerms();
+    for (const t of texts) {
+      const hits = matchEntities(`${t.title} ${t.excerpt} ${t.body}`, terms)
+        .map((h): CitationEntity => ({ type: h.type, slug: h.slug, name: h.name }))
+        .sort((a, b) => (ENTITY_ORDER[a.type] ?? 9) - (ENTITY_ORDER[b.type] ?? 9) || a.slug.localeCompare(b.slug))
+        .slice(0, 3);
+      if (hits.length > 0) out.set(t.id, hits);
+    }
+  }
+  return out;
 }
 
 const bigrams = (text: string) => {
@@ -336,7 +386,9 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
   ];
   const rawItems = [...entries, ...entries.flatMap((e) => e.related ?? [])];
   const avail = await availability([...new Set(rawItems.map((i) => i.itemId).filter(Boolean))]);
-  const cite = (raw: Record<string, any>) => entryCitation(raw, avail);
+  // ym132-②：条目实体标签批取（与 availability 同批 id；下架条目在 citationFrom 里不附）。
+  const ents = await citationEntities([...new Set(rawItems.map((i) => i.itemId).filter((x): x is string => Boolean(x)))]);
+  const cite = (raw: Record<string, any>) => entryCitation(raw, avail, ents);
 
   const sections: ReportDetail["sections"] = kind === "daily"
     ? (c.sections ?? []).map((s: any) => ({ label: String(s.label), summary: null, items: (s.items ?? []).map(cite) }))
@@ -346,6 +398,11 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
   const highlights = highlightIds.length
     ? highlightIds.map((id) => all.find((x: ReportCitation) => x.itemId === id)).filter((x): x is ReportCitation => !!x)
     : all.slice(0, 3);
+  // 主编点评（ym44）：只透传仍然可读的条目，下架条目的点评随其引用一并消失。
+  const soWhats = (Array.isArray(c.soWhats) ? c.soWhats : [])
+    .filter((s: any) => s && typeof s.itemId === "string" && typeof s.soWhat === "string" && all.some((x) => x.itemId === s.itemId && x.available))
+    .slice(0, 3)
+    .map((s: any) => ({ itemId: String(s.itemId), soWhat: String(s.soWhat) }));
   const text = [c.lead?.leadParagraph ?? "", c.overview ?? "", ...all.flatMap((i: ReportCitation) => [`${i.title}${i.summary ?? ""}`, ...(i.related ?? []).map((r) => r.title)])].join("");
   // An issue leads with the item it names (an issue composed by rule records it), or the one standing in
   // for it once withdrawn (issueLead); an earlier daily's lead is matched by title. An earlier weekly or
@@ -375,6 +432,7 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
     leadItemId: (kind === "daily" || c.leadItemId) && leadItem?.available ? leadItem.itemId : null,
     overview,
     highlights,
+    soWhats,
     sections,
     flashes: (c.flashes ?? []).map(cite),
     cover,
@@ -655,4 +713,13 @@ export async function loadReportNavigation(kind: ReportKind, key: string) {
 
 export async function loadReportMonth(kind: ReportKind, month: string) {
   return (await listReports(kind)).filter((e) => e.key.startsWith(month)).map(({ key, issueNumber, title }) => ({ key, issueNumber, title }));
+}
+
+/** The headline a projected index shows for an issue (migrate read layer; feeds.ts consumes). */
+export function reportHeadline(content: Record<string, any>, kind: "daily" | "periodic", gone: Set<string>): string | null {
+  if (kind === "daily" && content.lead?.title) return String(content.lead.title);
+  if (kind === "periodic" && periodicHeadline(content)) return periodicHeadline(content);
+  const items: Array<Record<string, any>> = kind === "daily" ? (content.sections ?? []).flatMap((s: any) => s.items ?? []) : (content.themes ?? []).flatMap((t: any) => t.storyRefs ?? []);
+  const first = items.find((i) => !i.itemId || !gone.has(String(i.itemId)));
+  return first?.title ?? null;
 }

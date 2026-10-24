@@ -46,15 +46,19 @@ export async function ensureContentTargets() {
 /** The acknowledgement and stored outcome follow the same rules for first sends and recovery. */
 async function sendDelivery(id: number, url: string, card: unknown): Promise<{ status: string }> {
   let result: Awaited<ReturnType<typeof postWebhook>>;
+  let ok = false, httpStatus = 0, body = "";
   try {
-    result = await postWebhook(url, card);
+    const res = await postWebhook(url, card);
+    ok = res.ok; httpStatus = res.status; body = res.body;
   } catch (error) {
     // A timeout or lost connection may still have delivered. Never retry it automatically.
-    result = { status: "unknown", body: String(error).slice(0, 500) };
+    body = String(error).slice(0, 500);
   }
-  await sql`UPDATE deliveries SET status = ${result.status}, response = ${result.body},
-    sent_at = ${result.status === "sent" ? new Date() : null}, updated_at = now() WHERE id = ${id}`;
-  return { status: result.status };
+  // A definite rejection (ok on HTTP 200, or a 4xx) fails; a 5xx may still have gone through.
+  const status = ok ? "sent" : httpStatus >= 400 && httpStatus < 500 ? "failed" : "unknown";
+  await sql`UPDATE deliveries SET status = ${status}, response = ${body},
+    sent_at = ${status === "sent" ? new Date() : null}, updated_at = now() WHERE id = ${id}`;
+  return { status };
 }
 
 export async function deliverContent(req: DeliveryRequest): Promise<Array<{ target: string; status: string }>> {

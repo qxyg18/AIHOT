@@ -9,7 +9,11 @@ import type { Brand } from "@aihot/contracts/site";
 import type { Db } from "./db.ts";
 import type { QueueOptions } from "./jobs/queue.ts";
 import type { Finding } from "./notify/feishu.ts";
-import type { Topic, TopicMember } from "./publication/topics.ts";
+import type { TopicLink } from "@aihot/contracts/site";
+
+/** Module topic shapes (upstream modules surface; radar topics.ts keeps its own types). */
+interface Topic { slug: string; name: string; entityId?: string | null }
+interface TopicMember { topicSlug: string; itemId: string }
 
 /** A cron schedule (Asia/Shanghai), recorded in job_runs like the engine's (apps/worker/src/schedules.ts). */
 export interface Scheduled {

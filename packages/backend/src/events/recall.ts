@@ -103,7 +103,7 @@ export async function vectorsFor(items: Array<{ id: string; text: string; revisi
     } else missing.push({ ...it, hash });
   }
   if (missing.length) {
-    const got = await ensureEmbeddings(missing.map((m) => ({ id: m.id, text: m.text })));
+    const got = await ensureEmbeddings("article", missing.map((m) => ({ id: m.id, text: m.text })));
     for (const m of missing) {
       const v = got.get(m.id);
       if (!v) continue;

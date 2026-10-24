@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
+import { importEntityDirectory } from "@aihot/backend/leaderboard/directory";
+import { seedTopics } from "@aihot/backend/publication/topics";
 import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 
 interface SeedSource {
@@ -23,6 +25,11 @@ interface SeedSource {
 }
 
 const { sources } = JSON.parse(readFileSync(path.join(REPO_ROOT, "industry/sources.json"), "utf8")) as { sources: SeedSource[] };
+console.log(`topics: ${await seedTopics()}`);
+if (process.argv.includes("--topics-only")) {
+  await closeDb();
+  process.exit(0);
+}
 let added = 0;
 for (const s of sources) {
   assertSupportedConfig(s.kind, s.config);
@@ -37,4 +44,10 @@ for (const s of sources) {
   added += inserted.length;
 }
 console.log(`sources: ${added} added, ${sources.length - added} already there`);
+if (FEATURES.leaderboard) {
+  // zw12 两榜实体名录（品牌 19 / 商场 ~112）：中文别名预写各 metric 源，身份解析零漂移。
+  // AI 模型名录（lb-models-*.json）随 v15 退役不再导入；种子文件保留作历史参考。
+  const entities = await importEntityDirectory();
+  console.log(`leaderboard entities: ${entities.models} models, ${entities.aliases} names added`);
+}
 await closeDb();

@@ -41,7 +41,7 @@ export function buildStoryDigestInput(story: { title: string; digest: string | n
  * as they are now with the current prompt, as after a correction: a new wording otherwise reaches a story
  * only when its reports change.
  */
-export async function composeStoryDigest(storyId: number, opts: { rewrite?: boolean } = {}): Promise<{ updated: boolean; version?: number }> {
+export async function composeStoryDigest(storyId: number, opts: { rewrite?: boolean; afterCorrection?: boolean } = {}): Promise<{ updated: boolean; version?: number }> {
   const [story] = await sql<{ id: number; title: string; digest: string | null; version: number; origin: string }[]>`
     SELECT id, title, digest, version, origin FROM stories WHERE id = ${storyId} AND merged_into IS NULL`;
   if (!story) return { updated: false };
@@ -93,4 +93,27 @@ export async function composeStoryDigest(storyId: number, opts: { rewrite?: bool
     return true;
   });
   return updated ? { updated: true, version } : { updated: false };
+}
+
+/** Story lifecycle badge (migrate read layer): active/watching/settled by latest activity age. */
+export function storyStatusFor(latestAt: Date | null, now = Date.now()): "active" | "watching" | "settled" {
+  if (!latestAt) return "settled";
+  const age = now - latestAt.getTime();
+  if (age < 24 * 3600 * 1000) return "active";
+  if (age < 72 * 3600 * 1000) return "watching";
+  return "settled";
+}
+
+/** Refresh story lifecycle badges from latest_at (radar worker schedule). */
+export async function refreshStoryStatuses(): Promise<{ updated: number }> {
+  const res = await sql`
+    UPDATE stories SET status = CASE
+      WHEN latest_at > now() - interval '24 hours' THEN 'active'
+      WHEN latest_at > now() - interval '72 hours' THEN 'watching'
+      ELSE 'settled' END
+    WHERE merged_into IS NULL AND status <> CASE
+      WHEN latest_at > now() - interval '24 hours' THEN 'active'
+      WHEN latest_at > now() - interval '72 hours' THEN 'watching'
+      ELSE 'settled' END`;
+  return { updated: res.count };
 }

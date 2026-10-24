@@ -1,28 +1,50 @@
-import { ADMIN, SITE } from "@aihot/site";
+import { SITE } from "@aihot/industry/site";
 import { useState } from "react";
 import { Form, useSearchParams } from "react-router";
 import type { Route } from "./+types/feedback";
-import type { AdminFeedback, AdminFeedbackRow } from "@aihot/contracts/admin";
 import { adminGet } from "../../lib/admin.server";
 import { useAdminAction } from "../../features/admin/action";
 import { bj } from "../../features/admin/format";
 import { FEEDBACK_STATUS } from "../../features/admin/labels";
 import { AdminPage, Badge, Button, Card, Empty, FilterChips, Input, Pager, ReasonDialog, Select, Textarea, Time } from "../../features/admin/ui";
 
+interface Feedback {
+  id: number;
+  content: string;
+  email: string | null;
+  page_url: string | null;
+  /** local (viewable here until forwarded), feishu (in the internal chat), gone (could not be forwarded), or null. */
+  screenshot: "local" | "feishu" | "gone" | null;
+  source_hash: string;
+  status: string;
+  note: string | null;
+  forwarded_at: string | null;
+  forward_error: string | null;
+  created_at: string;
+  updated_at: string;
+  banned: boolean;
+  from_source: number;
+}
 
+interface Data {
+  page: number;
+  rows: Feedback[];
+  counts: Record<string, number>;
+  bans: Array<{ source_hash: string; reason: string | null; created_by: string | null; created_at: string }>;
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
-  return adminGet<AdminFeedback>(request, `/api/admin/feedback${new URL(request.url).search}`);
+  return adminGet<Data>(request, `/api/admin/feedback${new URL(request.url).search}`);
 }
 
 export const meta: Route.MetaFunction = () => [{ title: `反馈 · ${SITE.name} 后台` }];
 
 const TONE: Record<string, "accent" | "warn" | "ok" | "muted"> = { new: "accent", triaged: "warn", replied: "ok", resolved: "ok", spam: "muted" };
 
-function FeedbackCard({ f }: { f: AdminFeedbackRow }) {
+function FeedbackCard({ f }: { f: Feedback }) {
   const { run, pending } = useAdminAction();
   const [note, setNote] = useState(f.note ?? "");
-  const [dialog, setDialog] = useState<null | "ban" | "email-ban" | "erase">(null);
+  const [dialog, setDialog] = useState<null | "ban" | "erase">(null);
   const base = `/api/admin/feedback/${f.id}`;
   const version = new Date(f.updated_at).toISOString();
   return (
@@ -35,7 +57,6 @@ function FeedbackCard({ f }: { f: AdminFeedbackRow }) {
         {f.page_url && <a className="max-w-[320px] truncate hover:text-accent" href={f.page_url} target="_blank" rel="noreferrer">{f.page_url}</a>}
         {f.from_source > 1 && <Badge tone="info" title="同一来源（IP 与浏览器家族的不可逆标识）">同来源 {f.from_source} 条</Badge>}
         {f.banned && <Badge tone="bad">来源已封禁</Badge>}
-        {f.email_banned && <Badge tone="bad">邮箱已临时封禁</Badge>}
         {!f.forwarded_at && f.status === "new" && (
           <Badge tone="warn" title={f.forward_error && f.forward_error !== "pending" ? `还没有转发到内部飞书群：${f.forward_error}` : "还没有转发到内部飞书群"}>未转发</Badge>
         )}
@@ -58,32 +79,22 @@ function FeedbackCard({ f }: { f: AdminFeedbackRow }) {
           {Object.entries(FEEDBACK_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
         <Textarea rows={1} className="!min-h-[38px]" placeholder="处理备注（仅内部可见）" value={note} onChange={(e) => setNote(e.target.value)} />
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex gap-1.5">
           <Button size="md" disabled={note === (f.note ?? "")} busy={pending === "note"} onClick={() => run("PATCH", base, { note: note || null, version }, { label: "note", success: "备注已保存" })}>
             保存备注
           </Button>
           <Button tone="ghost" onClick={() => setDialog(f.banned ? null : "ban")} disabled={f.banned} title="拒绝这个来源的后续反馈">封禁来源</Button>
-          {f.email && <Button tone="ghost" onClick={() => setDialog("email-ban")} disabled={f.email_banned} title="拒绝填写这个邮箱的反馈，48 小时后自动解除">临时封禁邮箱</Button>}
           <Button tone="ghost" onClick={() => setDialog("erase")} title="按隐私说明删除提交者的资料">删除资料</Button>
         </div>
       </div>
       <ReasonDialog
         open={dialog === "ban"}
         title="封禁这个反馈来源"
-        description={`同一来源之后提交反馈会被拒绝。来源标识不可还原成 IP。${ADMIN.banNote ?? ""}`}
+        description="同一来源之后提交反馈会被拒绝。来源标识不可还原成 IP。"
         danger
         confirmLabel="封禁"
         onClose={() => setDialog(null)}
         onSubmit={async (reason) => (await run("POST", "/api/admin/feedback-bans", { sourceHash: f.source_hash, reason }, { label: "ban", success: "已封禁" })) !== null}
-      />
-      <ReasonDialog
-        open={dialog === "email-ban"}
-        title="临时封禁这个反馈邮箱"
-        description="填写这个邮箱的反馈将暂停 48 小时，换网络或浏览器也生效。邮箱未经验证，请只在确认持续滥用后使用；不会连带封禁其他邮箱或访问网页。"
-        danger
-        confirmLabel="封禁 48 小时"
-        onClose={() => setDialog(null)}
-        onSubmit={async (reason) => (await run("POST", "/api/admin/feedback-bans", { feedbackId: f.id, reason }, { label: "email-ban", success: "邮箱已临时封禁 48 小时" })) !== null}
       />
       <ReasonDialog
         open={dialog === "erase"}
@@ -104,7 +115,7 @@ export default function FeedbackAdmin({ loaderData }: Route.ComponentProps) {
   const { run } = useAdminAction();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   return (
-    <AdminPage title="反馈" subtitle={ADMIN.feedbackNote}>
+    <AdminPage title="反馈" subtitle={`回复用飞书邮箱发送，收件人、主题、正文都确认后再发；“已修复上线”要有生产证据。签名统一 ${SITE.name}。`}>
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <FilterChips
           param="status"
@@ -120,13 +131,12 @@ export default function FeedbackAdmin({ loaderData }: Route.ComponentProps) {
       </div>
       <Pager page={page} hasMore={rows.length === 50} />
       {bans.length > 0 && (
-        <Card className="mt-8" title="反馈封禁">
+        <Card className="mt-8" title="已封禁的来源">
           <ul className="space-y-2 text-[13px]">
             {bans.map((b) => (
               <li key={b.source_hash} className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  {b.source_hash.startsWith("email:") ? "邮箱" : "来源"} · <span className="break-all font-mono text-[12px] text-ink-3">{b.source_hash}</span> · {b.reason} · {b.created_by} · {bj(b.created_at, true)}
-                  {b.expires_at && <span> · {bj(b.expires_at, true)} 自动解除</span>}
+                  <span className="font-mono text-[12px] text-ink-3">{b.source_hash}</span> · {b.reason} · {b.created_by} · {bj(b.created_at, true)}
                 </span>
                 <Button size="sm" tone="ghost" onClick={() => run("DELETE", `/api/admin/feedback-bans/${encodeURIComponent(b.source_hash)}`, undefined, { label: `unban-${b.source_hash}`, success: "已解除封禁" })}>
                   解除

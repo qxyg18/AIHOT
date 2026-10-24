@@ -4,8 +4,8 @@
 // dailies and a model only writes its overview and introductions, from the brief in the industry pack
 // (industry/prompts/report-period*.md).
 import { z } from "zod";
-import { EDITION_TIMES, REPORTS, SITE } from "@aihot/site";
-import { PLAIN_TERMS, RELEASE } from "@aihot/industry/taxonomy";
+import { EDITION_TIMES, REPORTS } from "@aihot/site";
+import { SITE } from "@aihot/industry/site";
 import { promptText, promptVersion } from "../editorial/prompts.ts";
 import { modelFor } from "../editorial/models.ts";
 import { ENTITIES, entityNames, isRelease } from "../editorial/vocabulary.ts";
@@ -16,9 +16,21 @@ import { chatJson } from "../providers/llm.ts";
 import { completeReceipt } from "../providers/receipts.ts";
 import { shutdownSignal } from "../jobs/queue.ts";
 import { emit } from "../modules.ts";
-import { arrangeDaily, candidates, dailyEdition, periodEntries, sectionOf, SECTION_ORDER, type Candidate, type EditionEntry } from "./edition.ts";
+import { matchEntityIds } from "../editorial/writing.ts";
+import { arrangeDaily, candidates, dailyEdition, periodEntries, sectionOf, SECTION_ORDER, type Candidate, type EditionEntry, type ReportEntry, type DailyEntry } from "./edition.ts";
 
-export const REPORT_VERSION = promptVersion("report-period", "report-period-sections", "report-period-no-sections");
+export const REPORT_VERSION = promptVersion("report-daily-lead", "report-period", "report-period-sections", "report-period-no-sections", "report-so-what");
+
+/**
+ * The pack's headline launch kind (the upstream AI pack: 模型发布, counted as the masthead's release
+ * figure). This industry names none, so its issues carry no release figure.
+ */
+const RELEASE: { category: string; tag: string; unit: string } | null = null;
+/**
+ * Words a writer may use that name nothing in particular (the upstream AI pack listed ai/api/llm…).
+ * This pack lists none: an empty list keeps the grounding check strict.
+ */
+const PLAIN_TERMS: readonly string[] = [];
 
 /**
  * The masthead's figures, counted in events: sources over every report its entries cite; releases
@@ -74,6 +86,67 @@ async function saveReport(kind: ReportKind, key: string, start: Date, end: Date,
   });
 }
 
+const LeadSchema = z.object({
+  title: z.string().max(120),
+  leadParagraph: z.string().max(600),
+  highlights: z.array(z.union([z.number(), z.string()])).max(6).catch([]),
+});
+
+async function writeLead(kind: string, key: string, entries: ReportEntry[], model: string) {
+  if (entries.length === 0) return null;
+  const list = entries.slice(0, 30).map((e, i) => `${i + 1}. ${e.title}｜${e.summary.slice(0, 120)}`).join("\n");
+  const res = await chatJson({
+    model, purpose: "report_lead", subject: `report:${kind}:${key}`, promptVersion: REPORT_VERSION,
+    system: promptText("report-daily-lead"),
+    user: list, schema: LeadSchema, temperature: 0.3, maxTokens: 800,
+  });
+  const highlights = res.data.highlights
+    .map((h) => entries[Number(h) - 1])
+    .filter((e): e is ReportEntry => !!e)
+    .map((e) => e.itemId);
+  return { lead: { title: res.data.title, leadParagraph: res.data.leadParagraph }, highlights, receiptId: res.receiptId };
+}
+
+const SoWhatSchema = z.object({
+  // Item-level catch: one malformed entry costs itself, not the whole issue's comments.
+  items: z.array(z.object({ id: z.string(), soWhat: z.string().max(120) }).nullable().catch(null)).max(6).catch([]),
+});
+
+/** Overlong so-what collapsed to its first sentence; nothing left to keep means drop it. */
+export function firstSentence(text: string): string | null {
+  if (!text) return null;
+  if ([...text].length <= 100) return text;
+  const first = /^[^。！？!?]+[。！？!?]/u.exec(text)?.[0] ?? "";
+  return first && [...first].length <= 100 ? first : null;
+}
+
+/**
+ * 主编点评（ym44）：头条 1~3 条各一句「对渠道生意的含义」。身份词典校验沿用 ka4 的口径——点评句里
+ * 出现的主体必须是该条目自身材料（标题、摘要、来源名）里出现过的，越界即张冠李戴，整句丢弃（宁缺勿错；
+ * 机械面只及词典内主体，词典外主体不在校验面，见卡 7d3ffde1 扩容计划）。
+ */
+export async function writeSoWhat(subject: string, entries: ReportEntry[], model: string): Promise<{ comments: Array<{ itemId: string; soWhat: string }>; receiptId: number }> {
+  const list = entries.map((e, i) => `${i + 1}. [${e.itemId}] ${e.title}｜${e.summary.slice(0, 120)}`).join("\n");
+  const res = await chatJson({
+    model, purpose: "report_so_what", subject, promptVersion: REPORT_VERSION,
+    system: promptText("report-so-what"),
+    user: list, schema: SoWhatSchema, temperature: 0.3, maxTokens: 500,
+  });
+  const byId = new Map(entries.map((e) => [e.itemId, e]));
+  const comments: Array<{ itemId: string; soWhat: string }> = [];
+  for (const c of res.data.items) {
+    if (!c) continue;
+    const e = byId.get(c.id);
+    const soWhat = firstSentence(c.soWhat.trim());
+    if (!e || !soWhat) continue;
+    // 词内守卫：只拦词典内主体的张冠李戴（词典外主体不在校验面，宁缺勿错以词典为界）。
+    const allowed = new Set(matchEntityIds([e.title, e.summary, e.sourceName]));
+    if (matchEntityIds([soWhat]).some((id) => !allowed.has(id))) continue;
+    comments.push({ itemId: e.itemId, soWhat });
+  }
+  return { comments, receiptId: res.receiptId };
+}
+
 /** "10 月 4 日 08:00": one end of a quiet issue's window, as its lead paragraph names it. */
 function windowPoint(at: Date): string {
   const day = beijingDate(at);
@@ -82,9 +155,11 @@ function windowPoint(at: Date): string {
 
 /**
  * Daily report for Beijing date D covers the 24 hours up to the site's edition time on D (EDITION_TIMES).
- * Its most important entry leads, in its own words, and the next three are today's highlights. A window
- * the editors judged with nothing new in it still has its issue: no entries, and a lead that says so
- * (REPORTS.quiet).
+ * Its most important entry leads, in its own words, and the next three are today's highlights — unless
+ * the lead writer (migrate's report-daily-lead) returns a usable issue lead, which then takes the masthead
+ * and picks the highlights; the 主编点评 (soWhats) comments on the first three. Neither model step may
+ * hold the issue back: a failed writer leaves the rule lead and no comments. A window the editors judged
+ * with nothing new in it still has its issue: no entries, and a lead that says so (REPORTS.quiet).
  */
 export async function composeDaily(date: string, reason?: string): Promise<{ key: string; entries: number }> {
   const previous = await savedReport("daily", date);
@@ -96,13 +171,42 @@ export async function composeDaily(date: string, reason?: string): Promise<{ key
   if (edition.entries.length === 0 && edition.stats.judgedReports === 0) throw new Error(`daily ${date}: nothing judged in its window`);
   const issue = arrangeDaily(edition.entries);
   const [lead, ...rest] = issue.main;
+  const ordered = issue.main.map((e) => e.entry).filter((e): e is DailyEntry => !!e);
+  const model = await modelFor("report");
+  // 头条导语（migrate）：模型从当日条目写刊物导语并选看点；失败降级回规则导语（头条自带文），出刊不能等。
+  const receipts: number[] = [];
+  let written: Awaited<ReturnType<typeof writeLead>> = null;
+  try {
+    written = await writeLead("daily", date, ordered, model);
+  } catch (error) {
+    if (shutdownSignal.signal.aborted) throw error;
+    console.error(JSON.stringify({ level: "warn", msg: "daily lead writer failed; the issue goes out with its rule lead", report: `daily:${date}`, error: logError(error) }));
+  }
+  if (written) receipts.push(written.receiptId);
+  const ruleLead = lead
+    ? { title: lead.entry.title, leadParagraph: lead.entry.summary }
+    : { title: REPORTS.quiet.title, leadParagraph: REPORTS.quiet.paragraph.replace("{start}", windowPoint(start)).replace("{end}", windowPoint(end)) };
+  const highlights = written?.highlights.length ? written.highlights : rest.slice(0, 3).map((e) => e.entry.itemId);
+  // 主编点评（ym44）：看点条目（无看点时评分前 3）各一句；点评缺了不致命，当期留空。
+  const highlightEntries = highlights.map((id) => ordered.find((e) => e.itemId === id)).filter((e): e is DailyEntry => !!e);
+  const soWhatTargets = (highlightEntries.length ? highlightEntries : ordered).slice(0, 3);
+  let soWhats: Array<{ itemId: string; soWhat: string }> = [];
+  if (soWhatTargets.length) {
+    try {
+      const soWhat = await writeSoWhat(`report:daily:${date}:so-what`, soWhatTargets, model);
+      soWhats = soWhat.comments;
+      receipts.push(soWhat.receiptId);
+    } catch (error) {
+      if (shutdownSignal.signal.aborted) throw error;
+      console.error(JSON.stringify({ level: "warn", msg: "daily so-what failed; the issue goes out without comments", report: `daily:${date}`, error: logError(error) }));
+    }
+  }
   const content = {
     date,
-    lead: lead
-      ? { title: lead.entry.title, leadParagraph: lead.entry.summary }
-      : { title: REPORTS.quiet.title, leadParagraph: REPORTS.quiet.paragraph.replace("{start}", windowPoint(start)).replace("{end}", windowPoint(end)) },
+    lead: written?.lead ?? ruleLead,
     leadItemId: lead?.entry.itemId ?? null,
-    highlights: rest.slice(0, 3).map((e) => e.entry.itemId),
+    highlights,
+    soWhats,
     sections: SECTION_ORDER
       .map((label) => ({ label, items: issue.main.filter((e) => sectionOf(e.category) === label).map((e) => e.entry) }))
       .filter((s) => s.items.length > 0),
@@ -112,7 +216,7 @@ export async function composeDaily(date: string, reason?: string): Promise<{ key
     windowEnd: end.toISOString(),
     generator: { version: REPORT_VERSION, ...edition.stats, ...issue.stats },
   };
-  await saveReport("daily", date, start, end, content, reason, null, []);
+  await saveReport("daily", date, start, end, content, reason, model, receipts);
   return { key: date, entries: issue.main.length };
 }
 
@@ -332,4 +436,19 @@ export async function composeDueReports(now = new Date(), limit = 8): Promise<{ 
   }
   if (failed.length) throw new Error(`reports: ${failed.join(", ")} failed${generated.length ? `; ${generated.join(", ")} written` : ""}`);
   return { generated, failed };
+}
+
+/** Compose missing dailies within the catch-up window (radar worker schedule). */
+export async function catchUpReports(now = new Date(), days = 7): Promise<{ generated: string[] }> {
+  const generated: string[] = [];
+  const today = new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 10);
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.parse(today) - i * 86400_000).toISOString().slice(0, 10);
+    const [exists] = await sql`SELECT 1 FROM reports WHERE kind = 'daily' AND key = ${d}`;
+    if (!exists) {
+      await composeDaily(d, "catch-up");
+      generated.push(d);
+    }
+  }
+  return { generated };
 }

@@ -44,7 +44,7 @@ const link = (label: string, url: string, type: string) => ({
 // Card JSON 2.0: a header title has one fixed size, so the title is the first body line, a size above the summary.
 function card(r: Row) {
   const category = CATEGORIES.find((c) => c.key === r.category);
-  const tag = category ? ` <text_tag color='${category.tagColor}'>${category.label}</text_tag>` : "";
+  const tag = category ? ` <text_tag color='${(category as { tagColor?: string }).tagColor ?? "grey"}'>${category.label}</text_tag>` : "";
   return {
     schema: "2.0",
     config: { style: { text_size: { title: { default: "heading-3", pc: "heading-3", mobile: "heading-4" } } } },

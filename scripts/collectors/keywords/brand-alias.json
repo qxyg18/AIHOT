@@ -1,0 +1,474 @@
+{
+ "updatedAt": "2026-10-06T08:55:23",
+ "source": "ym154 品牌双名延伸调查（三源：源A高德已采实据3000+城对2万店名样本 / 源B官网电商旗舰店web核实两路 / 源C公开报道子品牌核真）",
+ "surveyDoc": "D:/agent-hub/artifacts/2026-10-06/ym154-brand-alias/alias-survey.md",
+ "taskCard": "c2d1645b-b718-45b7-8625-3681f88dc6d1",
+ "brands": {
+  "balabala": {
+   "dualName": true,
+   "aliases": [
+    "balabala",
+    "mini巴拉巴拉",
+    "迷你巴拉"
+   ],
+   "basis": "源A本地1106/6/6店挂牌实证；源B官网balabala.cn+森马集团页+minibala旗舰店；MLL误写剔除",
+   "confidence": "high"
+  },
+  "anta-kids": {
+   "dualName": true,
+   "aliases": [
+    "ANTA KIDS"
+   ],
+   "basis": "源A本地17店；源B安踏品牌体系",
+   "confidence": "high"
+  },
+  "mini-peace": {
+   "dualName": true,
+   "aliases": [
+    "太平鸟童装"
+   ],
+   "basis": "源A本地160店>mini peace 121店形态互补；源B太平鸟官网MINI PEACE板块",
+   "confidence": "high"
+  },
+  "yingshi": {
+   "dualName": true,
+   "aliases": [
+    "YEEHOO"
+   ],
+   "basis": "源A本地310店；源B天猫YEEHOO英氏官方旗舰店",
+   "confidence": "high"
+  },
+  "moodytiger": {
+   "dualName": true,
+   "aliases": [
+    "moody tiger"
+   ],
+   "basis": "源A本地3店分写变体；源B官网连写为正",
+   "confidence": "high"
+  },
+  "davidbella": {
+   "dualName": true,
+   "aliases": [
+    "dave&bella"
+   ],
+   "basis": "源A本地25店；源B官网davebella.com直接核实Dave&Bella",
+   "confidence": "high"
+  },
+  "annair": {
+   "dualName": true,
+   "aliases": [
+    "annil"
+   ],
+   "basis": "源A本地22店；logo写法即annil",
+   "confidence": "high"
+  },
+  "filarriba": {
+   "dualName": true,
+   "aliases": [
+    "拉比"
+   ],
+   "basis": "源A本地102店；源B金发拉比年报；拉比同词噪声由品牌归属过滤兜底",
+   "confidence": "medium"
+  },
+  "abc-kids": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "主词ABC KIDS即挂牌形态；起步股份=公司名非挂牌",
+   "confidence": "high"
+  },
+  "ning-young": {
+   "dualName": false,
+   "aliases": [
+    "李宁儿童"
+   ],
+   "basis": "源A本地4店通俗形态；李宁young与主词大小写等价",
+   "confidence": "high"
+  },
+  "xtep-kids": {
+   "dualName": true,
+   "aliases": [
+    "特步儿童"
+   ],
+   "basis": "源A本地206店；源B钛媒体2025-08官方升级「特步儿童→特步少年」，挂牌更替滞后两词并存",
+   "confidence": "high"
+  },
+  "361-kids": {
+   "dualName": true,
+   "aliases": [
+    "361°kids",
+    "361儿童"
+   ],
+   "basis": "源A本地31/1店；度数符号影响高德分词",
+   "confidence": "high"
+  },
+  "fila-kids": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "fila kids与主词大小写等价",
+   "confidence": "high"
+  },
+  "paw-in-paw": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "paw in paw与主词等价；衣恋直营无别名",
+   "confidence": "high"
+  },
+  "catimini": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "无官方中文名（源B medium：卡蒂米尼仅媒体音译）",
+   "confidence": "medium"
+  },
+  "xinruhe": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "源B查无英文名（儿童高定礼服，天猫店在营）",
+   "confidence": "medium"
+  },
+  "miffy": {
+   "dualName": true,
+   "aliases": [
+    "miffy"
+   ],
+   "basis": "源A本地7店；源B授权体系确认；文具/纸尿裤同名噪声监控点",
+   "confidence": "medium"
+  },
+  "marc-janie": {
+   "dualName": true,
+   "aliases": [
+    "marcjanie"
+   ],
+   "basis": "源A本地1店连写形态；源B百科+京东MARC&JANIE（&式与连写并存收连写）",
+   "confidence": "medium"
+  },
+  "m-latin": {
+   "dualName": true,
+   "aliases": [
+    "M.latin"
+   ],
+   "basis": "源A本地23店；源B百科确认正名「马拉丁」（主词已正确）；mlatin等价",
+   "confidence": "high"
+  },
+  "mqd": {
+   "dualName": true,
+   "aliases": [
+    "马骑顿"
+   ],
+   "basis": "源A本地16店中文形态（主词MQD英文35店）",
+   "confidence": "high"
+  },
+  "mamimaka": {
+   "dualName": true,
+   "aliases": [
+    "MOMOCO"
+   ],
+   "basis": "源A本地45店；源B确认为品牌本名英文（非子品牌）；妈咪玛卡误写剔除",
+   "confidence": "high"
+  },
+  "hostoyo": {
+   "dualName": true,
+   "aliases": [
+    "HOSTOYO"
+   ],
+   "basis": "源A本地14店",
+   "confidence": "high"
+  },
+  "heylads": {
+   "dualName": true,
+   "aliases": [
+    "HEYLADS"
+   ],
+   "basis": "源A本地5店；海澜之家官网",
+   "confidence": "high"
+  },
+  "deesha": {
+   "dualName": true,
+   "aliases": [
+    "Deesha"
+   ],
+   "basis": "源A本地3店；京东DEESHA",
+   "confidence": "high"
+  },
+  "jmbear": {
+   "dualName": true,
+   "aliases": [
+    "JMBEAR"
+   ],
+   "basis": "源A本地4店；官方全大写连写",
+   "confidence": "medium"
+  },
+  "zosee": {
+   "dualName": true,
+   "aliases": [
+    "ZOSEE"
+   ],
+   "basis": "源A本地0命中但源B high（官方双语并用，星天集团）探路采集",
+   "confidence": "high"
+  },
+  "ullu": {
+   "dualName": true,
+   "aliases": [
+    "ULLU"
+   ],
+   "basis": "源A本地5店；京东ullu频道",
+   "confidence": "high"
+  },
+  "dodowordrobe": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "DODO WARDROBE无任何官方使用证据（源B low疑似臆造）剔除",
+   "confidence": "low"
+  },
+  "pususu": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "PU&SU无官方使用证据（源B medium疑似臆造）剔除",
+   "confidence": "medium"
+  },
+  "souhait": {
+   "dualName": true,
+   "aliases": [
+    "Souhait"
+   ],
+   "basis": "源A本地0命中但源B high（嘉曼服饰301276官方英文，logo含Souhait）探路采集",
+   "confidence": "high"
+  },
+  "frog-prince-kids": {
+   "dualName": true,
+   "aliases": [
+    "FROG PRINCE"
+   ],
+   "basis": "源A本地0命中但源B官网frogprince.cn双语确认；蛙品=企业字号剔除",
+   "confidence": "high"
+  },
+  "pepco": {
+   "dualName": true,
+   "aliases": [
+    "PEPCO"
+   ],
+   "basis": "源A本地8店",
+   "confidence": "high"
+  },
+  "dadida": {
+   "dualName": true,
+   "aliases": [
+    "Dadida"
+   ],
+   "basis": "源A本地1店+电商通用写法",
+   "confidence": "medium"
+  },
+  "baomue": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "NANNY GOOSE仅媒体写法（source medium）2026-08才开首店门店极少",
+   "confidence": "medium"
+  },
+  "taranis": {
+   "dualName": true,
+   "aliases": [
+    "TARANIS"
+   ],
+   "basis": "源A本地498店高频",
+   "confidence": "high"
+  },
+  "ginoble": {
+   "dualName": true,
+   "aliases": [
+    "GINOBLE"
+   ],
+   "basis": "源A本地6店",
+   "confidence": "high"
+  },
+  "drkong": {
+   "dualName": true,
+   "aliases": [
+    "Dr.Kong",
+    "江博士健康鞋"
+   ],
+   "basis": "源A本地38店+A建议补完整挂牌形态",
+   "confidence": "high"
+  },
+  "bobdog": {
+   "dualName": true,
+   "aliases": [
+    "BOBDOG",
+    "巴布豆house"
+   ],
+   "basis": "源A本地4店+A核实BOBDOG HOUSE授权独立挂牌形态",
+   "confidence": "high"
+  },
+  "bduck": {
+   "dualName": true,
+   "aliases": [
+    "B.Duck",
+    "B.Duck小黄鸭"
+   ],
+   "basis": "源B香港德盈控股官方；内地招牌B.Duck与连写形态（主轮未跑到零样本）",
+   "confidence": "high"
+  },
+  "tongtai": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "源B拼音式TONGTAI挂牌罕见门店多嵌母婴店形态无需英文",
+   "confidence": "medium"
+  },
+  "sinaner": {
+   "dualName": true,
+   "aliases": [
+    "S-BOX"
+   ],
+   "basis": "源B百科确认斯乃纳童鞋汇店态名（Sinaina拼音式挂牌价值低不收）探路采集",
+   "confidence": "medium"
+  },
+  "beehive": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "源B勘正（审计P2#4）：种子主词即「大黄蜂童鞋」原别名与主词同词删除；BEEHIVE未验证到官方logo不收；晋江大黄蜂零样本未核实不收",
+   "confidence": "medium"
+  },
+  "jnby-by-jnby": {
+   "dualName": true,
+   "aliases": [
+    "江南布衣童装"
+   ],
+   "basis": "中文俗称检索辅助（源B官网确认主词全小写jnby by JNBY正确）",
+   "confidence": "high"
+  },
+  "makale": {
+   "dualName": true,
+   "aliases": [
+    "MarColor"
+   ],
+   "basis": "源B官方挂牌MarColor马卡乐双语并用",
+   "confidence": "high"
+  },
+  "nike-kids": {
+   "dualName": true,
+   "aliases": [
+    "Nike Kids"
+   ],
+   "basis": "源B门店招牌实态英文（主词耐克儿童用于导视）",
+   "confidence": "high"
+  },
+  "adidas-kids": {
+   "dualName": true,
+   "aliases": [
+    "Adidas Kids"
+   ],
+   "basis": "同上",
+   "confidence": "high"
+  },
+  "skechers-kids": {
+   "dualName": true,
+   "aliases": [
+    "Skechers Kids"
+   ],
+   "basis": "源B双语都采",
+   "confidence": "high"
+  },
+  "nb-kids": {
+   "dualName": true,
+   "aliases": [
+    "NB KIDS",
+    "新百伦儿童"
+   ],
+   "basis": "源B招牌最常见NB KIDS+种子中文形态",
+   "confidence": "medium"
+  },
+  "carters": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "主词Carter's即招牌形态；卡特童装民间叫法不收",
+   "confidence": "medium"
+  },
+  "mothercare": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "与主词等价纯英文",
+   "confidence": "high"
+  },
+  "okaidi": {
+   "dualName": true,
+   "aliases": [
+    "欧开蒂"
+   ],
+   "basis": "源B中文通译媒体佐证探路采集",
+   "confidence": "medium"
+  },
+  "mayoral": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "与主词等价；音译非官方",
+   "confidence": "medium"
+  },
+  "jacadi": {
+   "dualName": true,
+   "aliases": [
+    "Jacadi Paris",
+    "亚卡迪"
+   ],
+   "basis": "源B全称+百科通行中文名",
+   "confidence": "medium"
+  },
+  "petit-bateau": {
+   "dualName": true,
+   "aliases": [
+    "小帆船"
+   ],
+   "basis": "源B百科通行中文名",
+   "confidence": "medium"
+  },
+  "bonpoint": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "与主词等价纯英文高端线",
+   "confidence": "high"
+  },
+  "miki-house": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "miki house与主词等价",
+   "confidence": "high"
+  },
+  "oubaobao": {
+   "dualName": true,
+   "aliases": [
+    "OBAOBAO"
+   ],
+   "basis": "源B连写为标准形态（主词欧抱抱）",
+   "confidence": "medium"
+  },
+  "qibohui": {
+   "dualName": true,
+   "aliases": [
+    "7-PE"
+   ],
+   "basis": "源B官方英文名确认（京东品牌标注+官网域名7-pe.com）；QIBOHUI拼音剔除",
+   "confidence": "high"
+  },
+  "kading": {
+   "dualName": true,
+   "aliases": [
+    "卡丁童鞋",
+    "KADING"
+   ],
+   "basis": "源B官方KADING全大写+种子完整挂牌形态（主词卡丁）",
+   "confidence": "high"
+  },
+  "huayutongyi": {
+   "dualName": false,
+   "aliases": [],
+   "basis": "源B查无实据（淘宝渠道小众，另有同名App无关）",
+   "confidence": "low"
+  },
+  "mumuwu": {
+   "dualName": true,
+   "aliases": [
+    "MUMUWU",
+    "mini木木屋"
+   ],
+   "basis": "源B京东标注形态+mini木木屋产品线核真（MINI MUMUWU为误写）",
+   "confidence": "medium"
+  }
+ }
+}

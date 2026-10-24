@@ -6,11 +6,9 @@
 // the canvas, and `focus` lights one of them. On first sight the river flows in from the left once.
 // Theme-aware, paused off screen; reduced motion draws it still. The canvas only illustrates: what it
 // says is also written in the page.
+import { SITE, withSubject } from "@aihot/industry/site";
 import { useEffect, useRef, type ReactNode } from "react";
-import { withSubject } from "@aihot/site";
-import { EDITION } from "../report/format";
-import { watchAppearance } from "../../lib/local-state";
-import { reducedMotion } from "../../lib/motion";
+import { shortSourceName } from "../../lib/format";
 
 export interface RiverSource {
   name: string;
@@ -314,7 +312,7 @@ export function SignalRiver({
     const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
     const layer = document.createElement("canvas");
     const lctx = layer.getContext("2d")!;
-    const still = reducedMotion();
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let L: Layout | null = null;
     let col = readColors(probe);
@@ -484,7 +482,7 @@ export function SignalRiver({
       const p = L.paper;
       if (x >= p.x - 8 && x <= p.x + p.w + 8 && y >= p.y - 8 && y <= p.y + p.h + 8) {
         hover = { s: null, bundle: null, paper: true };
-        place(x, y, withSubject("日报"), EDITION.daily);
+        place(x, y, withSubject("日报"), "每天 07:10 出刊");
         redraw();
         return;
       }
@@ -508,7 +506,7 @@ export function SignalRiver({
       if (x < L.x2) {
         hover = { s: best, bundle: null, paper: false };
         const kind = s.source ? (KIND[s.source.kind] ?? "信源") : "信源";
-        place(x, y, s.source ? s.source.name : "一个信源", s.source?.heatOnly ? `${kind} · 只计入热度` : kind);
+        place(x, y, s.source ? shortSourceName(s.source.name) : "一个信源", s.source?.heatOnly ? `${kind} · 只计入热度` : kind);
       } else {
         hover = { s: null, bundle: s.bundle, paper: false };
         if (x < L.gate) place(x, y, "同一件事", `${b.n} 个来源的报道合成一条`);
@@ -532,6 +530,8 @@ export function SignalRiver({
       if (L) paintStatic(lctx, L, col);
       redraw();
     };
+    const theme = new MutationObserver(recolour);
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
     const seen = new IntersectionObserver(([entry]) => {
       visible = !!entry?.isIntersecting;
       last = 0;
@@ -547,7 +547,8 @@ export function SignalRiver({
     schedule();
     resize.observe(wrap);
     seen.observe(wrap);
-    const unwatch = watchAppearance((change) => change === "theme" && recolour());
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+    scheme.addEventListener("change", recolour);
     document.addEventListener("visibilitychange", onVisibility);
     wrap.addEventListener("pointermove", onMove);
     wrap.addEventListener("pointerleave", onLeave);
@@ -557,7 +558,8 @@ export function SignalRiver({
       redrawRef.current = () => {};
       resize.disconnect();
       seen.disconnect();
-      unwatch();
+      theme.disconnect();
+      scheme.removeEventListener("change", recolour);
       document.removeEventListener("visibilitychange", onVisibility);
       wrap.removeEventListener("pointermove", onMove);
       wrap.removeEventListener("pointerleave", onLeave);
