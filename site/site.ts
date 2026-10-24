@@ -24,6 +24,9 @@ export const SITE = {
   // mcpPrefix/contactEmail/footerNote/icp/organization/crawlerName）以 @aihot/industry/site
   // 的童装雷达身份为准（yn176 承 ym955 审计 r3 移交）；industry 包不反向依赖本包。
   ...INDUSTRY_SITE,
+  // founder 保持上游 Founder 契约宽度（web 端 seo 还读 alternateName/jobTitle/sameAs）；
+  // 行业包当前值为 null，保持 null。
+  organization: { ...INDUSTRY_SITE.organization, founder: null as Founder | null },
 
   // ---- 以下为上游独有键，原样保留 ----
   /** 主题目录页（/topics）的标题。 */
@@ -52,10 +55,6 @@ export const SITE = {
   /** 源码的 GitHub 仓库地址（选填），填了就在侧栏底部和“我的”页底部显示“GitHub 开源”。 */
   github: null as string | null,
 
-  // 行业身份覆盖（yn176 承 ym955 审计 r3 移交）：同键以 @aihot/industry/site 的童装雷达身份为准
-  // （name/subject/homeTitle/description/tagline/locale/defaultUrl/mcpPrefix/contactEmail/footerNote/
-  // icp/organization/crawlerName），上游独有的键原样保留。industry/site.ts 不反向依赖本包，无循环 import。
-  ...INDUSTRY_SITE,
 } as const;
 
 /** 使用规则和隐私说明两页（正文在 pages/ 里）。 */
