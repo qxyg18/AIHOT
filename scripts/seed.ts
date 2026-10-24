@@ -7,6 +7,7 @@ import { REPO_ROOT } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
 import { importEntityDirectory } from "@aihot/backend/leaderboard/directory";
 import { seedTopics } from "@aihot/backend/publication/topics";
+import { FEATURES } from "@aihot/industry/features";
 import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 
 interface SeedSource {
