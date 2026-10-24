@@ -118,7 +118,10 @@ jobs:
           echo "AIHOT_SECRETS_DIR=$PWD/.ci-secrets" >> .env
       - name: Build and start with docker compose
         # ym956 guard rejects a literal-default release: pass the short sha like the deploy manual.
-        run: docker compose up -d --build --build-arg AIHOT_RELEASE=${GITHUB_SHA::8}
+        # compose reads AIHOT_RELEASE from the environment (the web service already interpolates it).
+        env:
+          AIHOT_RELEASE: ${{ github.sha }}
+        run: docker compose up -d --build
       - name: Smoke check
         run: |
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:3000/api/health 2>/dev/null && break; sleep 2; done

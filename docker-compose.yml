@@ -8,7 +8,8 @@ x-app: &app
     # 本地/开发构建显式落 dev-local（K2 审计 P2-2 / ym956）：Dockerfile 守卫拒绝字面默认值 dev，
     # 云端发版按手册第 4 步以 CLI --build-arg AIHOT_RELEASE=$SHA8 覆盖本值。
     args:
-      AIHOT_RELEASE: dev-local
+      # CI 与云端发版从环境注入 short sha；本地缺省显式落 dev-local（守卫拒绝字面 dev）。
+      AIHOT_RELEASE: ${AIHOT_RELEASE:-dev-local}
   # image 名每服务独立（ym531 甲案 jia-fen-tag）：锚内禁再加共享 image 行，防 tag 覆盖竞争复活
   env_file: .env
   restart: unless-stopped
