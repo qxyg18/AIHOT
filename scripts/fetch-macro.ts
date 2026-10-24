@@ -21,5 +21,6 @@ console.log(JSON.stringify({
   },
   rowsWritten: result.rowsWritten,
   indicatorsUpdated: result.indicatorsUpdated,
+  warnings: result.warnings,
 }, null, 2));
 await closeDb();

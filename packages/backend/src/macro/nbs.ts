@@ -21,6 +21,8 @@ export interface MacroRefreshResult {
   release: NbsRetailRelease;
   rowsWritten: number;
   indicatorsUpdated: number;
+  /** Degradations that still allowed the run to finish; empty on a complete release page. */
+  warnings: string[];
 }
 
 export async function fetchLatestRelease(): Promise<ReleaseLink> {
@@ -45,15 +47,17 @@ export async function refreshMacroFromNbs(opts: { dryRun?: boolean; pageUrl?: st
   const release = parseRetailRelease(page.text(), link.url);
 
   const note = `统计局${release.publishedAt ? ` ${release.publishedAt} ` : ""}发布（自动抓取）`;
+  // A page that lost the apparel row still updates retail; say so instead of degrading silently.
+  const warnings = release.apparel ? [] : ["apparel: 发布页无服装、鞋帽、针纺织品类行，本次只写社零"];
   // A dry run is a pure parse check: it deliberately touches no database, so it also works from a
   // machine that cannot reach the live one.
-  if (opts.dryRun) return { status: "dry-run", release, rowsWritten: 0, indicatorsUpdated: 0 };
+  if (opts.dryRun) return { status: "dry-run", release, rowsWritten: 0, indicatorsUpdated: 0, warnings };
 
   // Refuse to move backwards: the row identity is (indicator, year, seq), so the newest held row is
   // the yardstick. A same-month replay is allowed to refresh the numbers (revisions happen).
   const held = await Promise.all(MONTHLY_KEYS.map((key) => currentMax(sql, key)));
   if (rank(release.year, release.seq) < Math.max(...held)) {
-    return { status: "stale", release, rowsWritten: 0, indicatorsUpdated: 0 };
+    return { status: "stale", release, rowsWritten: 0, indicatorsUpdated: 0, warnings };
   }
 
   const rows: Array<{ key: string; value: number; yoy: number }> = [];
@@ -88,6 +92,7 @@ export async function refreshMacroFromNbs(opts: { dryRun?: boolean; pageUrl?: st
         RETURNING key`;
       if (updated) indicatorsUpdated++;
     }
-    return { status: rowsWritten || indicatorsUpdated ? "written" : "unchanged", release, rowsWritten, indicatorsUpdated };
+    const status = rowsWritten || indicatorsUpdated ? "written" : "unchanged";
+    return { status, release, rowsWritten, indicatorsUpdated, warnings };
   });
 }

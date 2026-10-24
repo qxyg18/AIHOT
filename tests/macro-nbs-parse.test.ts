@@ -60,6 +60,18 @@ test("ym770: an ordinary month page without its current-month sentence is refuse
   assert.throws(() => parseRetailRelease(html, "https://example.test/x"), /current-month retail sentence/);
 });
 
+test("ym770: a page without the apparel row parses retail and leaves apparel null (the job flags it)", () => {
+  const html = "<html><head><title>2026年1—9月份社会消费品零售总额增长1.1%</title></head><body>"
+    + "<p>1—9月份，社会消费品零售总额370001亿元，同比增长1.1%。</p>"
+    + "<p>9月份，社会消费品零售总额42433亿元，同比增长1.1%。</p>"
+    + "<table><tr><td>粮油、食品类</td><td>2224</td><td>6.7</td><td>17738</td><td>6.8</td></tr></table>"
+    + "</body></html>";
+  const release = parseRetailRelease(html, "https://example.test/x");
+  assert.deepEqual(release.retail, { value: 42433, yoy: 1.1 });
+  assert.equal(release.apparel, null);
+  assert.equal(release.apparelYtd, null);
+});
+
 test("ym770: period mapping keeps the seed convention", () => {
   assert.deepEqual(periodFor(9), { seq: 9, label: "9月" });
   assert.deepEqual(periodFor(2), { seq: 1, label: "1–2月" });
