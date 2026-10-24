@@ -1,10 +1,11 @@
 // The admission probe (TZR-20261003 T05): a bounded trial fetch of one candidate through the
 // existing parsers, with zero business writes — no collectSource, no materials, no model calls, and
 // createSource is not imported (activation is a later, separately governed card). Identity, rights,
-// domain, robots, date and relevance evidence is recorded per check (append-only); promotion to
-// eligible is gated on the frozen policy — source-policy/2 (ym334, 2026-10-05) froze the thresholds
-// at the mid tier, so promotion is reachable; activation itself stays unwired (ym311/ym312).
-import { SOURCE_POLICY_V1, isSourcePolicyActivatable } from "@aihot/industry/source-policy";
+// domain, date and relevance evidence is recorded per check (append-only); promotion to eligible is
+// gated on the frozen policy — source-policy/2 (ym334) froze the thresholds at the mid tier, and
+// since d-ym334 enforce (ym883) the candidate's own fetch numbers are truly compared against them
+// before promotion (不足不转正); activation itself stays unwired (ym311/ym312).
+import { SOURCE_POLICY_V1, meetsSourcePolicyThresholds } from "@aihot/industry/source-policy";
 import { fetchRss } from "../rss.ts";
 import { fetchWebList } from "../web-list.ts";
 import { fetchJsonList } from "../json-list.ts";
@@ -155,11 +156,18 @@ export async function probeCandidate(candidateId: number, opts: { now?: Date; wi
   const touched = await touchProbe(candidateId, row.version, samplesOk, samplesTotal);
   const finalRow = touched ?? (await getCandidate(candidateId))!;
 
-  // Promotion: hard gates all pass AND the frozen policy is activatable. Since ym334 froze the
-  // thresholds (source-policy/2) the second conjunct holds, so an all-pass candidate promotes;
-  // a policy reverted to null closes promotion again without any code change.
+  // Promotion: hard gates all pass AND the candidate's own numbers truly meet the frozen policy
+  // (d-ym334 enforce, ym883 — 逐条真比，不足不转正). An all-structural-pass candidate with too few
+  // or too-irrelevant samples stays probing until a round that actually delivers the numbers; a
+  // 304 round carries no fresh matched evidence so it never promotes by itself; a policy reverted
+  // to null closes promotion again without any code change (meetsSourcePolicyThresholds → false).
   const hardPass = checks.every((c) => c.verdict === "pass");
-  if (hardPass && isSourcePolicyActivatable(policy)) {
+  if (hardPass && meetsSourcePolicyThresholds(policy, {
+    notModified,
+    samplesOk: finalRow.samplesOk,
+    samplesTotal: finalRow.samplesTotal,
+    matched,
+  })) {
     const promoted = await transitionCandidate({ candidateId, expectVersion: finalRow.version, fromStatuses: ["probing"], toStatus: "eligible" });
     if (promoted) return { candidateId, status: "eligible", notModified, checks };
   }

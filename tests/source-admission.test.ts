@@ -1,7 +1,8 @@
 // Admission engine invariants (T05/ym244): discovery stays inside approved origins; the probe
 // writes zero business rows (articles/analyses/receipts/job_runs/sources/materials untouched);
-// unknown roots, off-origin redirects, unclear rights, robots failures and manual tombstones never
-// promote; a normal 304 stays healthy; the observation window parks candidates without samples; and
+// unknown roots, off-origin redirects, unclear rights, robots failures, manual tombstones and
+// short-of-threshold fetch numbers (ym883/d-ym334 enforce) never promote; a normal 304 stays
+// healthy; the observation window parks candidates without samples; and
 // re-discovery neither duplicates a candidate nor revives a tombstone. Local HTTP stubs on 127.0.0.1
 // stand in for the official site — the run must set ALLOW_PRIVATE_NETWORK_FETCH=true for this test
 // process only (the local-debug allowance of the SSRF guard; it stays armed everywhere else), because
@@ -24,13 +25,19 @@ import { isSourcePolicyActivatable, SOURCE_POLICY_V1 } from "@aihot/industry/sou
 const SLUG = "balabala";
 const hits = { a: 0, b: 0, c: 0, d: 0 };
 
-function rss(origin: string, dated: boolean, tag: string): string {
+function rss(origin: string, dated: boolean, tag: string, opts: { items?: number; matched?: number } = {}): string {
+  // items/matched drive the ym883 numeric gate: items below 5 or a matched ratio below 0.6 must
+  // keep the candidate probing even when every structural check passes. Unmatched items avoid the
+  // slug in BOTH title and description (the probe matches on either field).
+  const items = opts.items ?? 6;
+  const matched = opts.matched ?? items;
   const item = (n: number) =>
-    `<item><title>${SLUG} story ${n}</title><link>${origin}/news/p${n}</link>` +
+    `<item><title>${n <= matched ? `${SLUG} story ${n}` : `vendor story ${n}`}</title><link>${origin}/news/p${n}</link>` +
     (dated ? `<pubDate>Mon, 2${n} Sep 2026 08:00:00 GMT</pubDate>` : "") +
-    `<description>${SLUG} update ${n}</description></item>`;
+    `<description>${n <= matched ? `${SLUG} update ${n}` : `vendor update ${n}`}</description></item>`;
+  const all = Array.from({ length: items }, (_, i) => item(i + 1)).join("");
   return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${SLUG} news</title>` +
-    `<link>${origin}/</link><description>official news</description>${item(1)}${item(2)}</channel></rss><!--${tag}-->`;
+    `<link>${origin}/</link><description>official news</description>${all}</channel></rss><!--${tag}-->`;
 }
 
 interface ServerReply {
@@ -85,6 +92,8 @@ before(async () => {
     }
     if (url === "/api.json") return { status: 200, body: JSON.stringify([{ title: "t", url: `${origin}/x` }]) };
     if (url.startsWith("/feed")) {
+      if (url === "/feed-few.xml") return { status: 200, headers: { "content-type": "application/rss+xml" }, body: rss(origin, true, url, { items: 3, matched: 3 }) };
+      if (url === "/feed-mixed.xml") return { status: 200, headers: { "content-type": "application/rss+xml" }, body: rss(origin, true, url, { items: 6, matched: 2 }) };
       const etag = "t05-a-feed";
       if (req.headers["if-none-match"] === etag) return { status: 304, headers: { etag } };
       return { status: 200, headers: { etag, "content-type": "application/rss+xml" }, body: rss(origin, true, url) };
@@ -122,6 +131,8 @@ before(async () => {
   candDisallow = await insCand(`${C}/private/feed.xml`, rootA.id);
   candNoDate = await insCand(`${D}/feed.xml`, rootA.id);
   candPaid = await insCand(`https://r.jina.ai/${A}/feed.xml`, rootA.id);
+  candFew = await insCand(`${A}/feed-few.xml`, rootA.id);
+  candMixed = await insCand(`${A}/feed-mixed.xml`, rootA.id);
   // rootR（rights=unknown）让该候选恒低于晋级线（ym334 冻结后 all-pass 会首轮晋级），
   // 304 健康路径因此保持可达；晋级语义由 R10/AC3 专测承载。
   cand304 = await insCand(`${A}/feed304.xml`, rootR.id);
@@ -151,6 +162,8 @@ let cand503: number;
 let candDisallow: number;
 let candNoDate: number;
 let candPaid: number;
+let candFew: number;
+let candMixed: number;
 let cand304: number;
 let candRetired: number;
 let retiredBefore: { version: number; status: string; updated_at: string };
@@ -232,16 +245,37 @@ test("R1/AC1 probe 全流程零业务写入（articles 三物理表+analyses/rec
   assert.deepEqual(afterCounts, beforeCounts, "probe writes no business rows");
 });
 
-test("R10/AC3 全检查 pass 且阈值已冻结 → 晋级 eligible（createSource 激活仍归 ym311）", async () => {
+test("R10/AC3 全检查 pass 且数字达标（ym883 数字门：6 dated、占比 1.0）→ 晋级 eligible（激活仍归 ym311）", async () => {
   resetRobotsCache();
   const out = await probeCandidate(candRss);
   const verdicts = Object.fromEntries(out.checks.map((c) => [c.checkKey, c.verdict]));
   assert.deepEqual(verdicts, { robots: "pass", health: "pass", domain: "pass", identity: "pass", rights: "pass", date: "pass", relevance: "pass" });
-  assert.equal(out.status, "eligible", "policy frozen → promotion reachable");
+  assert.equal(out.status, "eligible", "numbers met → promotion reachable");
   const [row] = await sql`SELECT status, samples_ok, samples_total FROM source_candidates WHERE id = ${candRss}`;
   assert.equal(row!.status, "eligible");
-  assert.equal(row!.samples_ok, 2);
-  assert.equal(row!.samples_total, 2);
+  assert.equal(row!.samples_ok, 6);
+  assert.equal(row!.samples_total, 6);
+});
+
+test("ym883/d-ym334 enforce 数字门：结构全过但数字不足 → 仍 probing 不晋级（条数不足/占比不足两形态）", async () => {
+  resetRobotsCache();
+  // 条数不足：3/3 dated、占比 1.0 达标，但 samplesOk=3 < minSamples=5。
+  const few = await probeCandidate(candFew);
+  const fewVerdicts = Object.fromEntries(few.checks.map((c) => [c.checkKey, c.verdict]));
+  assert.deepEqual(fewVerdicts, { robots: "pass", health: "pass", domain: "pass", identity: "pass", rights: "pass", date: "pass", relevance: "pass" }, "结构检查全过");
+  assert.equal(few.status, "probing", "samplesOk 3 < 5 → 不足不转正");
+  // 占比不足：6 条 dated 全有，仅 2 条命中绑定实体（2/6≈0.33 < 0.6）。
+  const mixed = await probeCandidate(candMixed);
+  const mixedVerdicts = Object.fromEntries(mixed.checks.map((c) => [c.checkKey, c.verdict]));
+  assert.deepEqual(mixedVerdicts, { robots: "pass", health: "pass", domain: "pass", identity: "pass", rights: "pass", date: "pass", relevance: "pass" }, "结构检查全过（relevance 判据=命中≥1）");
+  assert.equal(mixed.status, "probing", "matched/total 2/6 < 0.6 → 不足不转正");
+  const [fewRow] = await sql`SELECT status, samples_ok, samples_total FROM source_candidates WHERE id = ${candFew}`;
+  assert.equal(fewRow!.status, "probing");
+  assert.equal(fewRow!.samples_ok, 3);
+  const [mixedRow] = await sql`SELECT status, samples_ok, samples_total FROM source_candidates WHERE id = ${candMixed}`;
+  assert.equal(mixedRow!.status, "probing");
+  assert.equal(mixedRow!.samples_ok, 6);
+  assert.equal(mixedRow!.samples_total, 6);
 });
 
 test("R2/AC2 未知（suspended）官方根 → identity=fail 不晋级", async () => {
@@ -295,7 +329,7 @@ test("R8/AC3 第二次 probe 收 304 → 健康、不 parked、样本不清零",
   assert.equal(second.status, "probing");
   const [row] = await sql`SELECT status, samples_ok FROM source_candidates WHERE id = ${cand304}`;
   assert.equal(row!.status, "probing");
-  assert.equal(row!.samples_ok, 2, "counts kept from the 200 run");
+  assert.equal(row!.samples_ok, 6, "counts kept from the 200 run");
 });
 
 test("R9/AC3 窗满样本不足 → parked(window-elapsed-insufficient-samples)", async () => {
