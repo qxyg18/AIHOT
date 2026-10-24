@@ -38,6 +38,7 @@ import { scanZhipuWatch } from "@aihot/backend/zhipuwatch/scan";
 import { reviewDueDigests as reviewZhipuDigests } from "@aihot/backend/zhipuwatch/review";
 import { scanOpencodeWatch } from "@aihot/backend/opencodewatch/scan";
 import { runDiscoveryRound, runProbeRound, runActivationRound } from "@aihot/backend/jobs/admission";
+import { refreshMacroFromNbs } from "@aihot/backend/macro/nbs";
 
 interface Scheduled {
   name: string;
@@ -123,6 +124,10 @@ export const SCHEDULES: Scheduled[] = [
   // automatic release, before the alerts look.
   { name: "ops.recover", cron: "*/10 * * * *", quiet: "exempt", run: async () => ({ receipts: await markStalePendingReceipts(), released: await autoReleaseUnknownReceipts(), deliveries: await markStaleDeliveries() }) },
   { name: "ops.alerts", cron: "*/10 * * * *", quiet: "exempt", run: () => checkAlerts() },
+  // 宏观月度序列（ym770，d-radar-macro-monthly-auto 命主 2026-10-21 拍 opt-auto）：统计局每月
+  // 15–19 日发布上月社零，这里每日 07:25 幂等拉一次发布页，只有新月份（或官方修订）才写库；
+  // 抓不到/解析不了即抛错留 job_runs 红，既有数据不动（零半截写入）。零 token、不打模型。
+  { name: "macro.refresh", cron: "25 7 * * *", missed: "once", quiet: "exempt", run: () => refreshMacroFromNbs() },
   // One message with the follow-ups that do not touch readers (nothing when there are none).
   { name: "ops.digest", cron: "0 9 * * *", missed: "once", quiet: "exempt", run: () => sendDigest() },
   // Feedback that did not reach the internal Feishu chat when it was sent (off with FEISHU_INTERNAL_ENABLED).

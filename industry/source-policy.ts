@@ -5,6 +5,8 @@
 // 冻结（ym334，2026-10-05）：命主拍板 d-ym314-admission-tier=mid 中性档，依据=ym310
 // 校准报告 §五/§六推导链（artifacts/2026-10-05/ym310-label-calibration/）+决策板拍板
 // 条目；升版 source-policy/2，变更随 candidate.policy_version 留痕（ym311 起生效）。
+// 数字门（d-ym334 enforce，ym883，2026-10-24）：转正前对候选实抓数字逐条真比本阈值
+// （meetsSourcePolicyThresholds），不足不转正——阈值不再只是资格判定的总开关。
 
 export interface SourcePolicyThresholds {
   /** 试抓标注样本最少条数（ym310 校准冻结：中性档 5；未冻结=null）。 */
@@ -50,4 +52,20 @@ export function isSourcePolicyActivatable(policy: SourcePolicyV1): boolean {
   const t = policy.thresholds;
   if (!t) return false;
   return Number.isFinite(t.minSamples) && Number.isFinite(t.minRelevanceRatio);
+}
+
+/** 转正数字门（d-ym334 enforce，ym883）：候选本轮实抓数字逐条真比冻结阈值——
+ *  dated 样本数 ≥ minSamples 且绑定实体命中占比 ≥ minRelevanceRatio（分母=本轮列表总数）。
+ *  304 轮无新列表证据（matched 不可证）一律 false：不足不转正，留待有新鲜样本的轮次；
+ *  阈值未冻结/缺参数同样 false（与 isSourcePolicyActivatable 同向收窄，不另设放行面）。 */
+export function meetsSourcePolicyThresholds(
+  policy: SourcePolicyV1,
+  numbers: { notModified: boolean; samplesOk: number; samplesTotal: number; matched: number },
+): boolean {
+  if (numbers.notModified) return false;
+  const t = policy.thresholds;
+  if (!t || !Number.isFinite(t.minSamples) || !Number.isFinite(t.minRelevanceRatio)) return false;
+  if (numbers.samplesOk < t.minSamples) return false;
+  if (numbers.samplesTotal <= 0) return false;
+  return numbers.matched / numbers.samplesTotal >= t.minRelevanceRatio;
 }

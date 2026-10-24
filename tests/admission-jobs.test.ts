@@ -1,7 +1,8 @@
 // Admission worker entries, valves ON (ym312): the discovery round persists candidates from an
 // approved root through the engine's idempotent upsert, the probe round works the due set and
-// never re-selects parked/retired rows, the all-pass feed is promoted now that ym334 froze the
-// policy (activation itself stays unwired — ym311), and a full round writes zero business rows. The
+// never re-selects parked/retired rows, the all-pass feed with sufficient fetch numbers is promoted
+// (ym334 froze the policy; ym883/d-ym334 enforce compares the numbers per candidate; activation
+// itself stays unwired — ym311), and a full round writes zero business rows. The
 // valves are read from the environment at import time,
 // so this file must run with SOURCE_DISCOVERY_ENABLED=1 SOURCE_PROBE_ENABLED=1 (the run command
 // sets them; the sibling admission-jobs-off.test.ts covers the default-off process).
@@ -44,11 +45,14 @@ before(async () => {
           `<html><body>${[1, 2, 3].map((n) => `<a href="/news/p${n}">${SLUG} story ${n}</a>`).join("")}</body></html>`);
       }
       if (req.url?.startsWith("/feed")) {
+        const items = Array.from({ length: 6 }, (_, i) => {
+          const n = i + 1;
+          return `<item><title>${SLUG} story ${n}</title><link>${origin}/news/p${n}</link>` +
+            `<pubDate>Mon, 2${n} Sep 2026 08:00:00 GMT</pubDate><description>${SLUG} update ${n}</description></item>`;
+        }).join("");
         return void res.writeHead(200, { "content-type": "application/rss+xml" }).end(
           `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${SLUG} news</title>` +
-          `<link>${origin}/</link><description>official news</description>` +
-          `<item><title>${SLUG} story 1</title><link>${origin}/news/p1</link><pubDate>Mon, 21 Sep 2026 08:00:00 GMT</pubDate><description>${SLUG} update</description></item>` +
-          `</channel></rss>`);
+          `<link>${origin}/</link><description>official news</description>${items}</channel></rss>`);
       }
       res.writeHead(404).end("nf");
     });
@@ -123,7 +127,7 @@ test("探测轮：due 候选全部走查（全检查 pass 的 feed 晋级 eligib
   const by = Object.fromEntries(statuses.map((r) => [r.status, Number(r.n)]));
   assert.ok((by.probing ?? 0) >= 1, "date-unknown endpoints (news/json) stay probing");
   assert.ok((by.parked ?? 0) >= 1, "a stub-missing endpoint parks through the engine");
-  assert.ok((by.eligible ?? 0) >= 1, "policy frozen (ym334) → the all-pass feed is promoted (activation still ym311)");
+  assert.ok((by.eligible ?? 0) >= 1, "policy frozen + numbers met (6 dated, ratio 1.0) → the all-pass feed is promoted (activation still ym311)");
   const [parkedRow] = await sql`SELECT status, version FROM source_candidates WHERE id = ${parkedId}`;
   assert.equal(parkedRow!.status, "parked");
   const [retiredRow] = await sql`SELECT manual_retired, last_probe_at FROM source_candidates WHERE endpoint_identity = ${retiredIdentity}`;

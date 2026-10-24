@@ -1,5 +1,7 @@
-// Jina Reader (r.jina.ai): browser-rendered page text. Paid per request, reached through the egress
-// proxy, always behind receipts and the per-minute/hour/day budget (any zero stops it).
+// Jina Reader (r.jina.ai): browser-rendered page text. A key bills per request; without one the
+// anonymous free tier answers at a lower rate (about 20 requests a minute). Either way the call is
+// reached through the egress proxy, always behind receipts and the per-minute/hour/day budget
+// (any zero stops it).
 import { credential } from "../config.ts";
 import { guardedFetch } from "../lib/http-fetch.ts";
 import { assertPageContent, contentDocument, UnavailablePageError } from "../lib/page-content.ts";
@@ -10,6 +12,10 @@ export const JINA_PREFIX = "https://r.jina.ai/";
 
 /** Jina's answer starts with header lines (Title, URL Source, Published Time); the page follows this line. */
 const CONTENT = "\nMarkdown Content:\n";
+
+export function jinaAuthHeaders(key: string | null): Record<string, string> {
+  return key ? { authorization: `Bearer ${key}` } : {};
+}
 
 /**
  * Reads a page through Jina: `raw` is the whole answer, `markdown` the page after its header lines.
@@ -23,7 +29,8 @@ export async function jinaRead(
   opts: { purpose: string; subject: string; format?: "markdown" | "html"; cacheToleranceSeconds?: number; perRead?: boolean },
 ): Promise<{ markdown: string; raw: string; receiptId: number }> {
   const key = credential("collectors", "JINA_API_KEY");
-  if (!key) throw new Error("JINA_API_KEY is not configured");
+  // Kill switch: JINA_FREE_TIER=false restores the old "no key, no fallback" behaviour without a revert.
+  if (!key && process.env.JINA_FREE_TIER === "false") throw new Error("JINA_API_KEY is not configured");
   const base = (credential("collectors", "JINA_BASE_URL") ?? "https://r.jina.ai").replace(/\/$/, "");
   // A listing whose freshness matters (xAI news) caps how old Jina's cached rendering may be.
   const tolerance: Record<string, string> = Number.isInteger(opts.cacheToleranceSeconds) && opts.cacheToleranceSeconds! >= 0 ? { "x-cache-tolerance": String(opts.cacheToleranceSeconds) } : {};
@@ -33,15 +40,16 @@ export async function jinaRead(
     { service: "jina", model: null, purpose: opts.purpose, subject: opts.subject, identity: { url: targetUrl, day, format: opts.format ?? "markdown" }, requestSummary: { url: targetUrl } },
     async () => {
       const res = await guardedFetch(`${base}/${targetUrl}`, {
-        headers: { authorization: `Bearer ${key}`, "x-return-format": opts.format ?? "markdown", accept: "text/plain", ...tolerance },
+        headers: { ...jinaAuthHeaders(key), "x-return-format": opts.format ?? "markdown", accept: "text/plain", ...tolerance },
         timeoutMs: 60_000,
         maxBytes: 6 * 1024 * 1024,
       });
       const text = res.text();
-      assertAccepted("jina", res.status, text);
-      // Billed in tokens; estimated at about ¥0.36 per million. Without the usage header nothing is guessed.
+      // Billed in tokens when a key is configured, estimated at about ¥0.36 per million (a recharge-pack
+      // price). The anonymous tier is free, so it records no cost; without the usage header nothing is
+      // guessed either.
       const tokens = Number(res.headers.get("x-usage-tokens")) || null;
-      const cost = tokens ? { amount: (tokens / 1e6) * 0.36, currency: "CNY", basis: "estimated" as const } : null;
+      const cost = key && tokens ? { amount: (tokens / 1e6) * 0.36, currency: "CNY", basis: "estimated" as const } : null;
       return { response: { text: text.slice(0, 2_000_000), status: res.status }, requestId: res.headers.get("x-request-id"), usage: { bytes: res.body.length, tokens }, cost };
     },
   );
