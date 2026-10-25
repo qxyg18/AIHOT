@@ -5,7 +5,7 @@ import { sql } from "../db.ts";
 import { proxyBodyImages } from "../media/imgproxy.ts";
 import { textToHtml } from "../content/sanitize.ts";
 import { originalPostCopy } from "../content/posts.ts";
-import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, toItemSummary, xView, type ItemRow } from "./items.ts";
+import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, showsXPost, toItemSummary, xView, type ItemRow } from "./items.ts";
 import { itemUrl } from "./links.ts";
 import { hasItemPage } from "./rules.ts";
 import { brandCardsForText } from "../leaderboard/read.ts";
@@ -54,7 +54,7 @@ export async function loadItemDetail(id: string, now = new Date()): Promise<Deta
   if (!row || !hasItemPage({ visibility: row.visibility, sourceMode: row.source_mode })) return { kind: "not_found" };
 
   const summary = toItemSummary(row);
-  if (row.channel === "x") summary.x = xView(row, false, true);
+  if (row.channel === "x" && showsXPost(row)) summary.x = xView(row, false, true);
   if (row.visibility === "summary-only") {
     const detail: ItemDetail = {
       ...summary,
@@ -82,7 +82,7 @@ export async function loadItemDetail(id: string, now = new Date()): Promise<Deta
 
   let body: ItemDetail["body"] = null;
   let outline: OutlineEntry[] = [];
-  if (row.channel === "x") {
+  if (row.channel === "x" && showsXPost(row)) {
     const text = String(row.x_post?.text ?? row.body_text ?? "");
     // An original post serves the author's own text: historical model-written zh replies must not
     // resurface beside it, and an image-only, translation-less post has no body section at all.
@@ -156,7 +156,7 @@ export function markdownAvailable(row: {
   if (row.visibility !== "public" || !hasItemPage({ visibility: row.visibility, sourceMode: row.source_mode })) return false;
   // An X post with any displayable body (text, media, quoted text) exports its post card, even
   // when the text is empty and there is no model summary — the media and address are the content.
-  const hasPostBody = row.channel === "x" && !!(row.x_post?.text || row.x_post?.media?.length || row.x_post?.quoted?.text);
+  const hasPostBody = row.channel === "x" && showsXPost(row) && !!(row.x_post?.text || row.x_post?.media?.length || row.x_post?.quoted?.text);
   return !!row.summary || hasPostBody || (row.body_mode === "full" && !!row.body_html);
 }
 
@@ -174,13 +174,13 @@ export async function exportMarkdown(id: string): Promise<{ filename: string; bo
   lines.push(`- 原文：${row.url}`, "");
   if (row.summary) lines.push("## 摘要", "", row.summary, "");
   if (row.selected && row.reason) lines.push("## 推荐理由", "", row.reason, "");
-  if (row.channel === "x" && row.x_post?.text) {
+  if (row.channel === "x" && showsXPost(row) && row.x_post?.text) {
     lines.push("## 正文", "", String(row.x_post.text), "");
     if (row.zh_text) lines.push("## 中文译文", "", row.zh_text, "");
     const q = row.x_post.quoted as { handle?: string; text?: string; url?: string } | null | undefined;
     if (q?.text) lines.push(`## 引用 @${q.handle ?? ""}`, "", ...String(q.text).split("\n").map((l) => `> ${l}`), "", ...(q.url ? [q.url, ""] : []));
     if (q?.text && row.quoted_zh) lines.push("### 引用中文译文", "", ...row.quoted_zh.split("\n").map((l) => `> ${l}`), "");
-  } else if (row.channel === "x") {
+  } else if (row.channel === "x" && showsXPost(row)) {
     // An image-only post exports its media as plain markdown image links, loadable outside the site.
     for (const m of (row.x_post?.media ?? []) as Array<{ kind?: string; url?: string }>) {
       if (m.kind === "image" && m.url) lines.push(`![](${m.url})`, "");

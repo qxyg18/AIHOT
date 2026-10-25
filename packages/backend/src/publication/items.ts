@@ -5,6 +5,7 @@ import type { FeedItemSummary, ItemSummary, MediaView, SourceKind, XPostView } f
 import { sql, type Db } from "../db.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { displayTags } from "./rules.ts";
+import { POLICY } from "@aihot/site";
 
 export interface ItemRow {
   id: string;
@@ -124,6 +125,16 @@ function mediaView(m: Record<string, any>, mode: "card" | "thumb" | "full" = "th
   };
 }
 
+/**
+ * An X post's text, the post it quotes and its media are its body: when the site counts them as full
+ * text (POLICY.xPostIsFullText), every exit may show them only where the source licence granted full
+ * text (body_mode "full", i.e. site_fulltext and a confirmed body). Otherwise they are as public as the
+ * title and keep showing.
+ */
+export function showsXPost(row: { channel: string; body_mode: string }): boolean {
+  return !POLICY.xPostIsFullText || row.body_mode === "full";
+}
+
 export function xView(row: Pick<ItemRow, "x_post" | "zh_text"> & Partial<Pick<ItemRow, "quoted_zh">>, compact = false, responsive = compact): XPostView | null {
   const x = row.x_post;
   if (!x) return null;
@@ -151,7 +162,7 @@ export function xView(row: Pick<ItemRow, "x_post" | "zh_text"> & Partial<Pick<It
 }
 
 export function toItemSummary(row: ItemRow): ItemSummary {
-  const x = row.channel === "x" ? xView(row, true) : null;
+  const x = row.channel === "x" && showsXPost(row) ? xView(row, true) : null;
   return {
     id: row.id,
     revision: row.revision,
