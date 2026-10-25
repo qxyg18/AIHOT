@@ -10,7 +10,7 @@ const ALLOWED_TAGS = new Set<string>([...CATEGORY_TAGS, ...TOPIC_TAGS, ...ENTITY
  * Known tags only, synonyms mapped, duplicates dropped, at most six; the category tag goes first, and a
  * list without one gets the pack's last category tag (其他).
  */
-export function normalizeTags(v: unknown): string[] {
+export function normalizeTags(v: unknown, categoryKey?: string | null): string[] {
   const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,，]/g) : [];
   const tags: string[] = [];
   for (const x of raw) {
@@ -20,8 +20,17 @@ export function normalizeTags(v: unknown): string[] {
   }
   const isCategory = (t: string) => (CATEGORY_TAGS as readonly string[]).includes(t);
   const categoryIndex = tags.findIndex(isCategory);
-  const category = categoryIndex >= 0 ? tags[categoryIndex]! : CATEGORY_TAGS[CATEGORY_TAGS.length - 1]!;
-  return [category, ...tags.filter((t) => t !== category)].slice(0, 6);
+  // yn202（缝合残红 taxonomy 面）：structure 步拥有 category 字段——当标签列漏掉该类目的
+  // 分类标签时，以类目名领首（「第一个标签必须是分类标签之一」），而非一律落「其他」兜底；
+  // 未命名类目时保持原兜底不变。
+  const label = CATEGORIES.find((c) => c.key === categoryKey)?.label;
+  const lead =
+    categoryIndex >= 0
+      ? tags[categoryIndex]!
+      : label && isCategory(label)
+        ? label
+        : CATEGORY_TAGS[CATEGORY_TAGS.length - 1]!;
+  return [lead, ...tags.filter((t) => t !== lead)].slice(0, 6);
 }
 
 /** The category boundaries the structure step reads, one line per category. */

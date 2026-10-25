@@ -184,7 +184,7 @@ export function normalizeStructure(data: z.infer<typeof StructureSchema>, a: Ana
     }).slice(0, 4),
   };
   return {
-    category: data.category, tags: normalizeTags(data.tags),
+    category: data.category, tags: normalizeTags(data.tags, data.category),
     subjects: [...new Set(data.subjects.map((s) => s.trim().toLowerCase()).filter((s) => s in ENTITIES))],
     scope, fact,
   };

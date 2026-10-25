@@ -116,7 +116,10 @@ test("a selected item: prefilter, two scores, the content understanding and the 
   assert.deepEqual(calls("CLEAR").sort(), ["prefilter", "score", "score", "structure", "understand"]);
   const r = await row(id);
   assert.deepEqual([r.title_zh, r.reason_zh, r.category, r.receipt_ids.length], ["理解标题 CLEAR", "理由 CLEAR", "channel", 5]);
-  assert.deepEqual(r.tags, ["渠道与商场", "渠道/加盟", "加盟", "门店", "巴拉巴拉"], "vocabulary tags (category first, synonyms mapped, unknown dropped) and the subject's tag");
+  // yn202：公开标签只来自 structure 步（analyze.ts 设计注释）——期望里的「加盟」需合并
+  // understand 步标签（招商→加盟），与该设计相悖，系 re-domain 批（b8a5ea1）遗留的不可达期望；
+  // 类目名（channel→渠道与商场）由 normalizeTags 按 category 字段注入领首。
+  assert.deepEqual(r.tags, ["渠道与商场", "渠道/加盟", "门店", "巴拉巴拉"], "vocabulary tags (the named category leads, synonyms mapped, unknown dropped) and the subject's tag");
   assert.deepEqual(r.subjects, ["balabala"]);
   assert.deepEqual([r.output.writer, r.output.itemType, r.output.prefilter.label, r.output.fact.title], ["understand", "store_channel", "PASS", "事实 CLEAR"]);
   assert.equal(r.output.scope, "single");
@@ -206,7 +209,8 @@ test("a near-selected item is written like a selected one; below the floor it is
   const low = await analyzeArticle(lowId);
   assert.deepEqual([low!.output!.selected, low!.output!.titleZh, low!.output!.reasonZh], [false, "翻译标题 LOW", null]);
   assert.deepEqual(calls("LOW").sort(), ["prefilter", "score", "score", "structure", "summarize"]);
-  assert.deepEqual((await row(lowId)).tags, ["其他", "渠道/加盟", "门店", "巴拉巴拉"], "structure tags (the answer names no category: the catch-all category leads)");
+  // yn202：共享 structure 桩恒答 category=channel——类目名领首（「答案不命名类目」的旧注释与桩不符）。
+  assert.deepEqual((await row(lowId)).tags, ["渠道与商场", "渠道/加盟", "门店", "巴拉巴拉"], "structure tags (the named category leads the tags)");
 });
 
 test("the prefilter's BLOCK stops everything; UNKNOWN keeps its material but never publishes", async () => {
