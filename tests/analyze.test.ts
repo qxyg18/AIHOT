@@ -196,6 +196,9 @@ test("structure retains grounded conditions, rejects invented or unseen quotes, 
   assert.equal(invented.fact?.evidence, null, "source metadata is not original evidence");
   assert.deepEqual(invented.fact?.conditions, [], "a translation does not count as an original quote");
   assert.equal(normalizeStructure(StructureSchema.parse({ ...base, scope: "composite" }), input).fact, null, "composite output cannot also claim one fact");
+  // yn202 r1 审计 P2 回归护栏：未命名类目保持「其他」兜底（类目名领首只发生在已命名类目）。
+  assert.deepEqual(normalizeStructure(StructureSchema.parse({ ...base, category: null, tags: ["渠道/加盟"] }), input).tags, ["其他", "渠道/加盟"],
+    "an unnamed category keeps the catch-all lead; the label injection must not fire");
   const titleOnly = normalizeStructure(StructureSchema.parse({ ...base, scope: "single" }), { ...input, bodyText: null, excerpt: null });
   assert.equal(titleOnly.scope, "unknown", "a confident model cannot supply the missing original material");
   assert.equal(titleOnly.fact, null);
