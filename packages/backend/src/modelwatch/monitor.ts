@@ -248,6 +248,7 @@ export async function certifyCapability(opts: CertifyOptions): Promise<CertifyRe
           await chatJson({
             model: opts.modelId.startsWith("zhipu:") ? ZHIPU_FREE_KEY : opts.modelId.startsWith("opencode:") ? OPENCODE_FREE_KEY : OPENROUTER_FREE_KEY,
             pinnedModel: opts.modelId,
+            pinnedStrict: true, // ym573：认证出证只认被钉模型自答——目标挂即样本判负，不回代答
             purpose: `modelwatch.certify.${opts.capability}`,
             subject: `certify:${opts.modelId}:${opts.capability}:${spec.variant}`,
             promptVersion: `certify-${opts.capability}-v1`,

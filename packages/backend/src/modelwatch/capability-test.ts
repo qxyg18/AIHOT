@@ -231,6 +231,7 @@ export async function runCapabilityTests(opts: TestOptions = {}): Promise<TestSu
             temperature: 0.2,
             maxTokens: 1500,
             pinnedModel: modelId,
+            pinnedStrict: true, // ym573：证书只认被钉模型自答——目标挂时样本判负，成员不回代答
             timeoutMs: 60_000,
           });
           return { i, ok: true, output: res.data, error: null, task: spec.label };

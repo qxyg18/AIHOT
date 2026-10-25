@@ -118,6 +118,9 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   /** ym196：钉死免费预设的实际模型 id（能力验收测试对指定模型打分用）；ym436 起两个免费
    *  预设（OPENROUTER_FREE_KEY / ZHIPU_FREE_KEY）均生效，zhipu: 前缀自动去前缀。 */
   pinnedModel?: string;
+  /** ym573（yn245-A2）：钉选严格态——候选链收敛为被钉目标单体，失败即失败（认证契约：
+   *  证书只认被钉模型自答）。缺省 false 保持 ym249 预算内可切换语义（产线韧性）。 */
+  pinnedStrict?: boolean;
   /** false: the model answers in its own text format (no JSON mode); `parse` turns it into the schema's input. */
   json?: boolean;
   parse?: (content: string) => unknown;
@@ -266,7 +269,8 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
   // 扩展——本通道成员之后垫另一免费通道的证书成员（zhipu↔openrouter），整链失败才把错
   // 抛给上层落付费；ym467 三通道化：垫链按固定序 [zhipu, openrouter, opencode] 取本通道
   // 之外的其余通道（智谱优先口径在垫链仍先行）；端点/凭据/服务名/熔断按候选所属通道解析。
-  // 测试钉选（pinnedModel）是认证契约（证书必须反映被钉模型自身能力），钉选调用不跨通道、保持单通道链。
+  // 测试钉选（pinnedModel）是认证契约（证书必须反映被钉模型自身能力）：钉选调用不跨通道、
+  // 保持单通道链；pinnedStrict（ym573/yn245-A2）进一步收敛为被钉目标单体——同通道成员不回代答。
   const snap = freeRoutingSnapshot();
   type FreeCh = "zhipu" | "openrouter" | "opencode";
   const membersOf = (ch: FreeCh) =>
@@ -283,22 +287,28 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           .filter((c) => c !== own)
           .flatMap((c) => (c === "zhipu" ? zhipuMembers : c === "openrouter" ? orMembers : ocMembers).map((m) => ({ model: m, channel: c })));
   const candidates: FreeCandidate[] =
-    spec.key === OPENROUTER_FREE_KEY
-      ? [
-          ...dedup([target, snap.fallback ?? ""]).map((m) => ({ model: m, channel: "openrouter" as const })),
-          ...chained("openrouter"),
-        ]
-      : spec.key === ZHIPU_FREE_KEY
+    opts.pinnedModel && opts.pinnedStrict
+      ? // ym573（yn245-A2，命主 2026-10-14 拍板「钉选失败即该样本判负，证书只认被钉模型自答」）：
+        // 钉选严格态=认证契约，候选链收敛为被钉目标单体——同通道成员与 snap.fallback 一律
+        // 不回代答顶替出证；钉选失败即调用失败（能力样本落判负、探针如实报不可达）。
+        // 其余钉选调用保持 ym249 预算内可切换语义（产线韧性），非钉选链不变。
+        [{ model: target, channel: freeChannel }]
+      : spec.key === OPENROUTER_FREE_KEY
         ? [
-            ...dedup([target, ...zhipuMembers]).map((m) => ({ model: m, channel: "zhipu" as const })),
-            ...chained("zhipu"),
+            ...dedup([target, snap.fallback ?? ""]).map((m) => ({ model: m, channel: "openrouter" as const })),
+            ...chained("openrouter"),
           ]
-        : spec.key === OPENCODE_FREE_KEY
+        : spec.key === ZHIPU_FREE_KEY
           ? [
-              ...dedup([target, ...ocMembers]).map((m) => ({ model: m, channel: "opencode" as const })),
-              ...chained("opencode"),
+              ...dedup([target, ...zhipuMembers]).map((m) => ({ model: m, channel: "zhipu" as const })),
+              ...chained("zhipu"),
             ]
-          : [{ model, channel: null }];
+          : spec.key === OPENCODE_FREE_KEY
+            ? [
+                ...dedup([target, ...ocMembers]).map((m) => ({ model: m, channel: "opencode" as const })),
+                ...chained("opencode"),
+              ]
+            : [{ model, channel: null }];
   // 各候选按所属通道解析端点/凭据/服务名/extra（跨通道兜底时与发起预设不同）；非免费预设
   // 候选（channel=null）沿用预设解析结果（含 default 的 admin override）。opencode 面
   // apiKey 位承载 OPENCODE_SERVER_PASSWORD（Basic 鉴权密码，callOpencode 内组头）；无宿主
