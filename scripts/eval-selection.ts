@@ -86,9 +86,13 @@ for (const model of values.models!.split(",")) {
   const started = Date.now();
   const results = await pmap(sample, Number(values.concurrency), async (r) => {
     try {
-      const res = await runAnalysis(toInput(r), { scoreModel: model, stages: "selection" });
+      // ym649/yn255: StepOpts no longer carries a stage switch (removed upstream 5794327);
+      // prefilter is null when there is nothing to judge, so its receipt is optional.
+      const res = await runAnalysis(toInput(r), { scoreModel: model });
       const out = normalizeAnalysis(res);
-      return { r, out, receiptIds: [res.prefilter.receiptId, ...(res.scores?.receiptIds ?? [])], error: null as string | null };
+      const receiptIds = [res.prefilter?.receiptId, ...(res.scores?.receiptIds ?? [])]
+        .filter((id): id is number => typeof id === "number");
+      return { r, out, receiptIds, error: null as string | null };
     } catch (error) {
       return { r, out: null, receiptIds: [] as number[], error: String(error).slice(0, 200) };
     }

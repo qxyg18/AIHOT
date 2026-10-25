@@ -14,7 +14,7 @@
 // Targets must be explicit ids or `key:`/`fact:`-prefixed keys — no ad-hoc WHERE filters.
 // Refuses: unknown targets, articles still selected (withdraw via the admin surface first),
 // disabled archive/guard triggers, or archive counts that do not reconcile after the delete.
-import { closeDb, sql } from "@aihot/backend/db";
+import { closeDb, sql, type Tx } from "@aihot/backend/db";
 
 const ACTOR = "ops-script";
 const [reason, ...targets] = process.argv.slice(2);
@@ -87,7 +87,7 @@ const factRows = factIds.length
 const missingFacts = factIds.filter((f) => !factRows.some((r) => r.id === f));
 if (missingFacts.length > 0) throw new Error(`no such fact(s): ${missingFacts.join(", ")} — refusing a partial delete`);
 
-const byRowId = new Map(byId.concat(byKey).map((r) => [r.id, r]));
+const byRowId = new Map([...byId, ...byKey].map((r) => [r.id, r]));
 const rows = idList.map((id) => byRowId.get(id)!);
 
 const manifest = rows.map((r) => ({
@@ -116,8 +116,8 @@ if (drifted.length > 0)
   throw new Error(`articles has CASCADE child table(s) missing from CHILD_TABLES: ${drifted.join(", ")} — add them before deleting`);
 
 const n = (t: { n: number }[]) => t[0].n;
-const countChild = (tx: typeof sql, table: string, column: string, values: unknown[]) =>
-  tx.unsafe(`SELECT count(*)::int AS n FROM ${table} WHERE ${column} = ANY($1)`, [values]);
+const countChild = (tx: Tx, table: string, column: string, values: (string | number)[]) =>
+  tx.unsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${table} WHERE ${column} = ANY($1)`, [values]);
 
 await sql.begin(async (tx) => {
   if (idList.length) {

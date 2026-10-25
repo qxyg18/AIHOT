@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "include": ["**/*.ts"],
+  // yn255: regroup-events.ts calls APIs that moved or disappeared upstream — consolidate's
+  // dryRun option, and warmRecallWindow, which no longer exists — so the script cannot even
+  // load against current main. Excluded until that repair lands (card 26362553) rather than
+  // leaving `npm run typecheck` red for a script nobody can run today.
+  "exclude": ["regroup-events.ts"]
+}
