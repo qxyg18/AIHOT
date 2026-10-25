@@ -74,6 +74,17 @@ test("the migrations seed a budget for every paid service", async () => {
   for (const s of ["jina", "socialdata", "dajiala", "zhipu", "deepseek", "mimo", "dashscope"]) assert.ok(services.has(s), `no budget for ${s}`);
 });
 
+test("ym251: a day-tagged probe reuses within the day and re-sends on the next", () => {
+  const base = {
+    service: "openrouter", model: "x/y:free", purpose: "modelwatch.probe",
+    subject: "probe:x/y:free", identity: { probe: "connectivity", system: "s", user: "u", maxTokens: 400 },
+  };
+  const dayA = logicalKeyFor({ ...base, attemptTag: "day-2026-10-25" });
+  assert.equal(logicalKeyFor({ ...base, attemptTag: "day-2026-10-25" }), dayA);
+  assert.notEqual(logicalKeyFor({ ...base, attemptTag: "day-2026-10-26" }), dayA);
+  assert.notEqual(logicalKeyFor(base), dayA);
+});
+
 test("an answer already received is reused instead of bought again", async () => {
   answer = () => '{"ok":true}';
   const subject = `reuse-${tag()}`;

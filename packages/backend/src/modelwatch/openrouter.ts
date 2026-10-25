@@ -8,6 +8,11 @@ import { buildLlmRequest, replyText } from "../providers/llmEndpoint.ts";
 import { paidRequest } from "../providers/receipts.ts";
 import { sha256 } from "../lib/ids.ts";
 
+/** 探针收据按自然日换键：同一模型每天最多一次真实调用（d-ym575-probe-receipt-replay 拍板 opt-fresh）。 */
+const PROBE_DAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+});
+
 export function openRouterBaseUrl(): string {
   return credential("models", "OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1";
 }
@@ -170,6 +175,8 @@ async function oneCall(model: string, system: string, user: string, fetcher: typ
       model,
       purpose: "modelwatch.probe",
       subject: `probe:${model}`,
+      // 日期入键：同一模型每天真实调用一次，其余重复轮次才走回放（否则首轮通过后永远回放）。
+      attemptTag: `day-${PROBE_DAY.format(new Date())}`,
       identity: { probe: "connectivity", system: sha256(system), user: sha256(user), maxTokens: 400 },
       requestSummary: { probe: true, maxTokens: 400 },
       requireBudget: true,
