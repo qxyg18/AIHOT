@@ -3,10 +3,10 @@
 //   node --env-file=.env scripts/regroup-events.ts plan --since 2026-10-01T00:00:00+08:00 --snapshot regroup.json [--signals-hours 48]
 //   node --env-file=.env scripts/regroup-events.ts redirect --snapshot regroup.json [--snapshot earlier.json ...]
 //   node --env-file=.env scripts/regroup-events.ts finish --snapshot regroup.json [--snapshot earlier.json ...]
-//   node --env-file=.env scripts/regroup-events.ts consolidate --since 2026-10-01T00:00:00+08:00 [--dry-run]
+//   node --env-file=.env scripts/regroup-events.ts consolidate --since 2026-10-01T00:00:00+08:00
 //
 // `plan` cancels the jobs of an earlier plan that have not run, records where every report of the
-// window sits today, embeds the recall window within the embedding budget, marks the window's reports
+// window sits today, marks the window's reports
 // as waiting (regroup_pending: until its turn comes a report is not evidence for others, so the
 // regroup in discovery order sees what live grouping would have seen) and sends one regroup job per
 // article through the worker's serial events.group queue, behind live reports and live discussion
@@ -17,21 +17,22 @@
 // new hot ranking. Give `redirect` and `finish` the snapshot of every plan since the last finish.
 // `consolidate` applies the story consolidation of live grouping to the decisions made since a time:
 // wherever a report was firmly tied to several stories, their roots are compared and the stories
-// merge when both models see one story (`--dry-run` judges and prints without merging).
+// merge when both models see one story. There is no preview mode: upstream folded the judge and the
+// merge into one consolidate() (events/consolidate.ts) that always acts, printing each compared pair
+// as it goes, and dropped the recall-window embedding warm-up (jobs embed lazily instead).
 // Every step can be repeated.
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { closeDb, sql } from "@aihot/backend/db";
 import { enqueue, getBoss, QUEUES, stopBoss } from "@aihot/backend/jobs/queue";
 import { backfillStoryHeat, computeHotRanking } from "@aihot/backend/events/hot";
-import { consolidate, warmRecallWindow } from "@aihot/backend/events/group";
+import { consolidate } from "@aihot/backend/events/consolidate";
 import { firmlyTied } from "@aihot/backend/events/relate";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     since: { type: "string" }, snapshot: { type: "string", multiple: true }, "signals-hours": { type: "string", default: "48" },
-    "dry-run": { type: "boolean", default: false },
   },
 });
 const command = positionals[0];
@@ -82,10 +83,10 @@ async function plan() {
     : [];
   const snapshot: Snapshot = { since: since.toISOString(), startedAt: new Date().toISOString(), articles: ids, signals, previous };
   writeFileSync(snapshots[0]!, JSON.stringify(snapshot));
-  // Vectors for the whole recall window first, while every report still counts in it, so the serial
-  // queue does not stall on them.
-  const warmed = await warmRecallWindow((done, total) => { if (done % 1000 === 0 || done === total) console.log(`embedding ${done}/${total}`); });
-  console.log(JSON.stringify({ warmed, cancelledJobs: waiting.length }));
+  // [yn285] The recall-window embedding warm-up (warmRecallWindow) no longer exists upstream —
+  // regroup jobs embed lazily inside the serial queue instead, so the first jobs after a plan
+  // may run slower. The warm-up block was removed with it.
+  console.log(JSON.stringify({ cancelledJobs: waiting.length }));
   await sql`INSERT INTO regroup_pending (article_id) SELECT unnest(${[...ids, ...signals]}::text[]) ON CONFLICT (article_id) DO UPDATE SET requested_at = now()`;
   let sent = 0;
   for (const id of ids) if (await enqueue(QUEUES.group, { articleId: id, force: true }, { singletonKey: `regroup:${id}`, priority: -2 })) sent++;
@@ -179,7 +180,6 @@ async function finish() {
 
 async function consolidateSince() {
   if (!values.since) throw new Error("--since <ISO time> is required");
-  const dryRun = values["dry-run"] === true;
   // The latest decision of every report decided since then, in the order they were made.
   const rows = await sql<{ article_id: string; candidates: Array<{ id: number; relation?: string; confidence?: number }> | null }[]>`
     SELECT article_id, candidates FROM (
@@ -196,7 +196,7 @@ async function consolidateSince() {
         OR id IN (SELECT fact_id FROM fact_articles WHERE article_id = ${r.article_id} AND role IN ('primary', 'report')))`;
     if (stories.length < 2) continue;
     tiedReports++;
-    for (const c of await consolidate(stories.map((s) => Number(s.story_id)), { dryRun })) {
+    for (const c of await consolidate(stories.map((s) => Number(s.story_id)))) {
       const key = `${c.from}:${c.into}`;
       if (printed.has(key)) continue;
       printed.add(key);
@@ -204,7 +204,7 @@ async function consolidateSince() {
       console.log(JSON.stringify({ article: r.article_id, ...c }));
     }
   }
-  console.log(JSON.stringify({ decisions: rows.length, tiedReports, pairsCompared: printed.size, merges, dryRun }));
+  console.log(JSON.stringify({ decisions: rows.length, tiedReports, pairsCompared: printed.size, merges }));
 }
 
 try {
@@ -212,7 +212,7 @@ try {
   else if (command === "redirect") await redirect();
   else if (command === "finish") await finish();
   else if (command === "consolidate") await consolidateSince();
-  else throw new Error("usage: regroup-events.ts plan --since <time> --snapshot <file> | redirect|finish --snapshot <file> [--snapshot <file> ...] | consolidate --since <time> [--dry-run]");
+  else throw new Error("usage: regroup-events.ts plan --since <time> --snapshot <file> | redirect|finish --snapshot <file> [--snapshot <file> ...] | consolidate --since <time>");
 } finally {
   await stopBoss();
   await closeDb();
