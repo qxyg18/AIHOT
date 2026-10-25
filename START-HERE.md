@@ -75,7 +75,7 @@
 cd /d/myhot-dev
 
 # 生成 .env（会打印一次管理员密码，记下来）
-"C:/Users/yy/.workbuddy/binaries/node/versions/24.15.0/node.exe" --version 2>/dev/null || true
+"<LOCAL_NODE>" --version 2>/dev/null || true
 node scripts/init-env.ts --llm-key <你的 DeepSeek API Key>
 
 # 构建并启动（走国内 npm 镜像）

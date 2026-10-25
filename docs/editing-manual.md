@@ -182,6 +182,6 @@ HUB现行dir_has_file只判断任意文件存在。禁止将其绑定含本说�
 - 影响图正本：`docs/change-impact.json`（schema `tzr-impact/1`，初版 2026-10-04 安装）。§3 矩阵十三业务根 + 共享契约根均已建节点，`owned_paths` 为目录/文件前缀匹配，未命中任何 owned_paths 的路径按未知默认高风险。
 - 只读检查器：`node scripts/check-change-impact.ts --manifest <change-manifest.json>`（§4 的 manifest schema `tzr-change/1`）。检查器与影响图政策文件本身受自放行禁令保护：普通变更的 diff 触及二者即 FAIL；政策升级（tzr-impact/2+）另立高风险任务并独立审计。
 - 宏观共享 DTO 正本：`packages/contracts/src/macro.ts`（T01/ym239 冻结；`packages/backend/src/macro/read.ts` 原样再导出；web 路由 `apps/web/app/routes/macro.tsx` 与 API 路由 `apps/api/src/routes/macro.ts` 均消费本契约，不各自维护镜像）。
-- 卡面/逐 hunk 哈希与 24 卡 DAG：诊断产物 `D:/agent-hub/artifacts/2026-10-03/tongzhuang-radar-diagnosis/`（cards.json / card-baseline.json / full-site-audit.md；HUB 侧只读引用，不复制）。
+- 卡面/逐 hunk 哈希与 24 卡 DAG：诊断产物 `<INTERNAL_ARTIFACTS>/tongzhuang-radar-diagnosis/`（cards.json / card-baseline.json / full-site-audit.md；HUB 侧只读引用，不复制）。
 - 说明存在不等于检查已启用：本仓库的自动核验目前只有 check-change-impact 的 manifest 校验与既有测试/typecheck/build；§4 的跨文件静态比对、深度行为证明按各卡验收面逐步接线。
 - 首版语义边界（跨族终审 2026-10-04 判定，tzr-impact/2 前如实生效）：①manifest.checks_run 是**声明面**——检查器核对闭包节点的必备检查已登记且登记值为 exit 0，但不重跑命令，独立核验在审计端；②closure 的 checked/n_a evidence 是**在盘性证明**而非内容证明（文件存在≠内容相符，内容级核验归独立审计）；③external 声明仅用于他方在途件：每条须带 owner≠本任务，路径须可归属影响图；图外路径仅在 manifest 显式 external_policy=allow_unattributed 且 risk=high 时放行，并计数披露（未知待归属必须响亮，不得借 external 静默绕过未知路径 fail-closed）。
