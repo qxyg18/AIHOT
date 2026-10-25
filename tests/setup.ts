@@ -22,7 +22,7 @@ if (/admission-jobs\.test\.ts$/.test(testArg ?? "")) {
   process.env.SOURCE_PROBE_ENABLED = "true";
   process.env.SOURCE_DISCOVERY_ENABLED = "true";
 }
-if (/^(admission-jobs|source-admission)\.test\.ts$/.test(testArg ?? "")) {
+if (/(?:^|[\\/])(admission-jobs|source-admission)\.test\.ts$/.test(testArg ?? "")) {
   process.env.ALLOW_PRIVATE_NETWORK_FETCH = "true"; // local HTTP stubs on 127.0.0.1 stand in for the official site
 }
 process.env.AIHOT_CREDENTIALS_DIR = "/nonexistent-test-credentials";
