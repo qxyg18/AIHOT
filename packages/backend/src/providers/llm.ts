@@ -442,7 +442,10 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           }
           let json: Record<string, unknown>;
           try {
-            json = JSON.parse(text);
+            const parsed: unknown = JSON.parse(text);
+            // A received payload that is not an object (null, a bare string or number) is unusable output,
+            // not an unknown paid outcome: keep it inspectable rather than spreading it into {}.
+            json = parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : { unparsable: text.slice(0, 20000) };
           } catch {
             json = { unparsable: text.slice(0, 20000) };
           }
@@ -470,7 +473,7 @@ async function chatJsonWithSpec<S extends z.ZodType>(opts: ChatJsonOptions<S>, s
           ? `output token limit reached (finish_reason=length): a reasoning model may have spent it reasoning; give it room with maxTokens/reasoningTokens. ${String(error)}`
           : String(error);
         await rejectReceivedResponse(receipt.receiptId, `unusable output: ${detail.slice(0, 500)}`);
-        throw new ModelOutputError(`Model ${candidate.model} returned unusable output for ${opts.subject}: ${detail.slice(0, 300)}`);
+        throw new ModelOutputError(`Model ${candidate.model} returned unusable output for ${opts.subject}: ${detail.slice(0, 300)}`, receipt.receiptId);
       }
       return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: usageOf(response) ?? null };
     } catch (error) {
