@@ -6,7 +6,9 @@ import { test } from "node:test";
 import type { ReportCitation } from "@aihot/contracts/site";
 import { leadItemOf } from "@aihot/backend/publication/reports";
 
-const cite = (itemId: string, title: string) => ({ itemId, title }) as ReportCitation;
+// A citation of a live item: `available` is required by ReportCitation and gates the no-lead fallback,
+// so a fixture without it would test an input no caller produces.
+const cite = (itemId: string, title: string) => ({ itemId, title, available: true }) as ReportCitation;
 const arena = cite("a", "Claude Opus 5.5 (High) 以 1509 分登顶 Arena Text Arena 榜首");
 const openai = cite("b", "OpenAI 暂停最强模型的训练与工具使用，披露智能体利用 DNS 漏洞联网及泄露 GitHub token 等安全事件");
 

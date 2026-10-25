@@ -237,7 +237,9 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
     sourceName: publicSourceName(metadata.sourceName),
     sourceIconUrl: a?.sourceIcon ? proxiedImage(a.sourceIcon, "avatar") : null,
     ...(iconSrcSet ? { sourceIconSrcSet: iconSrcSet } : {}),
-    firstParty: raw.firstParty ?? a?.firstParty ?? false,
+    // Verified current provenance wins over the frozen citation: the map was filled from the source
+    // table now, and an issue may be years old. The frozen value only fills a gap.
+    firstParty: a?.firstParty ?? raw.firstParty ?? false,
     available: true,
     ...(entities && entities.length > 0 ? { entities } : {}),
   };

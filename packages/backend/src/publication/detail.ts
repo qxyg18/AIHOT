@@ -170,7 +170,11 @@ export async function exportMarkdown(id: string): Promise<{ filename: string; bo
   lines.push(`# ${row.title}`, "");
   if (row.original_title) lines.push(`> 原标题：${row.original_title}`, "");
   lines.push(`- 来源：${row.source_name}`);
-  lines.push(`- 发布时间：${(row.published_at ?? row.discovered_at).toISOString()}`);
+  // Without an original date the collection time is named as such; presenting it as a publication
+  // time would invent one.
+  lines.push(row.published_at
+    ? `- 发布时间：${row.published_at.toISOString()}`
+    : `- 收录时间：${row.discovered_at.toISOString()}`);
   lines.push(`- ${SITE.name}：${itemUrl(row.id)}`);
   lines.push(`- 原文：${row.url}`, "");
   if (row.summary) lines.push("## 摘要", "", row.summary, "");

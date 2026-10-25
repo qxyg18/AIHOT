@@ -99,12 +99,13 @@ function itemXml(r: FeedRow, includeContent: boolean): string {
     const html = fullContent(r, aihot);
     if (html) content = `\n      <content:encoded>${cdata(html)}</content:encoded>`;
   }
-  const pub = r.published_at ?? r.discovered_at;
+  // No original date, no pubDate: the collection time is not a publication time and is not published
+  // as one.
+  const pubDate = r.published_at ? `\n      <pubDate>${rfc822(r.published_at)}</pubDate>` : "";
   return `    <item>
       <title>${cdata(r.title)}</title>
       <link>${aihot}</link>
-      <description>${cdata(description)}</description>${content}${category}
-      <pubDate>${rfc822(pub)}</pubDate>
+      <description>${cdata(description)}</description>${content}${category}${pubDate}
       <guid isPermaLink="false">${escapeXml(r.id)}</guid>
       <author>${AUTHOR} (${escapeXml(r.source_name)})</author>
     </item>`;
