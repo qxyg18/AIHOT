@@ -76,7 +76,7 @@ export default function OpportunitiesPage({ loaderData: d }: { loaderData: Oppor
   return (
     <AdminPage title="入驻机会" subtitle={`五状态人工核验桥 · 生成于 ${d.generatedAt ?? "—"}`}>
       {d.preview && (
-        <div className="mb-4 rounded border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-3">{d.preview}</div>
+        <div className="mb-4 rounded-card border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-3">{d.preview}</div>
       )}
       <div className="grid gap-4">
         {GROUP_ORDER.map((state) => {

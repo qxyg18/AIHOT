@@ -1,7 +1,7 @@
 // Codex reset monitor read layer: the v1 codex-resets snapshot and the /codex-reset page read the
 // same events. Announcement, in-progress, confirmation and "should have landed" stay distinct;
 // passing an announced time never turns into a confirmation.
-import { addDays, beijingDate, beijingMidnight } from "@aihot/contracts/time";
+import { addDays, beijingDate, beijingIso, beijingMidnight } from "@aihot/contracts/time";
 import type { CodexCalendarMark, CodexResetMonitor, CodexResetPageData, CodexResetsSnapshot } from "@aihot/contracts/monitor";
 import { sql } from "../db.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
@@ -14,14 +14,12 @@ export const LIKELY_COMPLETED_AFTER_MS = 6 * 3600_000;
 /** An acknowledged outage stays visible as a hint for this long. */
 export const OUTAGE_VISIBLE_MS = 18 * 3600_000;
 
-const OFFSET_MS = 8 * 3600_000;
-
 /** "2026-09-26T08:07:13.000+08:00" */
 export function bjIso(d: Date | string | null | undefined): string | null {
   if (!d) return null;
   const t = new Date(d).getTime();
   if (!Number.isFinite(t)) return null;
-  return `${new Date(t + OFFSET_MS).toISOString().slice(0, 23)}+08:00`;
+  return beijingIso(t);
 }
 
 interface EventRow {

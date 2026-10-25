@@ -6,6 +6,7 @@
 // The real text stays in the page (for search, screen readers and before the script runs); the canvas
 // covers it once drawn. Mark the accent part of `children` with data-accent.
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { reducedMotion } from "../../lib/motion";
 
 interface Dot {
   x: number;
@@ -71,7 +72,7 @@ export function Halftone({ seed, className = "", children }: { seed: string; cla
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!host || !label || !canvas || !ctx) return;
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = reducedMotion();
     const hover = matchMedia("(hover: hover) and (pointer: fine)").matches;
     const noise = valueNoise(hashSeed(seed));
     const phase = mulberry32(hashSeed(seed) ^ 0x9e3779b9);

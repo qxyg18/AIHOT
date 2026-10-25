@@ -9,6 +9,7 @@ import { Kicker } from "../components/ui/Kicker";
 import { buttonClass } from "../components/ui/Controls";
 import { IconArrowRight } from "../components/icons";
 import { SignalRiver, type RiverSource } from "../features/about/SignalRiver";
+import { IntentLink } from "../components/ui/IntentLink";
 
 /** Shared caches may keep this page for five minutes. */
 export function headers() {
@@ -182,13 +183,13 @@ function Maker({ maker, contact }: { maker: NonNullable<typeof ABOUT.maker>; con
 function Latest({ item, className = "" }: { item: SiteStats["latest"][number] | undefined; className?: string }) {
   if (!item) return null;
   return (
-    <Link to={`/items/${item.id}`} prefetch="intent" className={`group block ${className}`}>
+    <IntentLink to={`/items/${item.id}`} className={`group block ${className}`}>
       <span className="text-[11px] font-semibold tracking-[0.2em] text-accent">最近精选</span>
       <span key={item.id} className="animate-fade-up mt-1.5 block">
         <span className="line-clamp-2 text-[13.5px] font-semibold leading-[1.55] text-ink transition-colors group-hover:text-accent">{item.title}</span>
         <span className="mt-1 block truncate text-[12px] text-ink-4">{shortSourceName(item.source)}</span>
       </span>
-    </Link>
+    </IntentLink>
   );
 }
 
@@ -228,12 +229,12 @@ export default function AboutPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3 lg:pb-2">
-          <Link to="/" prefetch="intent" className={buttonClass("primary", "lg")}>
+          <IntentLink to="/" className={buttonClass("primary", "lg")}>
             看今天的精选 <IconArrowRight size={15} />
-          </Link>
-          <Link to="/daily" prefetch="intent" className={buttonClass("secondary", "lg")}>
+          </IntentLink>
+          <IntentLink to="/daily" className={buttonClass("secondary", "lg")}>
             读最新{withSubject("日报")}
-          </Link>
+          </IntentLink>
         </div>
       </header>
 

@@ -19,6 +19,7 @@ import { Halftone } from "./Halftone";
 import { Nameplate } from "./Nameplate";
 import { IssueDots } from "./IssueDots";
 import { EDITION, KIND_LABEL, MOTTO, dateLine, dateMark, headline, issueNumber, metricItems, neighbourLabel, reportPath, shortDay } from "./format";
+import { IntentLink } from "../../components/ui/IntentLink";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const keyOf = (c: ReportCitation) => c.itemId ?? c.title;
@@ -173,9 +174,9 @@ function Story({ c, dated, kind, reportKey, soWhat, className = "" }: { c: Repor
         <>
           <h3 className="mt-3 text-[19px] font-bold leading-[1.5] tracking-[-0.01em] text-ink [overflow-wrap:anywhere] [text-wrap:pretty] @[880px]:text-[20px]">
             {c.itemId ? (
-              <Link to={`/items/${c.itemId}`} prefetch="intent" className="transition-colors hover:text-accent">
+              <IntentLink to={`/items/${c.itemId}`} className="transition-colors hover:text-accent">
                 {c.title}
-              </Link>
+              </IntentLink>
             ) : (
               c.title
             )}
@@ -186,14 +187,13 @@ function Story({ c, dated, kind, reportKey, soWhat, className = "" }: { c: Repor
             <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-[1.6] text-ink-4">
               <span>相关实体</span>
               {c.entities.map((e) => (
-                <Link
+                <IntentLink
                   key={`${e.type}-${e.slug}`}
                   to={`/entity/${e.type}/${e.slug}`}
-                  prefetch="intent"
                   className="rounded-full border border-line px-2 py-0.5 text-[11.5px] text-ink-3 transition-colors hover:border-ink-4 hover:text-accent"
                 >
                   {e.name}
-                </Link>
+                </IntentLink>
               ))}
             </p>
           )}
@@ -308,9 +308,9 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
         {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} priority className="mt-5" />}
         <h2 className="mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
           {leadStory?.itemId ? (
-            <Link to={`/items/${leadStory.itemId}`} prefetch="intent" className="transition-colors hover:text-accent">
+            <IntentLink to={`/items/${leadStory.itemId}`} className="transition-colors hover:text-accent">
               {title}
-            </Link>
+            </IntentLink>
           ) : (
             title
           )}

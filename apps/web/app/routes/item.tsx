@@ -8,6 +8,7 @@ import { loadItemRailData } from "../lib/item-rail.server";
 import { breadcrumbLd, pageMeta, siteUrl, titled } from "../lib/seo";
 import { fullDateTime, relativeTime } from "../lib/format";
 import { markRead } from "../lib/local-state";
+import { copyText } from "../lib/clipboard";
 import { SelectedBadge } from "../components/ui/Badge";
 import { ScoreLabel } from "../components/ui/Score";
 import { PillTabs } from "../components/ui/Tabs";
@@ -92,7 +93,7 @@ async function shareOrCopy(item: Pick<SiteItemDetail, "id" | "title">): Promise<
       await navigator.share({ title: item.title, url });
       return "shared";
     }
-    await navigator.clipboard.writeText(`${item.title}\n${url}`);
+    await copyText(`${item.title}\n${url}`);
     return "copied";
   } catch {
     return null;
@@ -153,7 +154,7 @@ export default function ItemPage() {
             onSelect={async () => {
               close();
               try {
-                await navigator.clipboard.writeText(`${siteUrl()}/items/${item.id}`);
+                await copyText(`${siteUrl()}/items/${item.id}`);
                 setToast("链接已复制");
               } catch {
                 // clipboard unavailable
@@ -349,8 +350,8 @@ export default function ItemPage() {
                     label="正文语言"
                     active={lang}
                     items={[
-                      { key: "zh", label: "中文", prefetch: "intent", replace: true, to: `/items/${item.id}` },
-                      { key: "original", label: "原文", prefetch: "intent", replace: true, to: `/items/${item.id}/original` },
+                      { key: "zh", label: "中文", prefetchOnPress: true, replace: true, to: `/items/${item.id}` },
+                      { key: "original", label: "原文", prefetchOnPress: true, replace: true, to: `/items/${item.id}/original` },
                     ]}
                   />
                 )}

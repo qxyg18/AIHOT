@@ -3,6 +3,7 @@ import type { LbBoardEntry } from "@aihot/contracts/leaderboard";
 import { BrandMark } from "./BrandMark";
 import { EvidenceBadge } from "./Evidence";
 import { modelHref } from "./format";
+import { IntentLink } from "../../components/ui/IntentLink";
 
 // A faint wash of the rank colour from the card's top corner; the number itself carries the rank.
 const WASH = [
@@ -24,7 +25,7 @@ export function Podium({ entries, board }: { entries: LbBoardEntry[]; board: str
     <ol className="mt-3 hidden gap-3 md:grid md:grid-cols-3" aria-label="前三名">
       {top.map((e, i) => (
         <li key={e.model.slug}>
-          <Link to={modelHref(e.model.slug, board)} prefetch="intent" className={`card card-hover group flex h-full flex-col px-4 py-3.5 ${WASH[i]}`}>
+          <IntentLink to={modelHref(e.model.slug, board)} className={`card card-hover group flex h-full flex-col px-4 py-3.5 ${WASH[i]}`}>
             <span className="flex items-center justify-between gap-3">
               <span className={`mono text-[11px] font-bold tracking-[0.16em] ${RANK_TEXT[i]}`}>NO.{String(e.rank).padStart(2, "0")}</span>
               <span className="flex items-center gap-2 text-[11.5px] text-ink-4">
@@ -43,7 +44,7 @@ export function Podium({ entries, board }: { entries: LbBoardEntry[]; board: str
                 <span className="mono mt-1 block text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink">{e.score.toFixed(1)}</span>
               </span>
             </span>
-          </Link>
+          </IntentLink>
         </li>
       ))}
     </ol>

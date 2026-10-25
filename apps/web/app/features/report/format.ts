@@ -2,6 +2,7 @@
 import type { ReportNavigationEntry, ReportKind } from "@aihot/contracts/site";
 import { SITE, withSubject } from "@aihot/industry/site";
 import { beijingWeekday } from "../../lib/format";
+import { beijingDate } from "@aihot/contracts/time";
 
 export const KINDS: ReportKind[] = ["daily", "weekly", "monthly"];
 export const KIND_PATH: Record<ReportKind, string> = { daily: "/daily", weekly: "/weekly", monthly: "/monthly" };
@@ -43,8 +44,7 @@ export function headline(kind: ReportKind, key: string, count: number): string {
 
 /** "09.16" for a story inside a week or month. */
 export function shortDay(iso: string): string {
-  const d = new Date(Date.parse(iso) + 8 * 3600000);
-  return `${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`;
+  return beijingDate(iso).slice(5).replace("-", ".");
 }
 
 /** Month-day label of a daily key: "9月26日". */

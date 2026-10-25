@@ -5,6 +5,7 @@
 // 且无国内 editorial 参与的事件（纯海外互报）不进榜。
 import { sql } from "../db.ts";
 import { tierRank, type HotEntry } from "./hot-read.ts";
+import { listedCondition } from "../publication/scope.ts";
 import { MALL_KIND_ORDER, MACRO_SCOPE_ORDER, geoScopeOf, macroScopeRank, mallKindOf, mallKindRank } from "./hot-attributes.ts";
 
 export const HOT_RULE_VERSION = "heat-v4-scope-mall-priority-48h-halflife24h";
@@ -136,7 +137,7 @@ async function storyProfiles(storyIds: number[], at: Date): Promise<Map<number, 
     SELECT DISTINCT ON (f.story_id) f.story_id, a.category, a.title_zh, a.summary_zh
     FROM facts f
     JOIN fact_articles fa ON fa.fact_id = f.id
-    JOIN publications p ON p.article_id = fa.article_id AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= ${at})
+    JOIN publications p ON p.article_id = fa.article_id AND ${listedCondition(at)}
     JOIN analyses a ON a.article_id = p.article_id AND (a.relevance IS NULL OR a.relevance != 'block')
     WHERE f.story_id = ANY(${storyIds}::bigint[])
     ORDER BY f.story_id, a.score DESC NULLS LAST, a.input_revision DESC`;
@@ -195,7 +196,7 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
              coalesce(p.published_at, p.discovered_at) AS at
       FROM facts f JOIN fact_articles fa ON fa.fact_id = f.id JOIN publications p ON p.article_id = fa.article_id
       JOIN sources s ON s.id = p.source_id
-      WHERE f.story_id = ${r.story_id} AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= ${at})
+      WHERE f.story_id = ${r.story_id} AND ${listedCondition(at)}
       ORDER BY p.article_id`;
     if (reports.length === 0) continue;
     const rep = [...reports].sort((x, y) => Number(y.first_party) - Number(x.first_party) || Number(y.selected) - Number(x.selected) || (Number(y.score ?? 0) - Number(x.score ?? 0)))[0]!;

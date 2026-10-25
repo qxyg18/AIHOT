@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "@aihot/backend/config";
+import { beijingIso, beijingWallClock } from "@aihot/contracts/time";
 import { closeDb, sql } from "@aihot/backend/db";
 
 const OUT = path.join(REPO_ROOT, "scripts/collectors/out");
@@ -45,7 +46,7 @@ const asStr = (v: unknown): string => (Array.isArray(v) ? asStr(v[0]) : typeof v
 const asTs = (v: unknown): string | null => {
   const s = asStr(v);
   if (!s) return null;
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s) ? `${s}+08:00` : s;
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s) ? beijingIso(beijingWallClock(s)) : s;
 };
 /** Same normalisation as the collector（norm_name）：drop punctuation/space, 广场/购物中心. */
 const norm = (v: unknown) => asStr(v).replace(/[（）()·—\-\s]/g, "").toUpperCase().replace(/广场/g, "").replace(/购物中心/g, "");

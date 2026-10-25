@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyText } from "../lib/clipboard";
 import { IconCheck, IconCopy } from "./icons";
 
 export function CopyButton({ text, label = "复制", className = "" }: { text: string; label?: string; className?: string }) {
@@ -8,14 +9,9 @@ export function CopyButton({ text, label = "复制", className = "" }: { text: s
       type="button"
       onClick={async () => {
         try {
-          await navigator.clipboard.writeText(text);
+          await copyText(text);
         } catch {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          ta.remove();
+          return;
         }
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);

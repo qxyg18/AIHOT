@@ -8,7 +8,7 @@ import { audit } from "../audit.ts";
 import { Conflict } from "./sources.ts";
 import { failureGroupSql, queueProcessing, requeueFailed } from "../jobs/content.ts";
 import { resourceSnapshot } from "../operations/resources.ts";
-import { awaitingRelease } from "../providers/receipts.ts";
+import { awaitingRelease, releaseUnknownReceipt } from "../providers/receipts.ts";
 
 const STALE_HEARTBEAT_MS = 3 * 60_000;
 
@@ -101,10 +101,8 @@ export async function runsOverview() {
  * processing (one action, not two). Only an unknown receipt is released, once.
  */
 async function release(id: number, error: string, actor: string, note: string, billed: boolean | null) {
-  const [before] = await sql<{ subject: string | null; purpose: string }[]>`
-    UPDATE receipts SET status = 'failed', error = ${error}, updated_at = now() WHERE id = ${id} AND status = 'unknown' RETURNING subject, purpose`;
+  const before = await releaseUnknownReceipt(sql, id, error);
   if (!before) return null;
-  await sql`UPDATE receipt_attempts SET status = 'failed', error = ${error} WHERE receipt_id = ${id} AND status = 'unknown'`;
   const article = before.purpose === "analyze_article" ? /^article:([^@]+)@/.exec(before.subject ?? "")?.[1] : undefined;
   let requeued = false;
   if (article) {
@@ -163,21 +161,6 @@ export async function requeueFailedArticles(input: { group: string | null; reaso
   return result;
 }
 
-/** An in-doubt delivery: confirmed as arrived, given up, or sent again after checking the group. */
-export async function resolveDelivery(id: number, input: { outcome: "sent" | "drop" | "resend"; note: string }, actor: string) {
-  if (!input.note?.trim()) throw new Error("note is required");
-  const [before] = await sql<{ status: string }[]>`SELECT status FROM deliveries WHERE id = ${id}`;
-  if (!before) return null;
-  let status: string;
-  if (input.outcome === "sent") {
-    await sql`UPDATE deliveries SET status = 'sent', sent_at = coalesce(sent_at, now()), response = ${`人工确认已送达：${input.note}`}, updated_at = now() WHERE id = ${id}`;
-    status = "sent";
-  } else if (input.outcome === "drop") {
-    await sql`UPDATE deliveries SET status = 'failed', response = ${`人工放弃：${input.note}`}, updated_at = now() WHERE id = ${id}`;
-    status = "failed";
-  } else {
-    const { resendDelivery } = await import("../notify/deliver.ts");
-    status = (await resendDelivery(id)).status;
-  }
-  return { id, status };
-}
+/** An in-doubt delivery: confirmed as arrived, given up, or sent again after checking the group.
+ *  The write belongs to notify/deliver.ts (optimistic version check and its audit row live there). */
+export { resolveDelivery } from "../notify/deliver.ts";

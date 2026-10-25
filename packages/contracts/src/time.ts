@@ -19,6 +19,16 @@ export function beijingIso(instant: Date | string | number): string {
   return `${new Date(new Date(instant).getTime() + OFFSET_MS).toISOString().slice(0, 23)}+08:00`;
 }
 
+/** The instant as ISO 8601 in Beijing time, to the second: "2026-09-26T08:07:13+08:00". */
+export function beijingIsoSeconds(instant: Date | string | number): string {
+  return `${new Date(new Date(instant).getTime() + OFFSET_MS).toISOString().slice(0, 19)}+08:00`;
+}
+
+/** The instant a Beijing wall-clock string names ("2026-10-02T16:35:45" or "…T16:35"); stored timestamps carry no zone. */
+export function beijingWallClock(wall: string): Date {
+  return new Date(Date.parse(`${wall}+08:00`));
+}
+
 /**
  * "9月28日" of a calendar date (YYYY-MM-DD). Given `today` (YYYY-MM-DD, Beijing), a day of another year carries its
  * year, so an archived item is not read as this year's: "2019年2月19日".

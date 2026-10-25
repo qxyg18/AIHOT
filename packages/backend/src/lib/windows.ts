@@ -12,6 +12,7 @@
 // 读取缓存 60s（stale-while-revalidate，跨进程最迟一分钟后生效），写入方（zhipuwatch 扫描）
 // 落库后本进程立即可见。求值在常量层同步可用（冷启动无 settings 即回落常量），不阻塞热路径。
 import { sql } from "../db.ts";
+import { beijingDate, beijingTime } from "@aihot/contracts/time";
 
 export const OFFPEAK_EFFECTIVE_FROM = Date.UTC(2026, 9, 7, 16, 0); // = 2026-10-08 00:00 Asia/Shanghai
 // ka3 early go (owner directive 2026-09-30 "mimo顶上"): the model router switches to MIMO during
@@ -23,12 +24,13 @@ export const MIMO_EARLY_FROM = Date.UTC(2026, 8, 30, 6, 0); // = 2026-09-30 14:0
 export const PLAN_WINDOW_FROM = Date.UTC(2026, 9, 13, 10, 0); // = 2026-10-13 18:00 Asia/Shanghai
 
 export const bjClock = (now = Date.now()) => {
-  const d = new Date(now + 8 * 3600_000);
-  return { weekday: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() };
+  const date = beijingDate(now);
+  const [hour, minute] = beijingTime(now).split(":").map(Number);
+  return { weekday: new Date(`${date}T00:00:00Z`).getUTCDay(), minutes: hour! * 60 + minute! };
 };
 
 /** 北京日期 YYYY-MM-DD（窗口规则的日期比较用字符串序，ISO 日期天然可比）。 */
-export const bjDate = (now = Date.now()) => new Date(now + 8 * 3600_000).toISOString().slice(0, 10);
+export const bjDate = (now = Date.now()) => beijingDate(now);
 
 // ---- ym438 settings 层：套餐/免费窗口规则 ----
 

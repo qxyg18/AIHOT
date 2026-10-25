@@ -24,6 +24,7 @@ import { promptText, promptVersion } from "./prompts.ts";
 import { BRANDS_FILE, MALLS_FILE } from "../leaderboard/directory.ts";
 import { ENTITIES } from "@aihot/industry/taxonomy";
 import { shutdownSignal } from "../jobs/queue.ts";
+import { beijingDate } from "@aihot/contracts/time";
 
 export const DEEPREAD_PROMPT_VERSION = promptVersion("deep-read");
 const SYSTEM = promptText("deep-read");
@@ -277,8 +278,6 @@ export function classifyArticle(input: {
 // Context: the site's own memory about the matched entities
 // ---------------------------------------------------------------------------
 
-const DAY = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
-
 const like = (k: string) => `%${k.replace(/[\\%_]/g, (m) => `\\${m}`).toLowerCase()}%`;
 
 /** Past public coverage of one entity, newest first (the current article excluded). */
@@ -292,7 +291,7 @@ async function historyLines(match: MatchedEntity, excludeId: string): Promise<st
     WHERE p.visibility = 'public' AND p.eligible AND p.article_id <> ${excludeId} AND (${cond})
     ORDER BY at DESC
     LIMIT ${HISTORY_PER_ENTITY}`;
-  return rows.map((r) => `${r.at ? DAY.format(r.at) : "日期不详"}《${r.title}》${r.summary ? `——${r.summary.slice(0, 70)}` : ""}`);
+  return rows.map((r) => `${r.at ? beijingDate(r.at) : "日期不详"}《${r.title}》${r.summary ? `——${r.summary.slice(0, 70)}` : ""}`);
 }
 
 interface ProfileBlock {

@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import type { SiteBrandCard } from "@aihot/contracts/site";
 import { RailSection } from "../../components/ui/Page";
 import { modelHref } from "../leaderboard/format";
+import { IntentLink } from "../../components/ui/IntentLink";
 
 /** 品牌档案行：有值才拼，点分隔；全空时整行不渲染。 */
 function profileLine(b: SiteBrandCard): string | null {
@@ -22,9 +23,8 @@ export function BrandRailCards({ brands }: { brands: SiteBrandCard[] }) {
       <ul className="space-y-2.5">
         {brands.map((b) => (
           <li key={b.slug}>
-            <Link
+            <IntentLink
               to={modelHref(b.slug, "brand")}
-              prefetch="intent"
               className="block rounded-tile border border-line bg-surface px-3.5 py-3 transition-colors hover:border-accent/45 hover:bg-accent-softer"
             >
               <span className="flex items-baseline justify-between gap-2">
@@ -33,7 +33,7 @@ export function BrandRailCards({ brands }: { brands: SiteBrandCard[] }) {
               </span>
               {profileLine(b) && <p className="mt-1 text-[12.5px] leading-relaxed text-ink-3">{profileLine(b)}</p>}
               <span className="mt-1.5 block text-[12px] font-medium text-accent">榜单档案 →</span>
-            </Link>
+            </IntentLink>
           </li>
         ))}
       </ul>
@@ -65,9 +65,9 @@ export function EntityTagRow({ entities }: { entities: SiteEntityTag[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {entities.map((e) => (
-        <Link key={`${e.type}:${e.slug}`} to={entityHref(e)} className="chip" prefetch="intent">
+        <IntentLink key={`${e.type}:${e.slug}`} to={entityHref(e)} className="chip">
           {TYPE_LABEL[e.type]} · {e.name}
-        </Link>
+        </IntentLink>
       ))}
     </div>
   );
@@ -89,9 +89,8 @@ export function MallRailCards({ malls }: { malls: SiteMallCard[] }) {
       <ul className="space-y-2.5">
         {malls.map((m) => (
           <li key={`${m.type}:${m.slug}`}>
-            <Link
+            <IntentLink
               to={`/entity/${m.type}/${encodeURIComponent(m.slug)}`}
-              prefetch="intent"
               className="block rounded-tile border border-line bg-surface px-3.5 py-3 transition-colors hover:border-accent/45 hover:bg-accent-softer"
             >
               <span className="flex items-baseline justify-between gap-2">
@@ -99,7 +98,7 @@ export function MallRailCards({ malls }: { malls: SiteMallCard[] }) {
                 <small className="shrink-0 text-[11.5px] text-ink-4">{TYPE_LABEL[m.type]}</small>
               </span>
               <span className="mt-1.5 block text-[12px] font-medium text-accent">档案与相关新闻 →</span>
-            </Link>
+            </IntentLink>
           </li>
         ))}
       </ul>

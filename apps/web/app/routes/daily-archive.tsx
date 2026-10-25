@@ -8,6 +8,7 @@ import { ReportLayout } from "../features/report/ReportLayout";
 import { archiveGroups } from "../features/report/format";
 import { Rows, SectionPage } from "../features/report/ReportPaper";
 import { Nameplate } from "../features/report/Nameplate";
+import { IntentLink } from "../components/ui/IntentLink";
 
 export async function loader({ request }: { request: Request }) {
   const { items: index } = await apiGet<{ items: ReportIndexEntry[] }>("/api/site/reports/daily", { signal: request.signal });
@@ -47,7 +48,7 @@ export default function DailyArchive() {
           <SectionPage key={m.id} id={`m-${m.id}`} label={m.label}>
             <Rows items={m.entries}>
               {(e, cell) => (
-                <Link key={e.key} to={`/daily/${e.key}`} prefetch="intent" className={`group flex gap-4 py-4 ${cell}`}>
+                <IntentLink key={e.key} to={`/daily/${e.key}`} className={`group flex gap-4 py-4 ${cell}`}>
                   <span className="flex w-9 shrink-0 flex-col items-center">
                     <span className="num text-[24px] font-black leading-none tracking-[-0.03em] text-ink transition-colors group-hover:text-accent">{e.key.slice(8, 10)}</span>
                     <span className="mt-1.5 text-[10.5px] leading-none text-ink-4">{beijingWeekday(e.key).replace("星期", "周")}</span>
@@ -58,7 +59,7 @@ export default function DailyArchive() {
                       <span className="num">{e.count}</span> 件大事
                     </span>
                   </span>
-                </Link>
+                </IntentLink>
               )}
             </Rows>
           </SectionPage>

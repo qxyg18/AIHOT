@@ -5,6 +5,8 @@ import { LB_CONFIDENCE_LABELS } from "@aihot/contracts/leaderboard";
 import { BrandMark } from "./BrandMark";
 import { TierChips } from "./Evidence";
 import { modelHref } from "./format";
+import { reducedMotion } from "../../lib/motion";
+import { IntentLink } from "../../components/ui/IntentLink";
 
 type SortKey = "rank" | "date" | "revenue" | "stores" | "amap" | "area" | "footfall";
 
@@ -97,7 +99,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
   const order = pageRows.map((e) => e.model.slug).join(",");
   useLayoutEffect(() => {
     if (!body.current) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const reduce = reducedMotion();
     const next = new Map<string, number>();
     for (const row of Array.from(body.current.rows)) {
       const key = row.dataset.slug ?? "";
@@ -189,7 +191,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
             </td>
             <td className="px-2 py-3 lg:px-3">
               <div className="flex items-start gap-2">
-                <Link to={modelHref(e.model.slug, board)} prefetch="intent" className="block min-w-0 flex-1 after:absolute after:inset-0 after:content-['']">
+                <IntentLink to={modelHref(e.model.slug, board)} className="block min-w-0 flex-1 after:absolute after:inset-0 after:content-['']">
                 <span className="flex items-center gap-3">
                   <BrandMark brand={e.model.brand} size={32} />
                   <span className="min-w-0">
@@ -233,18 +235,17 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
                 <span className="mt-1 block lg:hidden">
                   <TierChips tiers={e.dimensionTiers} dims={Object.keys(e.dimensions ?? {}).filter((k) => e.dimensions?.[k] != null)} />
                 </span>
-                </Link>
+                </IntentLink>
                 {/* ym132-①：行内「报道 N 篇」角标——桌面整行被外层 Link 的伪元素覆盖，角标须自身抬层
                     （relative z-10）才能独立点击（无嵌套 <a>）；零报道不渲染，与详情页相关报道同窗同闸。 */}
                 {e.articleCount > 0 && (
-                  <Link
+                  <IntentLink
                     to={`${modelHref(e.model.slug, board)}#in-the-news`}
-                    prefetch="intent"
                     title={`近 90 天站内报道 ${e.articleCount} 篇，点击直达相关报道`}
                     className="relative z-10 mt-0.5 shrink-0 whitespace-nowrap rounded-full bg-bg-2 px-2 py-0.5 text-[10.5px] leading-[16px] text-ink-3 transition-colors hover:bg-accent-softer hover:text-accent"
                   >
                     报道 {e.articleCount} 篇
-                  </Link>
+                  </IntentLink>
                 )}
               </div>
             </td>
@@ -316,7 +317,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
         <span className="num text-[12px] text-ink-4">共 {rows.length} 个 · 每页 {pageSize} 个 · 第 {current}/{pageCount} 页</span>
         <span className="flex items-center gap-1">
           {(() => {
-            const btn = "mono inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-line px-2 text-[12.5px] text-ink-3 transition-colors hover:border-ink-4 hover:text-ink disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-3";
+            const btn = "mono inline-flex h-8 min-w-8 items-center justify-center rounded-control border border-line px-2 text-[12.5px] text-ink-3 transition-colors hover:border-ink-4 hover:text-ink disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-3";
             return (
               <>
                 <button type="button" disabled={current === 1} onClick={() => setPage(current - 1)} className={btn}>上一页</button>

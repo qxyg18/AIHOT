@@ -27,7 +27,7 @@ export function InsightRailCards({ insights }: { insights: SiteInsight[] }) {
         {insights.slice(0, 8).map((i, n) => (
           <li key={n} className="border-l-2 border-accent/40 pl-3">
             <div className="flex items-center gap-1.5 text-[11.5px]">
-              <span className="rounded bg-bg-sunk px-1.5 py-0.5 font-medium text-ink-3">{KIND_LABEL[i.kind]}</span>
+              <span className="rounded-mark bg-bg-sunk px-1.5 py-0.5 font-medium text-ink-3">{KIND_LABEL[i.kind]}</span>
               {i.entityName && <span className="font-semibold text-ink-2">{i.entityName}</span>}
               {i.stance && <span className={STANCE_COLOR[i.stance]}>{i.stance === "positive" ? "看多" : i.stance === "negative" ? "看空" : "中性"}</span>}
             </div>
@@ -58,7 +58,7 @@ export function EntityInsightList({ insights }: { insights: SiteInsight[] }) {
         {insights.map((i, n) => (
           <li key={n} className="py-3">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
-              <span className="rounded bg-bg-sunk px-1.5 py-0.5 font-medium text-ink-3">{KIND_LABEL[i.kind]}</span>
+              <span className="rounded-mark bg-bg-sunk px-1.5 py-0.5 font-medium text-ink-3">{KIND_LABEL[i.kind]}</span>
               {i.stance && <span className={STANCE_COLOR[i.stance]}>{i.stance === "positive" ? "看多" : i.stance === "negative" ? "看空" : "中性"}</span>}
               {i.org && <span className="text-ink-3">{i.org}</span>}
               {i.publishedAt && (

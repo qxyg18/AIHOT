@@ -95,7 +95,7 @@ export default function AutonomyPage({ loaderData }: { loaderData: AutonomyLoade
   return (
     <AdminPage title="自治闭环" subtitle={`HUB 自治投影（只读，HUB 为权威） · 生成于 ${d.generatedAt}${d.hubAvailable ? "" : " · HUB 暂不可达"}`}>
       {loaderData.preview && (
-        <div className="mb-4 rounded border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-3">{loaderData.preview}</div>
+        <div className="mb-4 rounded-card border border-line bg-surface-2 px-3 py-2 text-[12.5px] text-ink-3">{loaderData.preview}</div>
       )}
       <div className="grid gap-4">
         <Card title="自治组件状态" right={<Badge tone={d.hubAvailable ? "accent" : "muted"}>{d.capabilities.length}</Badge>}>
@@ -104,7 +104,7 @@ export default function AutonomyPage({ loaderData }: { loaderData: AutonomyLoade
           ) : (
             <div className="grid gap-2">
               {d.capabilities.map((c) => (
-                <div key={c.key} className="flex items-start gap-3 rounded border border-line px-3 py-2">
+                <div key={c.key} className="flex items-start gap-3 rounded-card border border-line px-3 py-2">
                   <Badge tone={STATE_TONE[d.hubAvailable ? c.state : "unknown"]}>
                     {STATE_LABELS[d.hubAvailable ? c.state : "unknown"]}
                   </Badge>
@@ -125,7 +125,7 @@ export default function AutonomyPage({ loaderData }: { loaderData: AutonomyLoade
           ) : (
             <div className="grid gap-2">
               {d.decisions.map((it) => (
-                <div key={it.id} className="rounded border border-line px-3 py-2">
+                <div key={it.id} className="rounded-card border border-line px-3 py-2">
                   <div className="flex items-center gap-2">
                     <Badge tone={it.status === "pending" ? "warn" : "muted"}>
                       {it.status === "pending" ? "待拍板" : it.status === "decided" ? "已拍板" : "暂停"}

@@ -6,6 +6,7 @@ import { adminGet } from "../../lib/admin.server";
 import { useAdminAction } from "../../features/admin/action";
 import { bj } from "../../features/admin/format";
 import { AdminPage, Badge, Button, Card, Empty, Field, FilterChips, Input, Json, Pager, ReasonDialog, Select } from "../../features/admin/ui";
+import { beijingDate, beijingIso, beijingWallClock } from "@aihot/contracts/time";
 
 interface EventPost {
   postId: string;
@@ -64,15 +65,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export const meta: Route.MetaFunction = () => [{ title: `Codex 重置 · ${SITE.name} 后台` }];
 
-const toLocal = (iso: string | null | undefined) => (iso ? new Date(new Date(iso).getTime() + 8 * 3600_000).toISOString().slice(0, 16) : "");
-const fromLocal = (v: string) => (v ? `${v}:00+08:00` : null);
+const toLocal = (iso: string | null | undefined) => (iso ? beijingIso(iso).slice(0, 16) : "");
+const fromLocal = (v: string) => (v ? beijingIso(beijingWallClock(v)) : null);
 const KIND: Record<string, string> = { direct_reset: "额度重置", reset_credit: "重置卡" };
 
 function EventCard({ e, all }: { e: MonitorEvent; all: MonitorEvent[] }) {
   const { run, pending } = useAdminAction();
   const [dialog, setDialog] = useState<null | "edit" | "review" | "withdraw" | "move">(null);
   const [form, setForm] = useState(() => formOf(e));
-  const [reviewDay, setReviewDay] = useState(() => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10));
+  const [reviewDay, setReviewDay] = useState(() => beijingDate(Date.now()));
   const [move, setMove] = useState<{ postId: string; to: string } | null>(null);
   const version = new Date(e.updated_at).toISOString();
   const base = `/api/admin/monitor/events/${encodeURIComponent(e.id)}`;

@@ -44,7 +44,7 @@ export function DayHeader({ day, today, count, collapsed, onToggle }: { day: str
   const [, m, d] = day.split("-").map(Number) as [number, number, number];
   const date = `${m}月${d}日`;
   const weekday = beijingWeekday(day);
-  const short = WEEKDAY_SHORT[new Date(`${day}T12:00:00+08:00`).getUTCDay()] ?? "";
+  const short = WEEKDAY_SHORT[new Date(`${day}T00:00:00Z`).getUTCDay()] ?? "";
   return (
     <div className="sticky top-0 z-20 -mx-4 bg-daybar px-4 lg:mx-0 lg:bg-bg lg:px-0">
       {/* Phones: a full-width day bar. */}

@@ -10,6 +10,7 @@ import { pct } from "../features/leaderboard/format";
 import { fullDateTime } from "../lib/format";
 import { IconArrowLeft, IconChevronRight } from "../components/icons";
 import { AsideCard, ReadingLayout } from "../components/ui/Page";
+import { IntentLink } from "../components/ui/IntentLink";
 
 interface RulesDimension {
   key: string;
@@ -180,10 +181,10 @@ export default function LeaderboardRulesPage() {
             ["/leaderboard/category/mall", "全国商业体榜"],
             ["/leaderboard/sources", "每一份数据来源"],
           ].map(([to, label]) => (
-            <Link key={to} to={to!} prefetch="intent" className="flex items-center justify-between rounded-control px-2 py-2 text-[13.5px] text-ink-2 transition-colors hover:bg-bg-sunk hover:text-ink">
+            <IntentLink key={to} to={to!} className="flex items-center justify-between rounded-control px-2 py-2 text-[13.5px] text-ink-2 transition-colors hover:bg-bg-sunk hover:text-ink">
               {label}
               <IconChevronRight size={14} className="text-ink-4" />
-            </Link>
+            </IntentLink>
           ))}
         </nav>
       </AsideCard>

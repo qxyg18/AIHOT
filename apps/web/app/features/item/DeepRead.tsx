@@ -15,7 +15,7 @@ export function DeepRead({ read }: { read: SiteDeepRead | null }) {
     <section className="mt-5 rounded-tile border border-accent/30 bg-accent-softer px-4 py-3.5 lg:px-5">
       <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-accent">
         深解读 · 不点原文也能懂
-        <span className="rounded bg-bg-sunk px-1.5 py-0.5 text-[11px] font-normal text-ink-3">{ANGLE_LABEL[read.angle]}</span>
+        <span className="rounded-mark bg-bg-sunk px-1.5 py-0.5 text-[11px] font-normal text-ink-3">{ANGLE_LABEL[read.angle]}</span>
       </div>
       <p className="mt-1.5 text-[15.5px] leading-[1.85] text-ink-2">{read.interpretation}</p>
       {read.entities.length > 0 && (

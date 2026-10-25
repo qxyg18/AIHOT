@@ -18,6 +18,7 @@ import {
   docsFetchText, INCREMENTAL_CAP, SITEMAP_PER_RUN_CAP, WATCHED_PATH_PREFIXES,
   ZHIPU_SITEMAP_URL, ZHIPU_SOURCES, type ZhipuKind, type ZhipuSource,
 } from "./sources.ts";
+import { beijingDate } from "@aihot/contracts/time";
 import {
   getWatermarks, insertUpdate, listPendingUpdates, listRowsMissingRoutingAction, saveDigest,
   saveDigestError, saveLastRun, saveWatermarks,
@@ -96,7 +97,7 @@ export async function digestUpdate(row: Pick<ZhipuUpdateRow, "id" | "kind" | "ti
   try {
     const model = await modelFor("zhipuDigest");
     // 北京日期进材料：活动到期与否要按「今天」判断（提示词铁律 5）。
-    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const today = beijingDate(Date.now());
     const user = `今天：${today}（北京时间）\n` +
       `信源：智谱开放平台文档站（docs.bigmodel.cn）·「${String(row.payload.sourceLabel ?? "")}」\n` +
       `站长背景：${CONSUMER_CONTEXT}\n` +

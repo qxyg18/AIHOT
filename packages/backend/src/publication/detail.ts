@@ -8,6 +8,7 @@ import { originalPostCopy } from "../content/posts.ts";
 import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, showsXPost, toItemSummary, xView, type ItemRow } from "./items.ts";
 import { itemUrl } from "./links.ts";
 import { hasItemPage } from "./rules.ts";
+import { listedCondition } from "./scope.ts";
 import { brandCardsForText } from "../leaderboard/read.ts";
 import { SITE } from "@aihot/industry/site";
 
@@ -113,7 +114,7 @@ export async function loadItemDetail(id: string, now = new Date()): Promise<Deta
     const [g] = await sql<{ public_id: string; reports: number; sources: number }[]>`
       SELECT f.public_id, count(p.article_id) AS reports, count(DISTINCT p.source_id) AS sources
       FROM facts f JOIN publications p ON p.fact_id = f.id
-      WHERE f.id = ${row.fact_id} AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= ${now})
+      WHERE f.id = ${row.fact_id} AND ${listedCondition(now)}
       GROUP BY f.public_id`;
     const [dev] = await sql<{ n: number }[]>`
       SELECT count(DISTINCT other.id) AS n FROM facts f

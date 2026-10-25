@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router";
 import type { ReportNavigationEntry, ReportKind } from "@aihot/contracts/site";
 import { KIND_PATH, periodGrid } from "./format";
+import { reducedMotion } from "../../lib/motion";
 
 const ROW = 20;
 const TAU = Math.PI * 2;
@@ -24,7 +25,7 @@ export function IssueDots({ kind, reportKey, index, className = "" }: { kind: Re
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     const { cells, columns } = grid;
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = reducedMotion();
     let width = 0;
     let cw = 0;
     let hovered = -1;

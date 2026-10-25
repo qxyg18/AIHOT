@@ -441,7 +441,7 @@ export async function composeDueReports(now = new Date(), limit = 8): Promise<{ 
 /** Compose missing dailies within the catch-up window (radar worker schedule). */
 export async function catchUpReports(now = new Date(), days = 7): Promise<{ generated: string[] }> {
   const generated: string[] = [];
-  const today = new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 10);
+  const today = beijingDate(now);
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(Date.parse(today) - i * 86400_000).toISOString().slice(0, 10);
     const [exists] = await sql`SELECT 1 FROM reports WHERE kind = 'daily' AND key = ${d}`;

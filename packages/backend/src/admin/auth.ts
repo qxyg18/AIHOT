@@ -6,6 +6,7 @@ import { ADMIN_CAPABILITIES, type AdminCapability } from "@aihot/contracts/site"
 import { config, credential } from "../config.ts";
 import { sql, type Db } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
+import { audit as auditRow } from "../audit.ts";
 
 export const SESSION_COOKIE = "aihot_admin";
 export const STATE_COOKIE = "aihot_oauth_state";
@@ -282,9 +283,7 @@ export async function endSession(cookieHeader: string | undefined) {
 /** Every manual change: who, when, what, why. `exec` lets a caller (the admission engine) run the
  *  write inside its own transaction, so a rollback takes the audit row with it. */
 export async function audit(actor: string, action: string, subject: string | null, reason: string | null, before: unknown, after: unknown, requestId?: string, exec: Db = sql) {
-  await exec`INSERT INTO audit_log (actor, action, subject, reason, before, after, request_id)
-            VALUES (${actor}, ${action}, ${subject}, ${reason}, ${before === null || before === undefined ? null : exec.json(before as never)},
-                    ${after === null || after === undefined ? null : exec.json(after as never)}, ${requestId ?? null})`;
+  await auditRow(actor, action, subject, reason, before, after, { requestId, db: exec });
 }
 
 export function actorOf(p: AdminPrincipal): string {

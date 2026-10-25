@@ -13,6 +13,7 @@ import { SubBoardTabs } from "../features/leaderboard/SubBoardTabs";
 import { IconInfo } from "../components/icons";
 import { modelHref, shortStamp } from "../features/leaderboard/format";
 import { useEntrance } from "../lib/hydration";
+import { IntentLink } from "../components/ui/IntentLink";
 
 /** 品牌榜挂主路由 /leaderboard，其余榜走 /leaderboard/category/:key；子榜走 /leaderboard/sub/:sub（leaderboard-sub.tsx）。 */
 const CATEGORY_KEYS = new Set(["mall"]);
@@ -73,10 +74,9 @@ function MallPortrait({ entries, activeType = null }: { entries: LbBoardEntry[];
     const active = activeType === label;
     const clears = label === "全部" || active;
     return (
-      <Link
+      <IntentLink
         to={clears ? "?" : `?mallType=${encodeURIComponent(label)}`}
         replace
-        prefetch="intent"
         aria-pressed={active}
         className={`inline-flex items-baseline gap-1.5 rounded-full px-2.5 py-1 text-[12px] transition-colors ${
           active ? "bg-accent text-white" : "bg-accent-softer text-ink-2 hover:bg-accent/[0.12] hover:text-ink"
@@ -84,7 +84,7 @@ function MallPortrait({ entries, activeType = null }: { entries: LbBoardEntry[];
       >
         {label}
         <b className={`num text-[12.5px] font-semibold ${active ? "text-white" : "text-ink"}`}>{value}</b>
-      </Link>
+      </IntentLink>
     );
   };
   const Group = ({ title, children }: { title: string; children: ReactNode }) => (

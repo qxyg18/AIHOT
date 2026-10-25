@@ -8,6 +8,7 @@ import type { SiteInsight, SiteInsightsResponse } from "@aihot/contracts/site";
 import type { Route } from "./+types/entity";
 import { loadOr404 } from "../lib/api.server";
 import { EntityInsightList } from "../features/item/InsightCards";
+import { IntentLink } from "../components/ui/IntentLink";
 
 export interface CoRow { slug: string; name: string; count: number }
 
@@ -109,13 +110,13 @@ function CoPanel({ title, data, targetType, emptyNoun }: { title: string; data?:
         <ul className="mt-3 divide-y divide-line">
           {rows.map((r, i) => (
             <li key={r.slug}>
-              <Link to={`/entity/${targetType}/${r.slug}`} prefetch="intent" className="flex items-baseline justify-between gap-3 py-2.5 transition-colors hover:text-accent">
+              <IntentLink to={`/entity/${targetType}/${r.slug}`} className="flex items-baseline justify-between gap-3 py-2.5 transition-colors hover:text-accent">
                 <span className="flex items-baseline gap-2.5">
                   <span className="w-4 text-[12px] text-ink-4">{i + 1}</span>
                   <span className="text-[14.5px] text-ink">{r.name}</span>
                 </span>
                 <span className="shrink-0 text-[12.5px] text-ink-3">{r.count} 篇共同报道</span>
-              </Link>
+              </IntentLink>
             </li>
           ))}
         </ul>
@@ -142,9 +143,9 @@ function DynamicsPanel({ dynamics }: { dynamics?: MallDynamic[] }) {
               >
                 {d.kind === "open" ? "开业" : "闭店"}
               </span>
-              <Link to={`/items/${d.articleId}`} prefetch="intent" className="text-[14.5px] leading-snug text-ink transition-colors hover:text-accent">
+              <IntentLink to={`/items/${d.articleId}`} className="text-[14.5px] leading-snug text-ink transition-colors hover:text-accent">
                 {d.title}
-              </Link>
+              </IntentLink>
               {d.publishedAt && <time className="ml-auto shrink-0 text-[12px] text-ink-4">{d.publishedAt.slice(0, 10)}</time>}
             </li>
           ))}
@@ -172,9 +173,9 @@ function SignalPanel({ signals }: { signals?: SignalView[] }) {
               {s.at && <span className="ml-auto">{s.at.slice(0, 10)} 审核</span>}
             </div>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">“{s.quote}”</p>
-            <Link to={`/items/${s.articleId}`} prefetch="intent" className="mt-1 inline-flex text-[12px] font-medium text-accent transition-colors hover:text-accent-ink">
+            <IntentLink to={`/items/${s.articleId}`} className="mt-1 inline-flex text-[12px] font-medium text-accent transition-colors hover:text-accent-ink">
               《{s.articleTitle ?? "查看原文"}》
-            </Link>
+            </IntentLink>
           </li>
         ))}
       </ul>
@@ -301,12 +302,12 @@ export default function EntityPage({ loaderData: e }: Route.ComponentProps) {
         <ul className="mt-3 divide-y divide-line">
           {e.articles.map((a) => (
             <li key={a.id}>
-              <Link to={`/items/${a.id}`} prefetch="intent" className="block py-3 transition-colors hover:text-accent">
+              <IntentLink to={`/items/${a.id}`} className="block py-3 transition-colors hover:text-accent">
                 <span className="text-[14.5px] leading-snug text-ink">{a.title}</span>
                 {a.publishedAt && (
                   <time className="mt-1 block text-[12px] text-ink-4">{a.publishedAt.slice(0, 10)}</time>
                 )}
-              </Link>
+              </IntentLink>
             </li>
           ))}
         </ul>

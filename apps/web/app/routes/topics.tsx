@@ -1,6 +1,7 @@
 import { Link, useLoaderData } from "react-router";
 import { apiGet } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
+import { IntentLink } from "../components/ui/IntentLink";
 
 interface TopicSummary {
   slug: string;
@@ -54,9 +55,8 @@ export default function TopicsPage() {
               .filter((t) => t.group === g.key)
               .map((t) => (
                 <li key={t.slug}>
-                  <Link
+                  <IntentLink
                     to={`/topics/${t.slug}`}
-                    prefetch="intent"
                     aria-label={`查看${t.name}相关精选文章`}
                     className="card card-hover group flex h-full flex-col px-5 py-[18px]"
                   >
@@ -65,7 +65,7 @@ export default function TopicsPage() {
                     <span className="mono mt-3 text-[11.5px] text-accent">
                       查看 {t.total} 条精选 <span className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">→</span>
                     </span>
-                  </Link>
+                  </IntentLink>
                 </li>
               ))}
           </ul>

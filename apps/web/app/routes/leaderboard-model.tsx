@@ -14,6 +14,7 @@ import { BrandMark } from "../features/leaderboard/BrandMark";
 import { EvidenceBadge, TierChips } from "../features/leaderboard/Evidence";
 import { boardHref, pctFixed, shortStamp } from "../features/leaderboard/format";
 import { IconArrowLeft, IconArrowRight, IconArrowUpRight, IconChevronDown, IconExternal } from "../components/icons";
+import { IntentLink } from "../components/ui/IntentLink";
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const model = await loadOr404<LbModelDetail>(`/api/site/leaderboard/models/${encodeURIComponent(params.slug)}`, { signal: request.signal });
@@ -412,9 +413,9 @@ function EntitySignals({ d }: { d: ReturnType<typeof useLoaderData<typeof loader
               {s.at && <time className="ml-auto shrink-0 text-[11.5px] text-ink-4">{s.at.slice(0, 10)} 审核</time>}
             </div>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">“{s.quote}”</p>
-            <Link to={`/items/${s.articleId}`} prefetch="intent" className="mt-1 inline-flex text-[12px] font-medium text-accent transition-colors hover:text-accent-ink">
+            <IntentLink to={`/items/${s.articleId}`} className="mt-1 inline-flex text-[12px] font-medium text-accent transition-colors hover:text-accent-ink">
               《{s.articleTitle ?? "查看原文"}》
-            </Link>
+            </IntentLink>
           </li>
         ))}
       </ul>
@@ -449,9 +450,9 @@ function TenancyBrands({ d }: { d: ReturnType<typeof useLoaderData<typeof loader
           return (
             <li key={b.slug ?? b.name}>
               {b.linked && b.slug ? (
-                <Link to={`/leaderboard/${b.slug}`} prefetch="intent" className="chip inline-flex items-center gap-1.5 transition-colors hover:border-ink-4 hover:text-accent">
+                <IntentLink to={`/leaderboard/${b.slug}`} className="chip inline-flex items-center gap-1.5 transition-colors hover:border-ink-4 hover:text-accent">
                   {chip}
-                </Link>
+                </IntentLink>
               ) : (
                 <span className="chip inline-flex items-center gap-1.5">{chip}</span>
               )}

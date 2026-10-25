@@ -5,6 +5,7 @@ import type { FeedItemSummary, ItemSummary, MediaView, SourceKind, XPostView } f
 import { sql, type Db } from "../db.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { displayTags } from "./rules.ts";
+import { releasedCondition, selectedCondition } from "./scope.ts";
 import { POLICY } from "@aihot/site";
 
 export interface ItemRow {
@@ -79,13 +80,11 @@ export const ITEM_FROM = sql`
 
 /** Listed items: public, and a selected item only after its release gate. */
 export function listedCondition(now: Date) {
-  return sql`p.visibility = 'public' AND (NOT p.selected OR p.visible_after <= ${now})`;
+  return sql`p.visibility = 'public' AND ${releasedCondition(now)}`;
 }
 
 /** Selected set as shown on the home timeline, v1 selected mode and RSS. */
-export function selectedCondition(now: Date) {
-  return sql`p.visibility = 'public' AND p.selected AND p.visible_after <= ${now}`;
-}
+export { selectedCondition };
 
 export function channelCondition(channel: ChannelKey | null | undefined) {
   if (!channel || channel === "all") return sql``;

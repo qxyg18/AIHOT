@@ -3,6 +3,7 @@
 // 条目内容改了 key 不变、hash 变 → 出「更新」条目；解析不出即抛错（scan 层停该页记错误，
 // 禁猜测解析）。
 import { createHash } from "node:crypto";
+import { beijingAt, beijingIsoSeconds } from "@aihot/contracts/time";
 
 export interface ParsedItem {
   key: string;
@@ -36,7 +37,7 @@ export function normalizeDate(label: string): string | null {
   const mo = Number(m[2]);
   const d = Number(m[3]);
   if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  return `${m[1]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}T00:00:00+08:00`;
+  return beijingIsoSeconds(beijingAt(`${m[1]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`, "00:00"));
 }
 
 /** 页面首个 # 标题（sitemap 新页解析亦用）。 */

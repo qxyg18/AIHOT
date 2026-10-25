@@ -8,6 +8,7 @@ import { shortHash } from "../lib/ids.ts";
 import { proxiedImage } from "../media/imgproxy.ts";
 import { ITEM_COLUMNS, ITEM_FROM, categoryCondition, channelCondition, selectedCondition, tagCondition, toItemSummary, topicCondition, type ItemRow } from "./items.ts";
 import { pickRepresentative } from "./representative.ts";
+import { listedCondition } from "./scope.ts";
 
 export interface GroupReportsQuery {
   factPublicId: string;
@@ -36,8 +37,7 @@ export async function loadGroupReports(q: GroupReportsQuery, now = new Date()): 
     SELECT p.article_id AS id, p.title, p.summary, p.timeline_at, p.url, p.selected,
            s.id AS source_id, s.name AS source_name, s.kind AS source_kind, p.first_party, s.icon_url
     FROM publications p JOIN sources s ON s.id = p.source_id
-    WHERE p.article_id IN (SELECT article_id FROM fact_articles WHERE fact_id = ${fact.id}) AND p.visibility = 'public' AND p.eligible
-      AND (NOT p.selected OR p.visible_after <= ${now}) ${filters}
+    WHERE p.article_id IN (SELECT article_id FROM fact_articles WHERE fact_id = ${fact.id}) AND ${listedCondition(now)} ${filters}
     ORDER BY p.timeline_at DESC, p.article_id ASC`;
   if (members.length === 0) return { kind: "not_found" };
 
@@ -106,7 +106,7 @@ export async function loadDevelopments(q: DevelopmentsQuery, now = new Date()): 
     (await sql<{ fact_id: number; n: number }[]>`
       SELECT fa.fact_id, count(DISTINCT p.article_id)::int AS n
       FROM facts f JOIN fact_articles fa ON fa.fact_id = f.id JOIN publications p ON p.article_id = fa.article_id
-      WHERE f.story_id = ${story.id} AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= ${now}) ${filters}
+      WHERE f.story_id = ${story.id} AND ${listedCondition(now)} ${filters}
       GROUP BY fa.fact_id`).map((c) => [c.fact_id, c.n]),
   );
   const byFact = new Map<number, Member[]>();

@@ -9,6 +9,7 @@
 import { SITE, withSubject } from "@aihot/industry/site";
 import { useEffect, useRef, type ReactNode } from "react";
 import { shortSourceName } from "../../lib/format";
+import { reducedMotion } from "../../lib/motion";
 
 export interface RiverSource {
   name: string;
@@ -312,7 +313,7 @@ export function SignalRiver({
     const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
     const layer = document.createElement("canvas");
     const lctx = layer.getContext("2d")!;
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = reducedMotion();
 
     let L: Layout | null = null;
     let col = readColors(probe);

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { IconMonitor, IconMoon, IconSun } from "../icons";
 import { resolvedTheme, setThemePreference, useThemePreference, type ThemePreference } from "../../lib/local-state";
+import { reducedMotion } from "../../lib/motion";
 
 type Choice = "dark" | "system" | "light";
 
@@ -25,7 +26,7 @@ export function ThemeSwitch({ className = "" }: { className?: string }) {
       document.documentElement.setAttribute("data-theme", resolvedTheme(nextPref));
     };
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-    if (doc.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(apply);
+    if (doc.startViewTransition && !reducedMotion()) doc.startViewTransition(apply);
     else apply();
   };
 

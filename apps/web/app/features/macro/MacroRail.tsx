@@ -29,7 +29,7 @@ export function MacroRail({ items, today }: { items: MacroRailItem[]; today: str
     <div className="flex flex-col gap-3.5">
       <section className="rounded-card border border-line bg-surface px-4 py-3.5">
         <h2 className="mb-2.5 flex items-center gap-2 text-[13.5px] font-bold text-ink">
-          <span className="h-[13px] w-[3px] rounded-sm bg-accent" aria-hidden />
+          <span className="h-[13px] w-[3px] rounded-full bg-accent" aria-hidden />
           宏观导读分类
           <span className="ml-auto text-[11px] font-normal text-ink-4">童装动态 · 宏观类</span>
         </h2>
@@ -51,7 +51,7 @@ export function MacroRail({ items, today }: { items: MacroRailItem[]; today: str
 
       <section className="rounded-card border border-line bg-surface px-4 py-3.5">
         <h2 className="mb-1 flex items-center gap-2 text-[13.5px] font-bold text-ink">
-          <span className="h-[13px] w-[3px] rounded-sm bg-accent" aria-hidden />
+          <span className="h-[13px] w-[3px] rounded-full bg-accent" aria-hidden />
           宏观文章导读
           <span className="ml-auto text-[11px] font-normal text-ink-4">{shown.length} 篇 · 近30天</span>
         </h2>

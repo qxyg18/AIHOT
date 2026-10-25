@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router";
 import { TABBAR, tabIsActive } from "./nav";
 import { useChangelogDot } from "./Sidebar";
+import { IntentLink } from "../ui/IntentLink";
 
 /** Bottom tab bar of the mobile shell (up to 960px), as on the original site. */
 export function MobileTabBar({ changelogVersion }: { changelogVersion: string | null }) {
@@ -13,17 +14,16 @@ export function MobileTabBar({ changelogVersion }: { changelogVersion: string | 
           const active = tabIsActive(t, pathname);
           const Icon = t.icon;
           return (
-            <Link
+            <IntentLink
               key={t.to}
               to={t.to}
-              prefetch="intent"
               aria-current={active ? "page" : undefined}
               className={`relative flex flex-col items-center justify-center gap-[3px] text-[11px] transition-colors ${active ? "font-semibold text-accent" : "text-ink-3 active:text-ink"}`}
             >
               <Icon size={21} />
               <span>{t.label}</span>
               {dot && t.changelog && <span className="absolute right-[calc(50%-17px)] top-2 size-1.5 rounded-full bg-hot" aria-label="有新的更新" />}
-            </Link>
+            </IntentLink>
           );
         })}
       </div>
